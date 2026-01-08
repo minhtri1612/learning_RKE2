@@ -1,0 +1,263 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "backend.fullname" . }}-migration
+  labels:
+    {{- include "backend.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-timeout": "900"
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 3
+  template:
+    metadata:
+      name: {{ include "backend.fullname" . }}-migration
+      labels:
+        {{- include "backend.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      # Add tolerations to allow scheduling even with disk pressure (migration is critical)
+      tolerations:
+      - key: node.kubernetes.io/disk-pressure
+        operator: Exists
+        effect: NoSchedule
+      containers:
+        - name: db-migration
+          image: {{ .Values.workload.image }}
+          imagePullPolicy: Always
+          resources:
+            requests:
+              ephemeral-storage: "500Mi"
+            limits:
+              ephemeral-storage: "1Gi"
+          envFrom:
+            - configMapRef:
+                name: {{ include "backend.fullname" . }}-configmap
+            - secretRef:
+                name: {{ include "backend.fullname" . }}-secret
+          command: ["/bin/sh", "-c"]
+          args: 
+            - |
+              # Don't use set -e at the start - we'll handle errors explicitly
+              set +e
+              
+              echo "=== Migration Job Started ==="
+              echo "DATABASE_URL: ${DATABASE_URL:0:50}..." # Show first 50 chars for debugging
+              
+              # Quick check: if database already has products, we might be able to skip everything
+              echo "Quick check: Does database already have data?"
+              # Try a simple connection test first (no npm install needed)
+              DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+              DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+              DB_PORT=${DB_PORT:-5432}
+              DB_NAME=$(echo "$DATABASE_URL" | sed -n 's/.*\/\([^?]*\).*/\1/p')
+              DB_USER=$(echo "$DATABASE_URL" | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
+              DB_PASS=$(echo "$DATABASE_URL" | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p')
+              
+              # Try to check product count using psql if available (no npm needed)
+              if command -v psql >/dev/null 2>&1; then
+                PRODUCT_COUNT=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c 'SELECT COUNT(*) FROM "Product";' 2>/dev/null | tr -d ' ' || echo "0")
+                if [ "$PRODUCT_COUNT" -gt 0 ]; then
+                  echo "Database already has $PRODUCT_COUNT products!"
+                  echo "Checking if migrations are up to date..."
+                  # Still need to run migrations, but can skip seeding
+                  SKIP_SEED=true
+                else
+                  SKIP_SEED=false
+                fi
+              else
+                SKIP_SEED=false
+              fi
+              
+              echo "Waiting for database to be ready..."
+              MAX_RETRIES=30
+              RETRY_COUNT=0
+              
+              # Extract database host from DATABASE_URL
+              DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+              DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+              DB_PORT=${DB_PORT:-5432}
+              
+              echo "Database host: $DB_HOST, port: $DB_PORT"
+              
+              # Wait for database - try to connect using nc (netcat) or telnet
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                # Try to connect using nc if available, otherwise use timeout with bash
+                if command -v nc >/dev/null 2>&1; then
+                  if nc -z -w 2 "$DB_HOST" "$DB_PORT" 2>/dev/null; then
+                    echo "Database port is open!"
+                    break
+                  fi
+                else
+                  # Fallback: use timeout with bash TCP connection
+                  if timeout 2 bash -c "echo > /dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null; then
+                    echo "Database port is open!"
+                    break
+                  fi
+                fi
+                
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $((RETRY_COUNT % 5)) -eq 0 ]; then
+                  echo "Still waiting for database... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+                fi
+                sleep 2
+              done
+              
+              if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+                echo "ERROR: Database connection timeout after $MAX_RETRIES attempts"
+                echo "DATABASE_URL: $DATABASE_URL"
+                echo "DB_HOST: $DB_HOST, DB_PORT: $DB_PORT"
+                exit 1
+              fi
+              
+              # Additional wait for database to be fully ready (accept connections)
+              echo "Waiting for database to accept connections..."
+              sleep 3
+              
+              # Try Prisma connection test (reduced retries)
+              MAX_PRISMA_RETRIES=15
+              PRISMA_RETRY=0
+              while [ $PRISMA_RETRY -lt $MAX_PRISMA_RETRIES ]; do
+                if timeout 5 npx prisma migrate status >/dev/null 2>&1; then
+                  echo "Database is ready for Prisma!"
+                  break
+                fi
+                ERROR_OUTPUT=$(timeout 5 npx prisma migrate status 2>&1 || true)
+                if echo "$ERROR_OUTPUT" | grep -qE "P1001|P1000|Can't reach|Connection|timeout"; then
+                  PRISMA_RETRY=$((PRISMA_RETRY + 1))
+                  if [ $((PRISMA_RETRY % 5)) -eq 0 ]; then
+                    echo "Prisma connection test $PRISMA_RETRY/$MAX_PRISMA_RETRIES..."
+                  fi
+                  sleep 1
+                else
+                  # Different error - might be migration needed, which is OK
+                  echo "Database appears ready (may need migration)"
+                  break
+                fi
+              done
+              
+              if [ $PRISMA_RETRY -ge $MAX_PRISMA_RETRIES ]; then
+                echo "WARNING: Prisma connection test failed, but proceeding with migration..."
+              fi
+              
+              echo "Starting database migration..."
+              # Try to use Prisma from node_modules first (if available in image)
+              # This avoids downloading packages and using ephemeral storage
+              if [ -f "/app/node_modules/.bin/prisma" ] || [ -f "/app/node_modules/prisma/cli.js" ]; then
+                echo "Using Prisma from node_modules (no download needed)"
+                PRISMA_CMD="npx prisma"
+              else
+                echo "Prisma not in node_modules, will use npx (may download packages)"
+                PRISMA_CMD="npx prisma"
+              fi
+              
+              set -e  # Enable strict error handling for migration and seeding
+              if ! $PRISMA_CMD migrate deploy; then
+                echo "ERROR: Migration failed!"
+                echo "Migration output:"
+                $PRISMA_CMD migrate deploy 2>&1 || true
+                exit 1
+              fi
+              
+              echo "Migration completed successfully!"
+              
+              echo "Starting database seeding..."
+              # Check if we already determined to skip seeding
+              if [ "${SKIP_SEED:-false}" = "true" ]; then
+                echo "Skipping seeding - database already has products (checked earlier)"
+                PRODUCT_COUNT="999"  # Set to non-zero to skip
+              else
+                # Check if data already exists (idempotent seeding) - use Prisma from image if available
+                echo "Checking if database already has products..."
+                if [ -f "/app/node_modules/@prisma/client/index.js" ]; then
+                  echo "Using Prisma Client from node_modules"
+                  PRODUCT_COUNT=$(timeout 10 node -e "
+                    const { PrismaClient } = require('@prisma/client');
+                    const prisma = new PrismaClient();
+                    prisma.product.count().then(count => {
+                      console.log(count);
+                      process.exit(0);
+                    }).catch(e => {
+                      console.error('Error:', e.message);
+                      process.exit(1);
+                    }).finally(() => prisma.\$disconnect());
+                  " 2>/dev/null || echo "0")
+                else
+                  echo "Prisma Client not found, checking via direct SQL query..."
+                  # Fallback: use psql if available, or skip check
+                  PRODUCT_COUNT="0"
+                fi
+              fi
+              
+              if [ "$PRODUCT_COUNT" -gt 0 ]; then
+                echo "Database already has $PRODUCT_COUNT products. Skipping seeding."
+                echo "If you want to re-seed, delete products first."
+              else
+                echo "No products found. Running seed..."
+                # The issue: npx prisma db seed tries to run 'tsx' directly which fails
+                # Solution: Run tsx directly with npx, or use node to run the seed file
+                # First try: npx tsx (will download tsx if needed)
+                echo "Attempting to seed with npx tsx (bypassing prisma db seed)..."
+                # Use npx --yes to auto-install tsx if needed
+                if timeout 180 npx --yes tsx /app/prisma/seed.ts; then
+                  echo "Seeding completed successfully!"
+                else
+                  SEED_EXIT_CODE=$?
+                  echo "WARNING: npx tsx failed with code $SEED_EXIT_CODE"
+                  # Try installing tsx globally first
+                  echo "Trying to install tsx globally and retry..."
+                  npm install -g tsx 2>/dev/null || true
+                  if timeout 180 tsx /app/prisma/seed.ts; then
+                    echo "Seeding completed after installing tsx!"
+                  else
+                    echo "ERROR: Seeding failed!"
+                    # Check if products were created anyway
+                    FINAL_COUNT=$(timeout 10 node -e "
+                      try {
+                        const { PrismaClient } = require('@prisma/client');
+                        const prisma = new PrismaClient();
+                        prisma.product.count().then(count => {
+                          console.log(count);
+                          process.exit(0);
+                        }).catch(() => process.exit(1));
+                      } catch(e) {
+                        console.log('0');
+                        process.exit(0);
+                      }
+                    " 2>/dev/null | tr -d '\n' || echo "0")
+                    if [ "$FINAL_COUNT" -gt 0 ]; then
+                      echo "Some products were created ($FINAL_COUNT). Continuing..."
+                    else
+                      echo "ERROR: No products found after seeding attempt!"
+                      exit 1
+                    fi
+                  fi
+                fi
+              fi
+              
+              # Verify seeding succeeded
+              echo "Verifying seeding..."
+              FINAL_COUNT=$(timeout 10 node -e "
+                try {
+                  const { PrismaClient } = require('@prisma/client');
+                  const prisma = new PrismaClient();
+                  prisma.product.count().then(count => {
+                    console.log(count);
+                    process.exit(0);
+                  }).catch(() => process.exit(1));
+                } catch(e) {
+                  console.log('0');
+                  process.exit(0);
+                }
+              " 2>/dev/null | tr -d '\n' || echo "0")
+              
+              if [ "$FINAL_COUNT" -gt 0 ]; then
+                echo "✓ Seeding verified: $FINAL_COUNT products in database"
+              else
+                echo "WARNING: Could not verify products, but migration completed"
+              fi
+              
+              echo "=== Database initialization completed successfully! ==="

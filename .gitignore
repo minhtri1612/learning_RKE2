@@ -1,0 +1,46 @@
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# Dependencies
+/node_modules/
+/.next/
+
+# IDE
+/.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Misc
+natehigger
+
+# Kubernetes - Secrets and configs
+.kube/
+kubeconfig
+rke2.yaml
+kube_config_rke2.yaml
+
+# Terraform - CRITICAL: Contains secrets and state
+*.tfstate
+*.tfstate.backup
+*.tfstate.*
+tfplan
+tfplan.*
+.terraform/
+.terraform.lock.hcl
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/k8s-key.pem
+terraform/*.pem
+terraform/*.key
+*.pem
+*.key
+
+# Ansible - Contains IPs and connection info
+ansible/inventory.ini
+
+# Prisma (if you need it, remove this line)
+/prisma/

@@ -1,0 +1,10 @@
+Your PostgreSQL database has been deployed.
+
+To connect to your database from within the Kubernetes cluster (e.g., from your backend pod), use the following DNS name:
+  {{ include "database.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:5432
+
+To connect to the database from your local machine for debugging, you can run the following command:
+
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "database.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  echo "Forwarding port 5432 from local machine to pod $POD_NAME"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 5432:5432

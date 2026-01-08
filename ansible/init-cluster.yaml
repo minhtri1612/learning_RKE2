@@ -1,0 +1,58 @@
+- name: Setup First RKE2 Master
+  hosts: masters
+  become: yes
+  vars:
+    # Lấy DNS của NLB từ Terraform output
+    nlb_dns: "k8s-master-nlb-b220f70c0e3e8734.elb.ap-southeast-2.amazonaws.com"
+
+  tasks:
+    - name: Install RKE2 Server
+      shell: curl -sfL https://get.rke2.io | sh -
+      
+    - name: Create config directory
+      file:
+        path: /etc/rancher/rke2
+        state: directory
+
+    - name: Write RKE2 config
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+        content: |
+          token: "MySuperSecretToken123"
+          tls-san:
+            - "{{ nlb_dns }}"
+            - "{{ ansible_default_ipv4.address }}"
+
+    - name: Start RKE2 Server
+      systemd:
+        name: rke2-server
+        state: started
+        enabled: yes
+
+    - name: Wait for node token to be generated
+      wait_for:
+        path: /var/lib/rancher/rke2/server/node-token
+
+    - name: Setup kubectl for ubuntu user
+      shell: |
+        mkdir -p /home/ubuntu/.kube
+        cp /etc/rancher/rke2/rke2.yaml /home/ubuntu/.kube/config
+        chown ubuntu:ubuntu /home/ubuntu/.kube/config
+
+    - name: Add RKE2 bin to PATH for ubuntu user
+      lineinfile:
+        path: /home/ubuntu/.bashrc
+        line: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+        create: yes
+
+    - name: Wait for RKE2 API server to be ready
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:6443/healthz"
+        method: GET
+        status_code: [200]
+        validate_certs: no
+      register: result
+      until: result.status == 200
+      retries: 30
+      delay: 10
+      ignore_errors: yes

@@ -1,0 +1,24 @@
+{{- if .Values.persistence.provisionStorageClass }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.persistence.storageClassName }}
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+{{- end }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

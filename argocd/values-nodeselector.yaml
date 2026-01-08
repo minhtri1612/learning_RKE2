@@ -1,0 +1,24 @@
+global:
+  domain: argocd.local
+
+# Node selectors removed - ArgoCD will schedule on any available node
+# If you want to schedule on specific nodes, label them and uncomment:
+# controller:
+#   nodeSelector:
+#     role: web
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    hosts:
+      - argocd.local
+    paths:
+      - path: /
+        pathType: Prefix
+
+configs:
+  params:
+    server.insecure: "true"

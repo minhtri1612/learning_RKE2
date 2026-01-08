@@ -1,0 +1,35 @@
+nameOverride: "postgres"
+fullnameOverride: "postgres"
+
+image:
+  repository: postgres
+  pullPolicy: Always
+  tag: "13"
+
+service:
+  type: ClusterIP
+  port: 5432
+
+serviceAccount:
+  create: false
+
+auth:
+  username: "meo_admin"
+  password: "MeoStationery2025!"
+  database: "meo_stationery"
+
+persistence:
+  size: 1Gi
+  storageClassName: ""  # Empty string = use default storage class
+  provisionStorageClass: false
+
+# nodeSelector:
+#   role: db
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1

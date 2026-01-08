@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "database.fullname" . }}-test-connection"
+  labels:
+    {{- include "database.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: psql
+      image: postgres:13
+      command: ['pg_isready']
+      args: 
+        - '-h'
+        - '{{ include "database.fullname" . }}'
+        - '-p'
+        - '{{ .Values.service.port | quote }}'
+        - '-U'
+        - '{{ .Values.auth.username }}'
+        - '-d'
+        - '{{ .Values.auth.database }}'
+      env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "database.fullname" . }}
+              key: POSTGRES_PASSWORD
+  restartPolicy: Never
