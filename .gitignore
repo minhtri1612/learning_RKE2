@@ -16,6 +16,8 @@
 
 # Misc
 natehigger
+RKE2_REVIEW_SUMMARY.md
+check_status.sh
 
 # Kubernetes - Secrets and configs
 .kube/
