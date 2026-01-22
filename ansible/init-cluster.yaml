@@ -4,7 +4,7 @@
   vars:
     # Lấy DNS của NLB từ Terraform output
     # This will be automatically updated by deploy.py
-    nlb_dns: ""
+    nlb_dns: "k8s-master-nlb-7128ca98e2d384d7.elb.ap-southeast-2.amazonaws.com"
 
   tasks:
     - name: Install RKE2 Server
@@ -47,13 +47,15 @@
         create: yes
 
     - name: Wait for RKE2 API server to be ready
-      uri:
-        url: "https://{{ ansible_default_ipv4.address }}:6443/healthz"
-        method: GET
-        status_code: [200]
-        validate_certs: no
-      register: result
-      until: result.status == 200
-      retries: 30
-      delay: 10
+      # Check if RKE2 server is running and API is accessible
+      # Instead of HTTP health check (which requires auth), check service status
+      shell: |
+        systemctl is-active --quiet rke2-server && \
+        timeout 5 bash -c 'until curl -k -s https://localhost:6443/readyz >/dev/null 2>&1; do sleep 2; done' && \
+        echo "ready"
+      register: rke2_ready
+      until: rke2_ready.stdout == "ready"
+      retries: 60  # 60 retries * 5 seconds = 5 minutes max wait
+      delay: 5
       ignore_errors: yes
+      changed_when: false

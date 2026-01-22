@@ -22,19 +22,23 @@ resource "aws_instance" "masters" {
   ami                         = local.ami_id
   instance_type               = var.instance_type
   subnet_id                   = aws_subnet.public_subnet_a.id
-  vpc_security_group_ids      = [aws_security_group.k8s_sg.id]
+  vpc_security_group_ids      = [
+    aws_security_group.k8s_common_sg.id,
+    aws_security_group.k8s_master_sg.id
+  ]
   key_name                    = aws_key_pair.k8s_key.key_name
   associate_public_ip_address = true
-  iam_instance_profile        = aws_iam_instance_profile.k8s_profile.name
   
   root_block_device {
     volume_size = 30  # 30GB for RKE2 + Rancher + ArgoCD + apps + buffer
     volume_type = "gp3"
   }
   
+  # Spot instances for cost savings
   instance_market_options {
     market_type = "spot"
   }
+  
   tags = { Name = "k8s-master-${count.index + 1}" }
 }
 
@@ -42,20 +46,24 @@ resource "aws_instance" "workers" {
   count                       = var.worker_count
   ami                         = local.ami_id
   instance_type               = var.instance_type
-  subnet_id                   = aws_subnet.public_subnet_b.id
-  vpc_security_group_ids      = [aws_security_group.k8s_sg.id]
+  subnet_id                   = element([aws_subnet.public_subnet_a.id, aws_subnet.public_subnet_b.id], count.index)  
+  vpc_security_group_ids      = [
+    aws_security_group.k8s_common_sg.id,
+    aws_security_group.k8s_worker_sg.id
+  ]
   key_name                    = aws_key_pair.k8s_key.key_name
   associate_public_ip_address = true
-  iam_instance_profile        = aws_iam_instance_profile.k8s_profile.name
   
   root_block_device {
     volume_size = 30  # 30GB for RKE2 + Rancher + ArgoCD + apps + buffer
     volume_type = "gp3"
   }
   
+  # Spot instances for cost savings
   instance_market_options {
     market_type = "spot"
   }
+  
   tags = { Name = "k8s-worker-${count.index + 1}" }
 }
 
