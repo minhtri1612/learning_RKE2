@@ -201,9 +201,18 @@ def run_ansible(tf_output, master_private_ip):
     env = os.environ.copy()
     env["ANSIBLE_HOST_KEY_CHECKING"] = "False"
     inventory_file = "inventory_aws_ec2.yml"
+    vault_pass_file = os.path.join(ANSIBLE_DIR, ".vault_pass")
 
-    run_command(f"ansible-playbook -i {inventory_file} all.yaml", cwd=ANSIBLE_DIR, env=env)
-    run_command(f"ansible-playbook -i {inventory_file} init-cluster.yaml", cwd=ANSIBLE_DIR, env=env)
+    # Check if vault password file exists
+    if not os.path.exists(vault_pass_file):
+        print(f"  ⚠️  Warning: Vault password file not found: {vault_pass_file}")
+        print("  Ansible playbooks will fail if they use vault-encrypted files.")
+        print("  Create the file with: echo 'your_password' > ansible/.vault_pass && chmod 600 ansible/.vault_pass")
+
+    vault_flag = f"--vault-password-file={vault_pass_file}" if os.path.exists(vault_pass_file) else ""
+
+    run_command(f"ansible-playbook -i {inventory_file} {vault_flag} all.yaml", cwd=ANSIBLE_DIR, env=env)
+    run_command(f"ansible-playbook -i {inventory_file} {vault_flag} init-cluster.yaml", cwd=ANSIBLE_DIR, env=env)
 
     if not master_private_ip:
         cmd = f"ansible masters -i {inventory_file} -m setup -a 'filter=ansible_default_ipv4' --one-line"
@@ -230,7 +239,7 @@ def run_ansible(tf_output, master_private_ip):
         else:
             print("  ⚠ Could not detect master private IP; worker join may fail.")
 
-    run_command(f"ansible-playbook -i {inventory_file} worker.yml", cwd=ANSIBLE_DIR, env=env)
+    run_command(f"ansible-playbook -i {inventory_file} {vault_flag} worker.yml", cwd=ANSIBLE_DIR, env=env)
 
 
 def fetch_kubeconfig(master_ip, nlb_dns):
@@ -308,9 +317,33 @@ def install_ebs_csi_driver():
 
     wait_for_k8s_api(kubeconfig_path, max_wait=300)
 
+    # Create ServiceAccount for EBS CSI controller (required when serviceAccount.create=false)
+    print("  Creating ServiceAccount for EBS CSI controller...")
+    sa_exists = subprocess.run(
+        f"kubectl --kubeconfig={kubeconfig_path} get serviceaccount ebs-csi-controller-sa -n kube-system",
+        shell=True,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if sa_exists.returncode != 0:
+        run_command(
+            f"kubectl --kubeconfig={kubeconfig_path} create serviceaccount ebs-csi-controller-sa -n kube-system",
+            cwd=HELM_DIR,
+            env=env,
+        )
+        print("  ✓ ServiceAccount created")
+    else:
+        print("  ✓ ServiceAccount already exists")
+
     print("  Adding AWS EBS CSI Driver Helm repository...")
     run_command("helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver", cwd=HELM_DIR, env=env)
-    run_command("helm repo update", cwd=HELM_DIR, env=env)
+    # Update only the EBS CSI driver repo to avoid timeout issues with other repos
+    print("  Updating EBS CSI Driver Helm repository...")
+    result = subprocess.run("helm repo update aws-ebs-csi-driver", shell=True, cwd=HELM_DIR, env=env, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  ⚠️  Warning: helm repo update failed (non-critical): {result.stderr}")
+        print("  Continuing anyway...")
 
     print("  Installing AWS EBS CSI Driver...")
     run_command(
@@ -416,7 +449,11 @@ def install_rancher():
     run_command(f"kubectl --kubeconfig={kubeconfig_path} apply -f {CERT_MANAGER_CRDS_URL}", cwd=HELM_DIR, env=env, timeout=120)
 
     run_command("helm repo add rancher-latest https://releases.rancher.com/server-charts/latest", cwd=HELM_DIR, env=env)
-    run_command("helm repo update", cwd=HELM_DIR, env=env)
+    # Update only the Rancher repo to avoid timeout issues with other repos
+    result = subprocess.run("helm repo update rancher-latest", shell=True, cwd=HELM_DIR, env=env, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  ⚠️  Warning: helm repo update failed (non-critical): {result.stderr}")
+        print("  Continuing anyway...")
 
     print("  Installing Rancher Helm chart...")
     run_command(
@@ -444,7 +481,11 @@ def install_argocd():
     env["KUBECONFIG"] = kubeconfig_path
 
     run_command("helm repo add argo https://argoproj.github.io/argo-helm", cwd=HELM_DIR, env=env)
-    run_command("helm repo update", cwd=HELM_DIR, env=env)
+    # Update only the ArgoCD repo to avoid timeout issues with other repos
+    result = subprocess.run("helm repo update argo", shell=True, cwd=HELM_DIR, env=env, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  ⚠️  Warning: helm repo update failed (non-critical): {result.stderr}")
+        print("  Continuing anyway...")
 
     argocd_values_path = os.path.abspath("./argocd/values-nodeselector.yaml")
     run_command(

@@ -43,6 +43,7 @@ terraform/*.key
 
 # Ansible - Contains IPs and connection info
 ansible/inventory.ini
+ansible/.vault_pass
 
 # Prisma (if you need it, remove this line)
 /prisma/

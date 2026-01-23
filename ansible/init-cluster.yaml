@@ -1,10 +1,12 @@
 - name: Setup First RKE2 Master
   hosts: masters
   become: yes
+  vars_files:
+    - vars/secrets.yml
   vars:
     # Lấy DNS của NLB từ Terraform output
     # This will be automatically updated by deploy.py
-    nlb_dns: "k8s-master-nlb-124fe151385316e4.elb.ap-southeast-2.amazonaws.com"
+    nlb_dns: "k8s-master-nlb-a6047c783f95dbcd.elb.ap-southeast-2.amazonaws.com"
 
   tasks:
     - name: Install RKE2 Server
@@ -19,7 +21,7 @@
       copy:
         dest: /etc/rancher/rke2/config.yaml
         content: |
-          token: "MySuperSecretToken123"
+          token: "{{ rke2_token }}"
           tls-san:
             - "{{ nlb_dns }}"
             - "{{ ansible_default_ipv4.address }}"
