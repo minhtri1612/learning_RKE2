@@ -27,6 +27,7 @@ resource "aws_instance" "masters" {
     aws_security_group.k8s_master_sg.id
   ]
   key_name                    = aws_key_pair.k8s_key.key_name
+  iam_instance_profile        = aws_iam_instance_profile.k8s_profile.name
   associate_public_ip_address = true
   
   root_block_device {
@@ -52,6 +53,7 @@ resource "aws_instance" "workers" {
     aws_security_group.k8s_worker_sg.id
   ]
   key_name                    = aws_key_pair.k8s_key.key_name
+  iam_instance_profile        = aws_iam_instance_profile.k8s_profile.name
   associate_public_ip_address = true
   
   root_block_device {

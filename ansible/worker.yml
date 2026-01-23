@@ -2,7 +2,7 @@
   hosts: workers
   become: yes
   vars:
-    master_ip: "10.0.1.157"  # Will be updated by deploy.py
+    master_ip: "10.0.1.156 10.42.0.0"  # Will be updated by deploy.py
     token: "MySuperSecretToken123"
 
   tasks:

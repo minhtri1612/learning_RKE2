@@ -4,7 +4,7 @@
   vars:
     # Lấy DNS của NLB từ Terraform output
     # This will be automatically updated by deploy.py
-    nlb_dns: "k8s-master-nlb-7128ca98e2d384d7.elb.ap-southeast-2.amazonaws.com"
+    nlb_dns: "k8s-master-nlb-124fe151385316e4.elb.ap-southeast-2.amazonaws.com"
 
   tasks:
     - name: Install RKE2 Server

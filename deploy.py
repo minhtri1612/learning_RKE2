@@ -299,39 +299,76 @@ def wait_for_k8s_api(kubeconfig_path, max_wait=300):
     return False
 
 
-def install_storage_class():
-    """Installs local-path-provisioner for storage."""
-    print("--- Step 5.5: Installing Storage Class ---")
+def install_ebs_csi_driver():
+    """Installs AWS EBS CSI Driver for EBS volume support."""
+    print("--- Step 5.6: Installing AWS EBS CSI Driver ---")
     kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
     wait_for_k8s_api(kubeconfig_path, max_wait=300)
 
-    print("  Installing local-path-provisioner...")
-    for attempt in range(1, 4):
-        try:
-            run_command(
-                f"kubectl --kubeconfig={kubeconfig_path} apply -f "
-                f"https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml",
-                cwd=HELM_DIR,
-                env=env,
-                timeout=120,
-            )
-            break
-        except Exception:
-            if attempt == 3:
-                raise
-            time.sleep(15)
+    print("  Adding AWS EBS CSI Driver Helm repository...")
+    run_command("helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver", cwd=HELM_DIR, env=env)
+    run_command("helm repo update", cwd=HELM_DIR, env=env)
 
-    print("  Setting as default storage class...")
+    print("  Installing AWS EBS CSI Driver...")
     run_command(
-        f"kubectl --kubeconfig={kubeconfig_path} patch storageclass local-path "
-        f"-p '{{\"metadata\": {{\"annotations\":{{\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}}}}'",
+        f"helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver "
+        f"--namespace kube-system --create-namespace "
+        f"--set controller.serviceAccount.create=false "
+        f"--set controller.serviceAccount.name=ebs-csi-controller-sa "
+        f"--kubeconfig={kubeconfig_path} "
+        f"--timeout 10m",
         cwd=HELM_DIR,
         env=env,
     )
-    print("  ✓ Storage Class installed and set as default.")
+
+    print("  Waiting for EBS CSI Driver pods to be ready...")
+    waited = 0
+    while waited < 300:
+        try:
+            result = subprocess.run(
+                f"kubectl --kubeconfig={kubeconfig_path} get pods -n kube-system "
+                f"-l app=ebs-csi-controller -o jsonpath='{{.items[*].status.phase}}'",
+                shell=True,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if "Running" in (result.stdout or ""):
+                print(f"  ✓ EBS CSI Driver is ready (waited {waited}s)")
+                break
+        except Exception:
+            pass
+        time.sleep(10)
+        waited += 10
+
+    if waited >= 300:
+        print("  ⚠️  Warning: EBS CSI Driver pods may still be starting. Check with: kubectl get pods -n kube-system | grep ebs-csi")
+    else:
+        print("  ✓ EBS CSI Driver installed successfully.")
+
+    # Remove default annotation from local-path if it exists (from previous deployments)
+    print("  Removing default annotation from local-path storage class (if exists)...")
+    result = subprocess.run(
+        f"kubectl --kubeconfig={kubeconfig_path} patch storageclass local-path "
+        f"-p '{{\"metadata\": {{\"annotations\":{{\"storageclass.kubernetes.io/is-default-class\":\"false\"}}}}}}'",
+        shell=True,
+        cwd=HELM_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print("  ✓ Removed default annotation from local-path")
+    else:
+        # local-path may not exist, which is fine
+        print("  ℹ️  local-path storage class not found (this is expected if not installed)")
+
+    # Set EBS as default storage class (will be created when database chart is deployed)
+    print("  Note: EBS StorageClass (ebs-sc) will be set as default when database chart is deployed with useEBS: true")
 
 
 def ensure_rancher_tls_secret():
@@ -603,7 +640,7 @@ def main():
 
     fetch_kubeconfig(master_ip, nlb_dns)
     wait_for_nlb_health_checks()
-    install_storage_class()
+    install_ebs_csi_driver()
 
     install_rancher()
     install_argocd()
