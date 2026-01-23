@@ -71,7 +71,9 @@ spec:
       name: postgres-storage
     spec:
       accessModes: [ "ReadWriteOnce" ]
-      {{- if and .Values.persistence.storageClassName (ne .Values.persistence.storageClassName "") }}
+      {{- if .Values.persistence.useEBS }}
+      storageClassName: ebs-sc
+      {{- else if and .Values.persistence.storageClassName (ne .Values.persistence.storageClassName "") }}
       storageClassName: {{ .Values.persistence.storageClassName | quote }}
       {{- end }}
       resources:
