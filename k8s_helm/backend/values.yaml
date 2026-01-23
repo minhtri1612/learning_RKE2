@@ -54,7 +54,7 @@ ingress:
     secretName: meo-stationery-tls
 
 autoscaling:
-  enabled: false
+  enabled: true
   minReplicas: 2
   maxReplicas: 5
   targetCPUUtilizationPercentage: 80
