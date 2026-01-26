@@ -4,7 +4,7 @@
   vars_files:
     - vars/secrets.yml
   vars:
-    master_ip: "10.0.1.234"  # Will be updated by deploy.py
+    master_ip: "10.0.1.126"  # Will be updated by deploy.py
 
   tasks:
     - name: Install RKE2 Agent
