@@ -2,7 +2,6 @@
 import json
 import os
 import re
-import secrets
 import subprocess
 import sys
 import tempfile
@@ -193,89 +192,37 @@ def _get_master_private_ip_via_ssh(master_public_ip):
         return None
 
 
-def _fetch_existing_rke2_token(tf_output):
+def _require_ansible_vault(vault_pass_file, vault_pass_file_relative):
     """
-    Best-effort: fetch the currently configured token from the master node.
-    This avoids changing the join token on reruns.
-    Returns token string or None.
-    """
-    try:
-        master_public_ip = tf_output["master_public_ip"]["value"][0]
-        if not master_public_ip:
-            return None
-    except Exception:
-        return None
-
-    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
-    base_ssh = f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@{master_public_ip}"
-
-    # Prefer explicit token in config.yaml
-    try:
-        out = subprocess.check_output(
-            base_ssh
-            + " \"sudo sed -n 's/^token:[[:space:]]*//p' /etc/rancher/rke2/config.yaml 2>/dev/null | head -n1\"",
-            shell=True,
-            timeout=15,
-        ).decode("utf-8", errors="ignore").strip()
-        if out:
-            return out.strip().strip('"').strip("'")
-    except Exception:
-        pass
-
-    # Fallback: node-token (exists after server init; valid for joins)
-    try:
-        out = subprocess.check_output(
-            base_ssh + " \"sudo cat /var/lib/rancher/rke2/server/node-token 2>/dev/null | head -n1\"",
-            shell=True,
-            timeout=15,
-        ).decode("utf-8", errors="ignore").strip()
-        if out:
-            return out
-    except Exception:
-        pass
-
-    return None
-
-
-def _ensure_ansible_vault_ready(tf_output, vault_pass_file, vault_pass_file_relative):
-    """
-    Make Ansible Vault non-interactive and self-healing:
-    - Ensure ansible/.vault_pass exists (create random if missing)
-    - If vars/secrets.yml can't be decrypted with current pass, recreate+encrypt it.
+    Production-ish behavior: do NOT auto-rotate/re-encrypt.
+    Hard-fail if vault password is missing or cannot decrypt vars/secrets.yml.
     """
     secrets_path = os.path.join(ANSIBLE_DIR, "vars", "secrets.yml")
 
-    # Ensure vault pass exists
     if not os.path.exists(vault_pass_file):
-        os.makedirs(os.path.dirname(vault_pass_file), exist_ok=True)
-        with open(vault_pass_file, "w") as f:
-            f.write(secrets.token_urlsafe(32) + "\n")
-        os.chmod(vault_pass_file, 0o600)
-        print(f"  ✓ Created vault password file: {vault_pass_file}")
+        print(f"  ✗ Vault password file missing: {vault_pass_file}")
+        print("    Create it (DO NOT COMMIT) and rerun:")
+        print("      echo 'your_vault_password' > ansible/.vault_pass && chmod 600 ansible/.vault_pass")
+        sys.exit(1)
 
-    def _write_plain_secrets():
-        token = _fetch_existing_rke2_token(tf_output)
-        if not token:
-            token = secrets.token_urlsafe(24)
-        os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
-        with open(secrets_path, "w") as f:
-            f.write(f'rke2_token: "{token}"\n')
-        os.chmod(secrets_path, 0o600)
-
-    # If secrets file missing, create plaintext then encrypt
     if not os.path.exists(secrets_path):
-        _write_plain_secrets()
+        print(f"  ✗ Vault secrets file missing: {secrets_path}")
+        print("    Create/encrypt it and rerun:")
+        print("      cd ansible && ansible-vault create vars/secrets.yml --vault-password-file .vault_pass")
+        sys.exit(1)
 
-    # If secrets.yml is not vault-encrypted, nothing to do
     try:
         with open(secrets_path, "r") as f:
             first = (f.readline() or "").strip()
         if not first.startswith("$ANSIBLE_VAULT;"):
-            return
+            print(f"  ✗ {secrets_path} is not vault-encrypted.")
+            print("    Encrypt it with:")
+            print("      cd ansible && ansible-vault encrypt vars/secrets.yml --vault-password-file .vault_pass")
+            sys.exit(1)
     except Exception:
-        return
+        print(f"  ✗ Could not read {secrets_path}")
+        sys.exit(1)
 
-    # Test decrypt (quiet). If fail -> wrong password, recreate+encrypt.
     test = subprocess.run(
         f"ansible-vault view vars/secrets.yml --vault-password-file {vault_pass_file_relative}",
         shell=True,
@@ -283,24 +230,11 @@ def _ensure_ansible_vault_ready(tf_output, vault_pass_file, vault_pass_file_rela
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    if test.returncode == 0:
-        return
-
-    print("  ⚠ Vault decrypt failed for ansible/vars/secrets.yml.")
-    print("  Auto-resetting vault password and re-encrypting secrets.yml...")
-
-    # Rotate password
-    with open(vault_pass_file, "w") as f:
-        f.write(secrets.token_urlsafe(32) + "\n")
-    os.chmod(vault_pass_file, 0o600)
-
-    # Recreate secrets.yml plaintext then encrypt with the new password
-    _write_plain_secrets()
-    run_command(
-        f"ansible-vault encrypt vars/secrets.yml --vault-password-file {vault_pass_file_relative}",
-        cwd=ANSIBLE_DIR,
-    )
-    print("  ✓ secrets.yml re-encrypted with new vault password")
+    if test.returncode != 0:
+        print("  ✗ Vault password is wrong (cannot decrypt vars/secrets.yml).")
+        print("    If you LOST the old password, you cannot decrypt the existing ciphertext.")
+        print("    You must re-create vars/secrets.yml and encrypt it with your NEW password.")
+        sys.exit(1)
 
 
 def run_ansible(tf_output, master_private_ip):
@@ -315,7 +249,7 @@ def run_ansible(tf_output, master_private_ip):
     vault_pass_file = os.path.join(ANSIBLE_DIR, ".vault_pass")
     vault_pass_file_relative = ".vault_pass"  # correct when cwd=ANSIBLE_DIR
 
-    _ensure_ansible_vault_ready(tf_output, vault_pass_file, vault_pass_file_relative)
+    _require_ansible_vault(vault_pass_file, vault_pass_file_relative)
 
     # IMPORTANT: ansible-playbook is run with cwd=ANSIBLE_DIR, so pass a relative path
     # to avoid resolving to ansible/ansible/.vault_pass.
