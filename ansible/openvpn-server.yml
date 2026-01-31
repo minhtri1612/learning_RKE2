@@ -1,0 +1,245 @@
+---
+- name: Setup Pure OpenVPN Community Server
+  hosts: vpn_server
+  become: yes
+  vars_files:
+    - "group_vars/users.yml"
+  vars:
+    vpn_network: "10.8.0.0"
+    vpn_mask: "255.255.255.0"
+    vpc_cidr: "10.0.0.0"
+    vpc_mask: "255.255.0.0"
+    openvpn_public_ip: "{{ openvpn_public_ip | default('') }}"
+    # Đường dẫn tuyệt đối đến easyrsa trên Debian 12
+    easyrsa_bin: "/usr/share/easy-rsa/easyrsa"
+
+  tasks:
+    - name: Get default route interface for NAT
+      ansible.builtin.shell: ip -o route get 1.1.1.1 | sed -n 's/.* dev \([^ ]*\) .*/\1/p'
+      register: default_iface_result
+      changed_when: false
+
+    - name: Set VPN physical interface
+      ansible.builtin.set_fact:
+        vpn_physical_interface: "{{ default_iface_result.stdout | default('eth0') }}"
+
+    - name: Install OpenVPN and Easy-RSA
+      apt:
+        name: [openvpn, easy-rsa, iptables-persistent]
+        state: present
+        update_cache: yes
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Create OpenVPN and Server folders
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /etc/openvpn/server
+        - /etc/openvpn/server/ccd
+
+    - name: Init PKI and CA
+      shell: |
+        make-cadir /etc/openvpn/easy-rsa
+        cd /etc/openvpn/easy-rsa
+        {{ easyrsa_bin }} init-pki
+        echo "minhtri-ca" | {{ easyrsa_bin }} build-ca nopass
+        {{ easyrsa_bin }} gen-dh
+        openvpn --genkey secret /etc/openvpn/server/ta.key
+      args:
+        creates: /etc/openvpn/easy-rsa/pki/ca.crt
+
+    - name: Generate Server Certificate
+      shell: |
+        {{ easyrsa_bin }} --batch --pki-dir=/etc/openvpn/easy-rsa/pki gen-req server nopass
+        {{ easyrsa_bin }} --batch --pki-dir=/etc/openvpn/easy-rsa/pki sign-req server server
+      args:
+        creates: /etc/openvpn/easy-rsa/pki/issued/server.crt
+
+    - name: Copy keys to Server folder
+      copy:
+        src: "/etc/openvpn/easy-rsa/pki/{{ item.src }}"
+        dest: "/etc/openvpn/server/{{ item.dest }}"
+        remote_src: yes
+      with_items:
+        - { src: 'ca.crt', dest: 'ca.crt' }
+        - { src: 'issued/server.crt', dest: 'server.crt' }
+        - { src: 'private/server.key', dest: 'server.key' }
+        - { src: 'dh.pem', dest: 'dh.pem' }
+
+    - name: Generate server.conf (vpn_policy + vpn_target từ users.yml)
+      copy:
+        dest: /etc/openvpn/server/server.conf
+        content: |
+          port 1194
+          proto udp
+          dev tun
+          ca ca.crt
+          cert server.crt
+          key server.key
+          dh dh.pem
+          tls-auth ta.key 0
+          server {{ vpn_network }} {{ vpn_mask }}
+          {% for r in vpn_target %}
+          push "route {{ r.cidr }} {{ r.mask }}"
+          {% endfor %}
+          {% if vpn_policy.redirect_gateway | default(false) %}
+          push "redirect-gateway def1"
+          {% endif %}
+          {% for d in vpn_policy.push_dns | default([]) %}
+          push "dhcp-option DNS {{ d }}"
+          {% endfor %}
+          client-config-dir ccd
+          cipher {{ vpn_policy.cipher }}
+          auth {{ vpn_policy.auth }}
+          keepalive {{ vpn_policy.keepalive }}
+          persist-key
+          persist-tun
+          verb {{ vpn_policy.verb | default('3') }}
+
+    - name: Enable IPv4 Forwarding
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        state: present
+
+    - name: Map static IPs (CCD)
+      copy:
+        dest: "/etc/openvpn/server/ccd/{{ item.name }}"
+        content: "ifconfig-push {{ item.ip }} {{ vpn_mask }}"
+      loop: "{{ vpn_users }}"
+
+    - name: Generate client certificates
+      shell: |
+        {{ easyrsa_bin }} --batch --pki-dir=/etc/openvpn/easy-rsa/pki gen-req {{ item.name }} nopass
+        {{ easyrsa_bin }} --batch --pki-dir=/etc/openvpn/easy-rsa/pki sign-req client {{ item.name }}
+      args:
+        creates: "/etc/openvpn/easy-rsa/pki/issued/{{ item.name }}.crt"
+      loop: "{{ vpn_users }}"
+
+    - name: Build .ovpn files for team (vpn_policy)
+      shell: |
+        set -e
+        F="/home/ubuntu/{{ item.name }}.ovpn"
+        {
+          echo "client"
+          echo "dev tun"
+          echo "proto udp"
+          echo "remote {{ openvpn_public_ip }} 1194"
+          echo "resolv-retry infinite"
+          echo "nobind"
+          echo "persist-key"
+          echo "persist-tun"
+          echo "remote-cert-tls server"
+          echo "cipher {{ vpn_policy.cipher }}"
+          echo "auth {{ vpn_policy.auth }}"
+          echo "key-direction 1"
+          echo "verb {{ vpn_policy.verb | default('3') }}"
+          {% if vpn_policy.redirect_gateway | default(false) %}
+          echo "redirect-gateway def1"
+          {% endif %}
+          {% for d in vpn_policy.push_dns | default([]) %}
+          echo "dhcp-option DNS {{ d }}"
+          {% endfor %}
+          echo "<ca>"
+          cat /etc/openvpn/server/ca.crt
+          echo "</ca>"
+          echo "<cert>"
+          cat /etc/openvpn/easy-rsa/pki/issued/{{ item.name }}.crt
+          echo "</cert>"
+          echo "<key>"
+          cat /etc/openvpn/easy-rsa/pki/private/{{ item.name }}.key
+          echo "</key>"
+          echo "<tls-auth>"
+          cat /etc/openvpn/server/ta.key
+          echo "</tls-auth>"
+        } > "$F"
+        chown ubuntu:ubuntu "$F"
+        chmod 600 "$F"
+      loop: "{{ vpn_users }}"
+      when: openvpn_public_ip | length > 0
+
+    - name: Setup IPTables - allow FORWARD from VPN (client -> VPC)
+      ansible.builtin.shell: |
+        iptables -C FORWARD -s {{ vpn_network }}/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -s {{ vpn_network }}/24 -j ACCEPT
+
+    - name: Setup IPTables - allow FORWARD to VPN (reply VPC -> client)
+      ansible.builtin.shell: |
+        iptables -C FORWARD -d {{ vpn_network }}/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -d {{ vpn_network }}/24 -j ACCEPT
+
+    - name: Remove MASQUERADE when vpn_nat is false (keep client source IP for SG 10.8.0.0/24)
+      ansible.builtin.shell: |
+        iptables -t nat -D POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null || true
+      when: not (vpn_nat | default(false))
+
+    - name: Setup IPTables - MASQUERADE for VPN clients
+      ansible.builtin.shell: |
+        iptables -t nat -C POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null || \
+        iptables -t nat -A POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE
+      when: vpn_nat | default(false) | bool
+
+    - name: Save iptables
+      shell: iptables-save > /etc/iptables/rules.v4
+
+    - name: Restart OpenVPN
+      systemd:
+        name: openvpn-server@server
+        state: restarted
+        enabled: yes
+
+    # Tải .ovpn về máy chạy Ansible (cùng kết nối SSH, tránh SCP timeout khi IP đổi)
+    - name: Fetch .ovpn files to project root (control node)
+      ansible.builtin.fetch:
+        src: "/home/ubuntu/{{ item.name }}.ovpn"
+        dest: "{{ playbook_dir }}/../"
+        flat: yes
+      loop: "{{ vpn_users }}"
+      when: openvpn_public_ip | length > 0
+
+# --- Play 2: Trên máy chạy Ansible (localhost): tạo file systemd service trong project, in 1 lệnh để bạn chạy trong terminal (sudo hỏi đúng chỗ, không cần -K).
+- name: Start VPN client on this machine (so you can ping/SSH private IPs)
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  vars_files: [ "group_vars/users.yml" ]
+  vars:
+    vpn_service_name: "openvpn-practice-rke2"
+  tasks:
+    - name: Get project root (parent of ansible/)
+      ansible.builtin.shell: cd "{{ playbook_dir }}/.." && pwd
+      register: project_root_out
+      changed_when: false
+
+    - name: Set project root and first .ovpn file
+      ansible.builtin.set_fact:
+        project_root: "{{ project_root_out.stdout }}"
+        vpn_ovpn_file: "{{ (vpn_users | first).name }}.ovpn"
+
+    - name: Write VPN systemd service file into project
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=OpenVPN for practice_RKE2 (route 10.0.0.0/16)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/sbin/openvpn --config {{ vpn_ovpn_file }}
+          WorkingDirectory={{ project_root }}
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: "{{ project_root }}/{{ vpn_service_name }}.service"
+
+    # Không dùng become/sudo trong playbook (tránh lỗi Duplicate become prompt). In 1 lệnh để bạn chạy trong terminal (sudo hỏi đúng chỗ).
+    - name: Print one command to start VPN (run in terminal, sudo will prompt)
+      ansible.builtin.debug:
+        msg:
+          - "--- Chạy lệnh sau (sẽ hỏi mật khẩu sudo 1 lần) để VPN chạy nền, sau đó ping/SSH 10.0.x.x ---"
+          - "sudo cp {{ project_root }}/{{ vpn_service_name }}.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now {{ vpn_service_name }}"
+          - "--- Hoặc chạy VPN trong terminal: cd {{ project_root }} && sudo openvpn --config {{ vpn_ovpn_file }} ---"

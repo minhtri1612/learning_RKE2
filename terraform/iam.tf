@@ -24,3 +24,5 @@ resource "aws_iam_instance_profile" "k8s_profile" {
   name = "k8s_profile_new"
   role = aws_iam_role.k8s_role.name
 }
+
+# Bastion Host không cần IAM role đặc biệt - chỉ dùng SSH key

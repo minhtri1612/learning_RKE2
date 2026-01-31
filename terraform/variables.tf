@@ -3,8 +3,8 @@ variable "region" {
 }
 
 variable "ami_id" {
-  type        = string
-  default     = "" 
+  type    = string
+  default = ""
 }
 
 variable "instance_type" {
@@ -12,7 +12,8 @@ variable "instance_type" {
 }
 
 variable "my_ip" {
-  description = "Your public IP with /32 (for SSH)"
+  description = "IP/CIDR cho phép SSH vào OpenVPN server (deploy / tạo client.ovpn). Mặc định 0.0.0.0/0. Nên thu hẹp cho production."
+  type        = string
   default     = "0.0.0.0/0"
 }
 

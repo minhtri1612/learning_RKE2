@@ -7,11 +7,12 @@ import sys
 import tempfile
 import time
 
-# Configuration
-TERRAFORM_DIR = "./terraform"
-ANSIBLE_DIR = "./ansible"
-HELM_DIR = "./k8s_helm"
-KUBECONFIG_FILE = "kube_config_rke2.yaml"
+# Configuration (absolute paths so deploy.py works from any CWD)
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TERRAFORM_DIR = os.path.join(_SCRIPT_DIR, "terraform")
+ANSIBLE_DIR = os.path.join(_SCRIPT_DIR, "ansible")
+HELM_DIR = os.path.join(_SCRIPT_DIR, "k8s_helm")
+KUBECONFIG_FILE = os.path.join(_SCRIPT_DIR, "kube_config_rke2.yaml")
 SSH_KEY_FILE_NAME = "k8s-key.pem"
 
 # App / UI settings
@@ -51,304 +52,254 @@ def setup_terraform():
     run_command("terraform apply -auto-approve -input=false", cwd=TERRAFORM_DIR)
 
 
-def _ensure_python_deps_for_dynamic_inventory():
-    """Ensure boto3/botocore exist so Ansible aws_ec2 inventory plugin works."""
-    print("  Checking Python dependencies (boto3, botocore)...")
-    try:
-        res = subprocess.run([sys.executable, "-c", "import boto3, botocore"], capture_output=True, timeout=5)
-        if res.returncode == 0:
-            print("  ✓ boto3 and botocore already installed")
-            return
-    except Exception:
-        pass
-
-    print("  ⚠ Installing boto3/botocore (required for AWS EC2 inventory plugin)...")
-    install_methods = [
-        ([sys.executable, "-m", "pip", "install", "--user", "boto3", "botocore"], "pip --user"),
-        ([sys.executable, "-m", "pip", "install", "--user", "--break-system-packages", "boto3", "botocore"], "pip --user --break-system-packages"),
-        (["sudo", "-n", "apt", "install", "-y", "python3-boto3"], "apt python3-boto3 (non-interactive)"),
-        (["pip3", "install", "--user", "--break-system-packages", "boto3", "botocore"], "pip3 --user --break-system-packages"),
-    ]
-
-    for cmd, name in install_methods:
+def run_openvpn_ansible(openvpn_public_ip):
+    """Chạy Ansible playbook openvpn-server.yml để cấu hình OpenVPN và tạo .ovpn (fetch về project root)."""
+    print("--- Step: Ansible OpenVPN Server Setup ---")
+    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
+    print("  Waiting for OpenVPN instance to accept SSH (tối đa 5 phút)...")
+    ssh_ok = False
+    for waited in range(0, 300, 10):
         try:
-            print(f"  Attempting installation: {name}")
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-            if r.returncode != 0:
-                continue
-            verify = subprocess.run([sys.executable, "-c", "import boto3, botocore"], capture_output=True, timeout=5)
-            if verify.returncode == 0:
-                print(f"  ✓ boto3/botocore installed ({name})")
-                return
+            res = subprocess.run(
+                f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@{openvpn_public_ip} 'echo ready'",
+                shell=True,
+                capture_output=True,
+                timeout=15,
+            )
+            if res.returncode == 0:
+                print(f"  ✓ OpenVPN server SSH ready (waited {waited}s)")
+                ssh_ok = True
+                break
         except Exception:
-            continue
-
-    print("  ✗ Could not auto-install boto3/botocore.")
-    print("    Try one of:")
-    print("    - pip3 install --user --break-system-packages boto3 botocore")
-    print("    - sudo apt install -y python3-boto3")
-    raise RuntimeError("Missing boto3/botocore")
-
-
-def setup_ansible_dynamic_inventory():
-    """Sets up Ansible to use AWS EC2 dynamic inventory (no hardcoded IPs!)."""
-    print("--- Step 2: Setting up AWS EC2 Dynamic Inventory ---")
-    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
-
-    _ensure_python_deps_for_dynamic_inventory()
-
-    # Ensure amazon.aws collection exists
-    try:
-        result = subprocess.run("ansible-galaxy collection list amazon.aws", shell=True, capture_output=True, text=True)
-        if "amazon.aws" not in result.stdout:
-            print("  ⚠ Installing AWS collection for Ansible...")
-            run_command("ansible-galaxy collection install amazon.aws", cwd=ANSIBLE_DIR)
-            print("  ✓ AWS collection installed")
-        else:
-            print("  ✓ AWS collection already installed")
-    except Exception:
-        print("  ⚠ Installing AWS collection for Ansible...")
-        run_command("ansible-galaxy collection install amazon.aws", cwd=ANSIBLE_DIR)
-
-    # Update inventory_aws_ec2.yml with absolute SSH key path
-    inventory_yml_path = os.path.join(ANSIBLE_DIR, "inventory_aws_ec2.yml")
-    with open(inventory_yml_path, "r") as f:
-        content = f.read()
-    content = re.sub(r'ansible_ssh_private_key_file:\s*"[^"]*"', f'ansible_ssh_private_key_file: "{ssh_key_path}"', content)
-    with open(inventory_yml_path, "w") as f:
-        f.write(content)
-
-    # Update ansible.cfg if present (fallback)
-    ansible_cfg_path = os.path.join(ANSIBLE_DIR, "ansible.cfg")
-    if os.path.exists(ansible_cfg_path):
-        with open(ansible_cfg_path, "r") as f:
-            cfg = f.read()
-        cfg = re.sub(r"private_key_file\s*=\s*.*", f"private_key_file = {ssh_key_path}", cfg)
-        with open(ansible_cfg_path, "w") as f:
-            f.write(cfg)
-
-    # Verify AWS credentials are available (non-fatal)
-    try:
-        subprocess.check_call("aws sts get-caller-identity", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("  ✓ AWS credentials verified")
-    except Exception:
-        print("  ⚠ Warning: AWS credentials not found. Make sure AWS CLI is configured (aws configure).")
-
-    print("  ✓ Using AWS EC2 dynamic inventory (inventory_aws_ec2.yml)")
-    print("    - k8s-master-* -> masters group")
-    print("    - k8s-worker-* -> workers group")
-    print("    - NO hardcoded IPs")
-
-    # Best-effort demo
-    try:
-        res = subprocess.run(
-            f"ansible-inventory -i {inventory_yml_path} --list",
-            shell=True,
-            cwd=ANSIBLE_DIR,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if res.returncode == 0:
-            inv = json.loads(res.stdout)
-            masters = inv.get("masters", {}).get("hosts", [])
-            workers = inv.get("workers", {}).get("hosts", [])
-            print(f"  ✓ Discovered {len(masters)} master(s): {masters}")
-            print(f"  ✓ Discovered {len(workers)} worker(s): {workers}")
-    except Exception:
-        pass
-
-
-def update_ansible_playbooks(nlb_dns, master_private_ip):
-    """Updates Ansible playbooks with NLB DNS and master private IP."""
-    print(f"--- Step 3: Updating Playbooks (NLB: {nlb_dns}, Master private IP: {master_private_ip}) ---")
-
-    init_cluster_path = os.path.join(ANSIBLE_DIR, "init-cluster.yaml")
-    with open(init_cluster_path, "r") as f:
-        data = f.read()
-    data = re.sub(r'nlb_dns:\s*".*"', f'nlb_dns: "{nlb_dns}"', data)
-    data = re.sub(r'nlb_dns:\s*""', f'nlb_dns: "{nlb_dns}"', data)
-    with open(init_cluster_path, "w") as f:
-        f.write(data)
-
-    if master_private_ip:
-        worker_path = os.path.join(ANSIBLE_DIR, "worker.yml")
-        with open(worker_path, "r") as f:
-            w = f.read()
-        w = re.sub(r'master_ip:\s*"[^"]*"', f'master_ip: "{master_private_ip}"', w)
-        with open(worker_path, "w") as f:
-            f.write(w)
-
-
-def _get_master_private_ip_via_ssh(master_public_ip):
-    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
-    cmd = (
-        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
-        f"ubuntu@{master_public_ip} 'hostname -I | awk {{\"print $1\"}}' 2>/dev/null"
-    )
-    try:
-        return subprocess.check_output(cmd, shell=True, timeout=15).decode("utf-8").strip()
-    except Exception:
-        return None
-
-
-def _require_ansible_vault(vault_pass_file, vault_pass_file_relative):
-    """
-    Production-ish behavior: do NOT auto-rotate/re-encrypt.
-    Hard-fail if vault password is missing or cannot decrypt vars/secrets.yml.
-    """
-    secrets_path = os.path.join(ANSIBLE_DIR, "vars", "secrets.yml")
-
-    if not os.path.exists(vault_pass_file):
-        print(f"  ✗ Vault password file missing: {vault_pass_file}")
-        print("    Create it (DO NOT COMMIT) and rerun:")
-        print("      echo 'your_vault_password' > ansible/.vault_pass && chmod 600 ansible/.vault_pass")
+            pass
+        if waited % 30 == 0 and waited > 0:
+            print(f"  Still waiting... ({waited}s)")
+        time.sleep(10)
+    if not ssh_ok:
+        inventory_path = os.path.join(ANSIBLE_DIR, "inventory_openvpn.yml")
+        with open(inventory_path, "w") as f:
+            f.write(f"vpn_server:\n  hosts:\n    {openvpn_public_ip}:\n")
+        print("  ✗ OpenVPN server SSH timeout sau 5 phút.")
+        print("     Kiểm tra: Security group openvpn_sg có cho SSH từ IP máy bạn (var.my_ip)?")
+        print("     Chạy Ansible thủ công khi instance sẵn sàng:")
+        print(f"     cd {ANSIBLE_DIR} && ansible-playbook -i inventory_openvpn.yml -e openvpn_public_ip={openvpn_public_ip} openvpn-server.yml")
         sys.exit(1)
 
-    if not os.path.exists(secrets_path):
-        print(f"  ✗ Vault secrets file missing: {secrets_path}")
-        print("    Create/encrypt it and rerun:")
-        print("      cd ansible && ansible-vault create vars/secrets.yml --vault-password-file .vault_pass")
-        sys.exit(1)
+    # Static inventory: Terraform output đã có openvpn_public_ip, không cần dynamic inventory
+    vpn_server_yml = os.path.join(ANSIBLE_DIR, "group_vars", "vpn_server.yml")
+    with open(vpn_server_yml, "r") as f:
+        vpn_cfg = f.read()
+    key_line = f'ansible_ssh_private_key_file: "{ssh_key_path}"'
+    if "ansible_ssh_private_key_file" in vpn_cfg:
+        vpn_cfg = re.sub(r"ansible_ssh_private_key_file:\s*[^\n]+", key_line, vpn_cfg)
+    else:
+        vpn_cfg = vpn_cfg.rstrip() + "\n" + key_line + "\n"
+    with open(vpn_server_yml, "w") as f:
+        f.write(vpn_cfg)
 
-    try:
-        with open(secrets_path, "r") as f:
-            first = (f.readline() or "").strip()
-        if not first.startswith("$ANSIBLE_VAULT;"):
-            print(f"  ✗ {secrets_path} is not vault-encrypted.")
-            print("    Encrypt it with:")
-            print("      cd ansible && ansible-vault encrypt vars/secrets.yml --vault-password-file .vault_pass")
-            sys.exit(1)
-    except Exception:
-        print(f"  ✗ Could not read {secrets_path}")
-        sys.exit(1)
-
-    test = subprocess.run(
-        f"ansible-vault view vars/secrets.yml --vault-password-file {vault_pass_file_relative}",
-        shell=True,
-        cwd=ANSIBLE_DIR,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    if test.returncode != 0:
-        print("  ✗ Vault password is wrong (cannot decrypt vars/secrets.yml).")
-        print("    If you LOST the old password, you cannot decrypt the existing ciphertext.")
-        print("    You must re-create vars/secrets.yml and encrypt it with your NEW password.")
-        sys.exit(1)
-
-
-def run_ansible(tf_output, master_private_ip):
-    """Runs Ansible playbooks using dynamic inventory."""
-    print("--- Step 4: Running Ansible Playbooks ---")
-    print("Waiting 30 seconds for instances to fully initialize...")
-    time.sleep(30)
+    # Inventory file: group vpn_server với host = IP (Ansible SSH tới IP, không resolve "vpn_server")
+    inventory_path = os.path.join(ANSIBLE_DIR, "inventory_openvpn.yml")
+    with open(inventory_path, "w") as f:
+        f.write(f"vpn_server:\n  hosts:\n    {openvpn_public_ip}:\n")
 
     env = os.environ.copy()
     env["ANSIBLE_HOST_KEY_CHECKING"] = "False"
-    inventory_file = "inventory_aws_ec2.yml"
-    vault_pass_file = os.path.join(ANSIBLE_DIR, ".vault_pass")
-    vault_pass_file_relative = ".vault_pass"  # correct when cwd=ANSIBLE_DIR
-
-    _require_ansible_vault(vault_pass_file, vault_pass_file_relative)
-
-    # IMPORTANT: ansible-playbook is run with cwd=ANSIBLE_DIR, so pass a relative path
-    # to avoid resolving to ansible/ansible/.vault_pass.
-    vault_flag = f"--vault-password-file={vault_pass_file_relative}" if os.path.exists(vault_pass_file) else ""
-
-    run_command(f"ansible-playbook -i {inventory_file} {vault_flag} all.yaml", cwd=ANSIBLE_DIR, env=env)
-    run_command(f"ansible-playbook -i {inventory_file} {vault_flag} init-cluster.yaml", cwd=ANSIBLE_DIR, env=env)
-
-    if not master_private_ip:
-        cmd = f"ansible masters -i {inventory_file} -m setup -a 'filter=ansible_default_ipv4' --one-line"
-        try:
-            out = subprocess.check_output(cmd, shell=True, cwd=ANSIBLE_DIR, env=env, stderr=subprocess.DEVNULL).decode("utf-8")
-            m = re.search(r'"address":\s*"([^"]+)"', out)
-            if m:
-                master_private_ip = m.group(1)
-        except Exception:
-            pass
-
-        if not master_private_ip:
-            master_public_ip = tf_output["master_public_ip"]["value"][0]
-            master_private_ip = _get_master_private_ip_via_ssh(master_public_ip)
-
-        if master_private_ip:
-            worker_path = os.path.join(ANSIBLE_DIR, "worker.yml")
-            with open(worker_path, "r") as f:
-                w = f.read()
-            w = re.sub(r'master_ip:\s*"[^"]*"', f'master_ip: "{master_private_ip}"', w)
-            with open(worker_path, "w") as f:
-                f.write(w)
-            print(f"  ✓ Detected master private IP: {master_private_ip}")
-        else:
-            print("  ⚠ Could not detect master private IP; worker join may fail.")
-
-    run_command(f"ansible-playbook -i {inventory_file} {vault_flag} worker.yml", cwd=ANSIBLE_DIR, env=env)
+    env["ANSIBLE_PRIVATE_KEY_FILE"] = ssh_key_path
+    run_command(
+        f"ansible-playbook -i inventory_openvpn.yml -e openvpn_public_ip={openvpn_public_ip} openvpn-server.yml",
+        cwd=ANSIBLE_DIR,
+        env=env,
+        timeout=600,
+    )
+    print("  ✓ OpenVPN server configured; .ovpn files fetched to project root (e.g. client1.ovpn)")
 
 
-def fetch_kubeconfig(master_ip, nlb_dns):
-    """Fetches and configures kubeconfig."""
-    print("--- Step 5: Fetching Kubeconfig ---")
+def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
+    """Fetches and configures kubeconfig via SSH through OpenVPN server (jump host)."""
+    print("--- Step 4: Fetching Kubeconfig via OpenVPN Server (jump) ---")
     ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
 
-    print("  Waiting for RKE2 to generate kubeconfig...")
-    for waited in range(0, 121, 5):
+    print("  Waiting for OpenVPN server to be ready...")
+    for waited in range(0, 120, 5):
         try:
             res = subprocess.run(
-                f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{master_ip} "
-                f"'test -f /home/ubuntu/.kube/config && echo exists'",
+                f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} 'echo ready'",
                 shell=True,
                 capture_output=True,
                 timeout=10,
             )
-            if res.returncode == 0 and b"exists" in res.stdout:
-                print(f"  ✓ kubeconfig file found (waited {waited}s)")
+            if res.returncode == 0:
+                print(f"  ✓ OpenVPN server ready (waited {waited}s)")
                 break
         except Exception:
             pass
+        if waited % 15 == 0:
+            print(f"  Still waiting for OpenVPN server... ({waited}s)")
         time.sleep(5)
 
-    run_command(f"scp -o StrictHostKeyChecking=no -i {ssh_key_path} ubuntu@{master_ip}:/home/ubuntu/.kube/config ./{KUBECONFIG_FILE}")
+    print("  Copying SSH key to OpenVPN server for master access...")
+    run_command(
+        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'",
+        timeout=15,
+    )
+    run_command(
+        f"scp -o StrictHostKeyChecking=no -i {ssh_key_path} {ssh_key_path} ubuntu@{openvpn_ip}:~/.ssh/k8s-key.pem",
+        timeout=30,
+    )
+    run_command(
+        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'chmod 600 ~/.ssh/k8s-key.pem'",
+        timeout=15,
+    )
 
+    print("  Waiting for RKE2 to generate kubeconfig (user_data đang chạy)...")
+    time.sleep(120)
+
+    print("  Waiting for SSH to master via OpenVPN server...")
+    for waited in range(0, 300, 15):
+        try:
+            res = subprocess.run(
+                f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} "
+                f"'ssh -i ~/.ssh/k8s-key.pem -o StrictHostKeyChecking=no ubuntu@{master_private_ip} "
+                "test -f /home/ubuntu/.kube/config && echo ready'",
+                shell=True,
+                capture_output=True,
+                timeout=20,
+            )
+            if res.returncode == 0 and b"ready" in (res.stdout or b""):
+                print(f"  ✓ kubeconfig ready (waited {waited}s)")
+                break
+        except Exception:
+            pass
+        if waited % 30 == 0:
+            print(f"  Still waiting... ({waited}s)")
+        time.sleep(15)
+
+    print("  Fetching kubeconfig via SSH (through OpenVPN server)...")
+    kubeconfig_content = subprocess.check_output(
+        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} "
+        f"'ssh -i ~/.ssh/k8s-key.pem -o StrictHostKeyChecking=no ubuntu@{master_private_ip} cat /home/ubuntu/.kube/config'",
+        shell=True,
+        timeout=30,
+        stderr=subprocess.DEVNULL,
+    )
+    with open(KUBECONFIG_FILE, "wb") as f:
+        f.write(kubeconfig_content)
+
+    # Đọc và sửa kubeconfig: NLB internal nên local dùng port-forward qua bastion -> server 127.0.0.1:6443
     with open(KUBECONFIG_FILE, "r") as f:
         config = f.read()
-    config = config.replace("127.0.0.1", nlb_dns).replace("localhost", nlb_dns)
-    config = re.sub(r"certificate-authority-data:.*", "insecure-skip-tls-verify: true", config)
+    config = re.sub(r'server:\s*https://[^\s\n]+', 'server: https://127.0.0.1:6443', config)
+
+    # Xóa tất cả certificate-authority-data và thay bằng insecure-skip-tls-verify
+    # Xử lý cả trường hợp certificate-authority-data trên 1 dòng hoặc multiline
+    lines = config.split('\n')
+    new_lines = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # Tìm dòng certificate-authority-data
+        if re.search(r'certificate-authority-data', line):
+            # Thay thế bằng insecure-skip-tls-verify với cùng indent
+            indent = len(line) - len(line.lstrip())
+            new_lines.append(' ' * indent + 'insecure-skip-tls-verify: true')
+            # Bỏ qua dòng hiện tại và các dòng tiếp theo nếu là base64 continuation
+            i += 1
+            # Bỏ qua các dòng base64 continuation (chỉ có base64 chars, không có : hoặc -)
+            while i < len(lines) and re.match(r'^\s+[A-Za-z0-9+/=]+$', lines[i]):
+                i += 1
+            continue
+        else:
+            new_lines.append(line)
+            i += 1
+    
+    config = '\n'.join(new_lines)
+    
+    # Đảm bảo insecure-skip-tls-verify có trong mỗi cluster (nếu chưa có)
+    # Thêm vào sau dòng server: nếu chưa có insecure-skip-tls-verify trong cluster đó
+    if 'insecure-skip-tls-verify' not in config:
+        config = re.sub(
+            r'(server:\s*https://[^\n]+)',
+            r'\1\n    insecure-skip-tls-verify: true',
+            config
+        )
+    
     with open(KUBECONFIG_FILE, "w") as f:
         f.write(config)
     os.chmod(KUBECONFIG_FILE, 0o600)
     print(f"  ✓ Kubeconfig saved to {KUBECONFIG_FILE}")
+    print("  ✓ Server endpoint configured: https://127.0.0.1:6443 (SSH port-forward via OpenVPN server)")
+
+
+def start_openvpn_port_forward(openvpn_ip, master_private_ip, local_port=6443, remote_port=6443):
+    """Starts SSH port forwarding through OpenVPN server: local 6443 -> master:6443."""
+    print("--- Step 4.5: Starting SSH Port Forward (OpenVPN -> Master 6443) ---")
+    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
+    log_file = "/tmp/openvpn-k8s-pf.log"
+
+    try:
+        subprocess.run("pkill -f 'ssh.*6443:.*6443' 2>/dev/null || true", shell=True)
+        time.sleep(1)
+    except Exception:
+        pass
+
+    proxy_cmd = f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -W %h:%p ubuntu@{openvpn_ip}"
+    cmd = (
+        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no "
+        f"-o ProxyCommand=\"{proxy_cmd}\" "
+        f"-N -L {local_port}:{master_private_ip}:{remote_port} ubuntu@{master_private_ip}"
+    )
+    with open(log_file, "w") as f:
+        proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=subprocess.STDOUT)
+
+    time.sleep(2)
+    if proc.poll() is None:
+        print(f"  ✓ Port-forward started (PID: {proc.pid})")
+        print(f"  ✓ Logs: {log_file}")
+        return proc
+    print(f"  ⚠ Port-forward may have failed. Check: {log_file}")
+    return None
 
 
 def wait_for_nlb_health_checks():
     print("--- Waiting for NLB to become healthy ---")
     print("  NLB health checks can take 1-2 minutes to pass...")
-    time.sleep(90)
+    print("  This is normal - NLB needs time to register healthy targets...")
+    time.sleep(120)  # Tăng thời gian đợi lên 2 phút
 
 
 def wait_for_k8s_api(kubeconfig_path, max_wait=300):
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
     print("  Waiting for Kubernetes API server to be accessible...")
+    print("  Note: NLB health checks may take 1-2 minutes to pass...")
     waited = 0
+    last_error = ""
     while waited < max_wait:
         res = subprocess.run(
-            f"kubectl --kubeconfig={kubeconfig_path} get nodes --request-timeout=10s",
+            f"kubectl --kubeconfig={kubeconfig_path} get nodes --request-timeout=15s",
             shell=True,
             capture_output=True,
             env=env,
-            timeout=20,
+            timeout=25,
         )
         if res.returncode == 0:
             print(f"  ✓ API server is accessible (waited {waited}s)")
             return True
-        if waited % 30 == 0:
-            err = (res.stderr or b"").decode(errors="ignore").strip()
-            if err:
-                print(f"  Still waiting... ({err[:120]})")
+        
+        # Lấy error message
+        err = (res.stderr or b"").decode(errors="ignore").strip()
+        if err and err != last_error:
+            last_error = err
+            if waited % 30 == 0:  # Print mỗi 30s
+                print(f"  Still waiting... ({err[:150]})")
+        
         time.sleep(10)
         waited += 10
-    print(f"  ⚠ API server not accessible after {max_wait}s (continuing anyway)")
+    
+    print(f"  ⚠ API server not accessible after {max_wait}s")
+    if last_error:
+        print(f"  Last error: {last_error[:200]}")
+    print("  Continuing anyway...")
     return False
 
 
@@ -592,8 +543,35 @@ def deploy_argocd_applications():
     print("  📝 GitOps Repo: https://github.com/minhtri1612/learning_RKE2.git")
 
 
-def update_etc_hosts(hostname, ip):
-    """Automatically adds/updates entry in /etc/hosts (requires sudo)."""
+def resolve_dns_to_ip(dns_name):
+    """Resolves DNS name to IP address."""
+    try:
+        import socket
+        ip = socket.gethostbyname(dns_name)
+        print(f"  ✓ Resolved {dns_name} -> {ip}")
+        return ip
+    except Exception as e:
+        print(f"  ⚠ Failed to resolve {dns_name}: {e}")
+        return None
+
+
+def update_etc_hosts(hostname, ip_or_dns):
+    """Automatically adds/updates entry in /etc/hosts (requires sudo).
+    
+    Args:
+        hostname: Domain name to add (e.g., 'meo-stationery.local')
+        ip_or_dns: IP address or DNS name. If DNS name, will be resolved to IP first.
+    """
+    # Nếu là DNS name (chứa dấu chấm và không phải IP), resolve nó
+    if '.' in ip_or_dns and not ip_or_dns.replace('.', '').isdigit():
+        print(f"  Resolving {ip_or_dns} to IP address...")
+        ip = resolve_dns_to_ip(ip_or_dns)
+        if not ip:
+            print(f"  ⚠ Cannot resolve {ip_or_dns}, skipping /etc/hosts update")
+            return False
+    else:
+        ip = ip_or_dns
+    
     print(f"  Updating /etc/hosts for {hostname} -> {ip}...")
     hosts_file = "/etc/hosts"
     entry = f"{ip}\t{hostname}"
@@ -666,6 +644,42 @@ def wait_for_rancher_ready():
     return False
 
 
+def _setup_openvpn_systemd_service():
+    """Tạo systemd service để VPN chạy nền (không cần giữ terminal). Cài vào /etc/systemd nếu sudo được."""
+    service_name = "openvpn-practice-rke2"
+    service_content = f"""[Unit]
+Description=OpenVPN for practice_RKE2 (route 10.0.0.0/16)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/openvpn --config minhtri.ovpn
+WorkingDirectory={_SCRIPT_DIR}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+"""
+    service_path = os.path.join(_SCRIPT_DIR, f"{service_name}.service")
+    with open(service_path, "w") as f:
+        f.write(service_content)
+    print("\n--- VPN chạy nền (systemd) ---")
+    print(f"  Đã tạo {service_name}.service trong project.")
+    install_cmd = (
+        f"sudo cp {service_path} /etc/systemd/system/ && "
+        "sudo systemctl daemon-reload && "
+        f"sudo systemctl enable --now {service_name}"
+    )
+    try:
+        subprocess.run(install_cmd, shell=True, cwd=_SCRIPT_DIR, timeout=15, check=True)
+        print(f"  ✓ VPN đã bật nền (service: {service_name}). Tắt: sudo systemctl stop {service_name}")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        print("  Để VPN chạy nền sau (không cần giữ terminal), chạy:")
+        print(f"     {install_cmd}")
+
+
 def start_rancher_portforward():
     """Starts port-forward for Rancher UI automatically with retry logic."""
     print("--- Step 9: Starting Rancher Port-Forward ---")
@@ -710,20 +724,17 @@ def main():
     tf_out = get_terraform_output()
 
     nlb_dns = tf_out["nlb_dns_name"]["value"]
-    master_ip = tf_out["master_public_ip"]["value"][0]
+    openvpn_public_ip = tf_out["openvpn_public_ip"]["value"]
+    master_private_ip = tf_out["master_private_ip"]["value"][0]
 
-    setup_ansible_dynamic_inventory()
+    print("\n--- RKE2 + OpenVPN ---")
+    print(f"  ✓ OpenVPN Server: {openvpn_public_ip}")
+    print(f"  ✓ Master Private IP: {master_private_ip}")
+    print("  ⏳ Đợi OpenVPN instance SSH sẵn sàng rồi chạy Ansible setup...")
 
-    master_private_ip = _get_master_private_ip_via_ssh(master_ip)
-    if master_private_ip:
-        print(f"Master private IP: {master_private_ip}")
-    else:
-        print("Warning: Could not get master private IP yet; will try during Ansible run")
-
-    update_ansible_playbooks(nlb_dns, master_private_ip)
-    run_ansible(tf_out, master_private_ip)
-
-    fetch_kubeconfig(master_ip, nlb_dns)
+    run_openvpn_ansible(openvpn_public_ip)
+    fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns)
+    start_openvpn_port_forward(openvpn_public_ip, master_private_ip, local_port=6443, remote_port=6443)
     wait_for_nlb_health_checks()
     install_ebs_csi_driver()
 
@@ -732,20 +743,38 @@ def main():
     deploy_argocd_applications()
 
     print("\n--- Updating /etc/hosts for Ingress access ---")
-    update_etc_hosts(RANCHER_HOSTNAME, master_ip)
-    update_etc_hosts("meo-stationery.local", master_ip)
-    update_etc_hosts("argocd.local", master_ip)
+    # Lấy ALB DNS từ terraform output
+    alb_dns = tf_out.get("web_alb_dns_name", {}).get("value", "")
+    if alb_dns:
+        print(f"  Using ALB DNS: {alb_dns}")
+        update_etc_hosts(RANCHER_HOSTNAME, alb_dns)
+        update_etc_hosts("meo-stationery.local", alb_dns)
+        update_etc_hosts("argocd.local", alb_dns)
+    else:
+        print("  ⚠ ALB DNS not available yet, skipping /etc/hosts update")
+        print("  You can update manually after ALB is ready")
 
     start_rancher_portforward()
+
+    # VPN chạy nền: tạo systemd service (project này) để không cần giữ terminal
+    _setup_openvpn_systemd_service()
 
     print("\n" + "=" * 60)
     print("XXX Deployment Complete! XXX")
     print("=" * 60)
     print(f"\n📋 Cluster Access:\n   export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
-    print(f"\n🌐 Rancher UI (Ingress):\n   https://{RANCHER_HOSTNAME}\n   admin / {RANCHER_BOOTSTRAP_PASSWORD}")
+    print(f"\n🔐 OpenVPN Server: {openvpn_public_ip}")
+    print("   SSH (deploy jump): ssh -i terraform/k8s-key.pem ubuntu@%s" % openvpn_public_ip)
+    print("   --- VÀO MASTER/WORKER (private subnet): cần VPN ---")
+    print("   Nếu đã cài service: VPN đang chạy nền (openvpn-practice-rke2). Tắt: sudo systemctl stop openvpn-practice-rke2")
+    print("   Nếu chưa: cd %s && sudo openvpn --config minhtri.ovpn (giữ terminal) hoặc chạy lệnh in ở trên" % _SCRIPT_DIR)
+    print("   SSH: ssh -i terraform/k8s-key.pem ubuntu@<master-private-ip>")
+    print("   Kubectl qua NLB (sau VPN): export KUBECONFIG=... và dùng NLB DNS trong kubeconfig")
+    if alb_dns:
+        print(f"\n🌐 Rancher UI (Ingress via ALB):\n   https://{RANCHER_HOSTNAME}\n   admin / {RANCHER_BOOTSTRAP_PASSWORD}")
+        print(f"\n🌐 ArgoCD UI (Ingress via ALB):\n   http://argocd.local")
+        print(f"\n🌐 App (Ingress via ALB):\n   http://meo-stationery.local")
     print("\n🌐 Rancher UI (port-forward backup):\n   https://localhost:8443")
-    print("\n🌐 ArgoCD UI (Ingress):\n   http://argocd.local\n   admin / (run: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)")
-    print("\n🌐 App (Ingress):\n   http://meo-stationery.local")
     print("\n⚠️  TLS note: self-signed cert → browser warning is expected.")
     print("=" * 60)
 

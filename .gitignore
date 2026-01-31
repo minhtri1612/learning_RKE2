@@ -25,6 +25,13 @@ kubeconfig
 rke2.yaml
 kube_config_rke2.yaml
 
+# OpenVPN client configs (chứa private key)
+*.ovpn
+# OpenVPN systemd service (sinh bởi deploy.py, có path tuyệt đối)
+openvpn-practice-rke2.service
+# Ansible static inventory (sinh bởi deploy.py, IP từ Terraform output)
+ansible/inventory_openvpn.yml
+
 # Terraform - CRITICAL: Contains secrets and state
 *.tfstate
 *.tfstate.backup
@@ -40,10 +47,19 @@ terraform/*.pem
 terraform/*.key
 *.pem
 *.key
+# Terraform vars with secrets (rke2 token, etc.)
+*.tfvars
+*.auto.tfvars
+terraform/*.tfvars
+terraform/*.auto.tfvars
 
 # Ansible - Contains IPs and connection info
 ansible/inventory.ini
 ansible/.vault_pass
+
+# Helm values with secrets (override with -f values-secrets.yaml, keep out of repo)
+**/values-*-secrets.yaml
+**/values-secrets.yaml
 
 # Prisma (if you need it, remove this line)
 /prisma/

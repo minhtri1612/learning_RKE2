@@ -19,4 +19,7 @@ data "aws_ami" "ubuntu" {
 
 locals {
   ami_id = var.ami_id != "" ? var.ami_id : data.aws_ami.ubuntu.id
+
+  # RKE2 shared token - dùng chung cho cả Master và Worker nodes
+  rke2_shared_token = "MeoStationerySecretToken2026"
 }

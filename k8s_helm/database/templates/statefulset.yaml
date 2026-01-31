@@ -46,7 +46,7 @@ spec:
         {{- end }}
         env:
         - name: PGDATA
-          value: /var/lib/postgresql/data/pgdata
+          value: /var/lib/postgresql/data/pgdata # (Postgres sẽ initdb + ghi data vào đây).
         - name: POSTGRES_DB
           valueFrom:
             secretKeyRef:
