@@ -252,6 +252,13 @@ resource "aws_instance" "openvpn" {
   tags = { Name = "k8s-openvpn" }
 }
 
+# Elastic IP cho OpenVPN: IP không đổi khi instance recreate → .ovpn không cần refresh
+resource "aws_eip" "openvpn" {
+  instance = aws_instance.openvpn.id
+  domain   = "vpc"
+  tags     = { Name = "k8s-openvpn-eip" }
+}
+
 # -----------------------
 # Network Load Balancer (for K8s masters)
 # -----------------------

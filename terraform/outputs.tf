@@ -1,6 +1,6 @@
 output "openvpn_public_ip" {
-  value       = aws_instance.openvpn.public_ip
-  description = "Public IP of OpenVPN Server - SSH: ssh -i terraform/k8s-key.pem ubuntu@<this-ip>"
+  value       = aws_eip.openvpn.public_ip
+  description = "Elastic IP of OpenVPN Server (stable across instance recreate) - SSH: ssh -i terraform/k8s-key.pem ubuntu@<this-ip>"
 }
 
 output "worker_public_ips" {

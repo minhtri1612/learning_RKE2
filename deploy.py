@@ -14,6 +14,14 @@ ANSIBLE_DIR = os.path.join(_SCRIPT_DIR, "ansible")
 HELM_DIR = os.path.join(_SCRIPT_DIR, "k8s_helm")
 KUBECONFIG_FILE = os.path.join(_SCRIPT_DIR, "kube_config_rke2.yaml")
 SSH_KEY_FILE_NAME = "k8s-key.pem"
+# Trong deploy: file tạm 127.0.0.1 cho tunnel; file ghi ra cho user (KUBECONFIG_FILE) = master IP
+KUBECONFIG_TUNNEL_FILE = None
+
+
+def _kubeconfig_for_deploy():
+    """Path kubeconfig dùng trong deploy (tunnel nếu đã tạo, không thì file chính)."""
+    return os.path.abspath(KUBECONFIG_TUNNEL_FILE or KUBECONFIG_FILE)
+
 
 # App / UI settings
 BACKEND_NAMESPACE = "meo-stationery"
@@ -185,10 +193,10 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
     with open(KUBECONFIG_FILE, "wb") as f:
         f.write(kubeconfig_content)
 
-    # Đọc và sửa kubeconfig: NLB internal nên local dùng port-forward qua bastion -> server 127.0.0.1:6443
+    # Đọc và sửa: server = master IP (chỉ cần VPN, một terminal); xóa cert, dùng insecure-skip-tls-verify
     with open(KUBECONFIG_FILE, "r") as f:
         config = f.read()
-    config = re.sub(r'server:\s*https://[^\s\n]+', 'server: https://127.0.0.1:6443', config)
+    config = re.sub(r'server:\s*https://[^\s\n]+', f'server: https://{master_private_ip}:6443', config)
 
     # Xóa tất cả certificate-authority-data và thay bằng insecure-skip-tls-verify
     # Xử lý cả trường hợp certificate-authority-data trên 1 dòng hoặc multiline
@@ -226,8 +234,20 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
     with open(KUBECONFIG_FILE, "w") as f:
         f.write(config)
     os.chmod(KUBECONFIG_FILE, 0o600)
-    print(f"  ✓ Kubeconfig saved to {KUBECONFIG_FILE}")
-    print("  ✓ Server endpoint configured: https://127.0.0.1:6443 (SSH port-forward via OpenVPN server)")
+    print(f"  ✓ Kubeconfig saved to {KUBECONFIG_FILE} (server: https://{master_private_ip}:6443 — dùng khi đã bật VPN)")
+
+
+def _create_tunnel_kubeconfig():
+    """Tạo file kubeconfig tạm 127.0.0.1:6443 để deploy dùng tunnel (trong khi file chính = master IP cho user)."""
+    global KUBECONFIG_TUNNEL_FILE
+    with open(KUBECONFIG_FILE, "r") as f:
+        config = f.read()
+    config_tunnel = re.sub(r'server:\s*https://[^\s\n]+', 'server: https://127.0.0.1:6443', config)
+    path = os.path.join(_SCRIPT_DIR, ".kube_config_rke2_tunnel.yaml")
+    with open(path, "w") as f:
+        f.write(config_tunnel)
+    os.chmod(path, 0o600)
+    KUBECONFIG_TUNNEL_FILE = path
 
 
 def start_openvpn_port_forward(openvpn_ip, master_private_ip, local_port=6443, remote_port=6443):
@@ -306,7 +326,7 @@ def wait_for_k8s_api(kubeconfig_path, max_wait=300):
 def install_ebs_csi_driver():
     """Installs AWS EBS CSI Driver for EBS volume support."""
     print("--- Step 5.6: Installing AWS EBS CSI Driver ---")
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
@@ -401,7 +421,7 @@ def install_ebs_csi_driver():
 
 def ensure_rancher_tls_secret():
     """Create a self-signed TLS secret for rancher ingress (idempotent)."""
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
@@ -435,7 +455,7 @@ def ensure_rancher_tls_secret():
 def install_rancher():
     """Installs Rancher server and exposes the UI."""
     print("--- Step 7: Installing Rancher (this may take 5-10 min for image pull) ---")
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
@@ -471,7 +491,7 @@ def install_rancher():
 def install_argocd():
     """Installs ArgoCD for GitOps deployments."""
     print("--- Step 7.5: Installing ArgoCD ---")
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
@@ -497,7 +517,7 @@ def install_argocd():
 def wait_for_argocd_ready():
     """Waits for ArgoCD server to be ready."""
     print("  Waiting for ArgoCD server to be ready...")
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
@@ -528,7 +548,7 @@ def wait_for_argocd_ready():
 def deploy_argocd_applications():
     """Deploys ArgoCD Application manifests for GitOps."""
     print("--- Step 7.6: Deploying ArgoCD Applications ---")
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
@@ -541,6 +561,55 @@ def deploy_argocd_applications():
     run_command("kubectl apply -f data-application.yaml", cwd=argocd_dir, env=env)
     print("  ✓ ArgoCD Applications deployed.")
     print("  📝 GitOps Repo: https://github.com/minhtri1612/learning_RKE2.git")
+    run_backend_migration_after_sync()
+
+
+def run_backend_migration_after_sync():
+    """Chạy Prisma migration job cho backend. Argo CD sync Helm chart nhưng không chạy Helm hooks,
+    nên job migration (post-install/post-upgrade) phải trigger thủ công sau khi app đã sync."""
+    print("  Triggering backend migration job (Argo CD does not run Helm hooks)...")
+    kubeconfig_path = _kubeconfig_for_deploy()
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig_path
+
+    # Đợi namespace meo-stationery có (do Argo CD sync với CreateNamespace=true)
+    for _ in range(36):
+        res = subprocess.run(
+            "kubectl get namespace meo-stationery --request-timeout=5s",
+            shell=True,
+            env=env,
+            capture_output=True,
+            timeout=10,
+        )
+        if res.returncode == 0:
+            break
+        time.sleep(5)
+    else:
+        print("  ⚠ Namespace meo-stationery chưa có sau 3 phút; bỏ qua migration. Chạy thủ công khi cần:")
+        print("    helm template meo-station-backend k8s_helm/backend -n meo-stationery -f k8s_helm/backend/values.yaml --show-only templates/migration-job.yaml | kubectl apply -n meo-stationery -f -")
+        return
+
+    backend_chart = os.path.join(_SCRIPT_DIR, "k8s_helm", "backend")
+    values_path = os.path.join(backend_chart, "values.yaml")
+    try:
+        run_command(
+            f"helm template meo-station-backend {backend_chart} -n meo-stationery -f {values_path} "
+            "--show-only templates/migration-job.yaml | kubectl apply -n meo-stationery -f -",
+            cwd=_SCRIPT_DIR,
+            env=env,
+            timeout=30,
+        )
+        print("  Waiting for migration job to complete (up to 10m)...")
+        subprocess.run(
+            "kubectl wait -n meo-stationery --for=condition=complete job/meo-station-backend-migration --timeout=600s",
+            shell=True,
+            env=env,
+            timeout=620,
+        )
+        print("  ✓ Backend migration completed.")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        print(f"  ⚠ Migration step failed or timed out: {e}")
+        print("  Có thể chạy thủ công: helm template meo-station-backend k8s_helm/backend -n meo-stationery -f k8s_helm/backend/values.yaml --show-only templates/migration-job.yaml | kubectl apply -n meo-stationery -f -")
 
 
 def resolve_dns_to_ip(dns_name):
@@ -555,31 +624,23 @@ def resolve_dns_to_ip(dns_name):
         return None
 
 
+# Hostnames cần trỏ ALB (để mở web meo-stationery, rancher, argocd)
+INGRESS_HOSTNAMES = ("meo-stationery.local", RANCHER_HOSTNAME, "argocd.local")
+
+
 def update_etc_hosts(hostname, ip_or_dns):
-    """Automatically adds/updates entry in /etc/hosts (requires sudo).
-    
-    Args:
-        hostname: Domain name to add (e.g., 'meo-stationery.local')
-        ip_or_dns: IP address or DNS name. If DNS name, will be resolved to IP first.
-    """
-    # Nếu là DNS name (chứa dấu chấm và không phải IP), resolve nó
-    if '.' in ip_or_dns and not ip_or_dns.replace('.', '').isdigit():
-        print(f"  Resolving {ip_or_dns} to IP address...")
+    """Automatically adds/updates entry in /etc/hosts (requires sudo)."""
+    if "." in ip_or_dns and not ip_or_dns.replace(".", "").isdigit():
         ip = resolve_dns_to_ip(ip_or_dns)
         if not ip:
-            print(f"  ⚠ Cannot resolve {ip_or_dns}, skipping /etc/hosts update")
             return False
     else:
         ip = ip_or_dns
-    
-    print(f"  Updating /etc/hosts for {hostname} -> {ip}...")
     hosts_file = "/etc/hosts"
     entry = f"{ip}\t{hostname}"
-
     try:
         result = subprocess.run(f"sudo cat {hosts_file}", shell=True, capture_output=True, text=True, check=True)
         lines = result.stdout.splitlines()
-
         new_lines = []
         found = False
         for line in lines:
@@ -591,32 +652,81 @@ def update_etc_hosts(hostname, ip_or_dns):
                 new_lines.append(entry)
             else:
                 new_lines.append(line)
-
         if not found:
             new_lines.append(entry)
-
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
             tmp.write("\n".join(new_lines) + "\n")
             tmp_path = tmp.name
-
         subprocess.check_call(f"sudo cp {tmp_path} {hosts_file} && sudo chmod 644 {hosts_file}", shell=True)
         os.unlink(tmp_path)
-
         print(f"  ✓ Added/updated {hostname} -> {ip} in /etc/hosts")
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"  ⚠ Failed to update /etc/hosts (may need sudo password): {e}")
-        print(f"  Please run manually:\n     echo '{entry}' | sudo tee -a /etc/hosts")
+    except subprocess.CalledProcessError:
         return False
-    except Exception as e:
-        print(f"  ⚠ Failed to update /etc/hosts: {e}")
+    except Exception:
         return False
+
+
+def update_etc_hosts_for_alb(alb_dns):
+    """Cập nhật /etc/hosts một dòng cho cả meo-stationery.local, rancher.local, argocd.local (trỏ ALB)."""
+    if not alb_dns:
+        return False
+    print(f"  Using ALB DNS: {alb_dns}")
+    ip = resolve_dns_to_ip(alb_dns)
+    if not ip:
+        print("  ⚠ Cannot resolve ALB, skipping /etc/hosts update")
+        return False
+    hosts_file = "/etc/hosts"
+    entry = f"{ip}\t" + " ".join(INGRESS_HOSTNAMES)
+    try:
+        result = subprocess.run(f"sudo cat {hosts_file}", shell=True, capture_output=True, text=True, check=True)
+        lines = result.stdout.splitlines()
+        new_lines = []
+        for line in lines:
+            if any(h in line for h in INGRESS_HOSTNAMES):
+                continue
+            new_lines.append(line)
+        new_lines.append(entry)
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
+            tmp.write("\n".join(new_lines) + "\n")
+            tmp_path = tmp.name
+        subprocess.check_call(f"sudo cp {tmp_path} {hosts_file} && sudo chmod 644 {hosts_file}", shell=True)
+        os.unlink(tmp_path)
+        print(f"  ✓ /etc/hosts updated: {ip} -> meo-stationery.local, rancher.local, argocd.local")
+        return True
+    except subprocess.CalledProcessError:
+        _write_setup_hosts_script(alb_dns, ip)
+        return False
+    except Exception:
+        _write_setup_hosts_script(alb_dns, ip)
+        return False
+
+
+def _write_setup_hosts_script(alb_dns, alb_ip):
+    """Ghi script để user chạy sudo khi deploy.py không có quyền sửa /etc/hosts."""
+    scripts_dir = os.path.join(_SCRIPT_DIR, "scripts")
+    os.makedirs(scripts_dir, exist_ok=True)
+    script_path = os.path.join(scripts_dir, "setup-hosts.sh")
+    content = f"""#!/usr/bin/env bash
+# Chạy 1 lần sau ./deploy.py nếu /etc/hosts chưa được cập nhật (sudo): sudo bash {script_path}
+set -e
+ENTRY="{alb_ip}\tmeo-stationery.local rancher.local argocd.local"
+# Xóa dòng cũ có các host này
+sudo sed -i.bak '/meo-stationery\\.local\\|rancher\\.local\\|argocd\\.local/d' /etc/hosts
+echo "$ENTRY" | sudo tee -a /etc/hosts
+echo "Done. Open: http://meo-stationery.local https://rancher.local http://argocd.local"
+"""
+    with open(script_path, "w") as f:
+        f.write(content)
+    os.chmod(script_path, 0o755)
+    print("  ⚠ Could not update /etc/hosts (sudo required). Run once:")
+    print(f"     sudo bash {script_path}")
 
 
 def wait_for_rancher_ready():
     """Waits for at least one Rancher pod to be ready."""
     print("--- Step 8.5: Waiting for Rancher to be ready ---")
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
@@ -678,12 +788,19 @@ WantedBy=multi-user.target
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         print("  Để VPN chạy nền sau (không cần giữ terminal), chạy:")
         print(f"     {install_cmd}")
+        return
+    # Restart để process nạp .ovpn mới (Ansible vừa fetch), không cần user chạy tay refresh-ovpn + restart
+    try:
+        subprocess.run(f"sudo systemctl restart {service_name}", shell=True, cwd=_SCRIPT_DIR, timeout=10, check=True)
+        print(f"  ✓ VPN đã restart (dùng .ovpn mới từ Ansible)")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        print(f"  Nếu VPN đang chạy với .ovpn cũ, chạy: sudo systemctl restart {service_name}")
 
 
 def start_rancher_portforward():
     """Starts port-forward for Rancher UI automatically with retry logic."""
     print("--- Step 9: Starting Rancher Port-Forward ---")
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
@@ -734,6 +851,7 @@ def main():
 
     run_openvpn_ansible(openvpn_public_ip)
     fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns)
+    _create_tunnel_kubeconfig()
     start_openvpn_port_forward(openvpn_public_ip, master_private_ip, local_port=6443, remote_port=6443)
     wait_for_nlb_health_checks()
     install_ebs_csi_driver()
@@ -743,13 +861,10 @@ def main():
     deploy_argocd_applications()
 
     print("\n--- Updating /etc/hosts for Ingress access ---")
-    # Lấy ALB DNS từ terraform output
     alb_dns = tf_out.get("web_alb_dns_name", {}).get("value", "")
     if alb_dns:
-        print(f"  Using ALB DNS: {alb_dns}")
-        update_etc_hosts(RANCHER_HOSTNAME, alb_dns)
-        update_etc_hosts("meo-stationery.local", alb_dns)
-        update_etc_hosts("argocd.local", alb_dns)
+        if not update_etc_hosts_for_alb(alb_dns):
+            print("  You can run the script above once to add ALB -> meo-stationery.local, rancher.local, argocd.local")
     else:
         print("  ⚠ ALB DNS not available yet, skipping /etc/hosts update")
         print("  You can update manually after ALB is ready")
@@ -762,14 +877,12 @@ def main():
     print("\n" + "=" * 60)
     print("XXX Deployment Complete! XXX")
     print("=" * 60)
-    print(f"\n📋 Cluster Access:\n   export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
+    print("\n📋 Cluster (một file kubeconfig, chỉ cần VPN):")
+    print(f"   export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
+    print(f"   kubectl get nodes")
+    print(f"   ssh -i terraform/k8s-key.pem ubuntu@{master_private_ip}")
     print(f"\n🔐 OpenVPN Server: {openvpn_public_ip}")
-    print("   SSH (deploy jump): ssh -i terraform/k8s-key.pem ubuntu@%s" % openvpn_public_ip)
-    print("   --- VÀO MASTER/WORKER (private subnet): cần VPN ---")
-    print("   Nếu đã cài service: VPN đang chạy nền (openvpn-practice-rke2). Tắt: sudo systemctl stop openvpn-practice-rke2")
-    print("   Nếu chưa: cd %s && sudo openvpn --config minhtri.ovpn (giữ terminal) hoặc chạy lệnh in ở trên" % _SCRIPT_DIR)
-    print("   SSH: ssh -i terraform/k8s-key.pem ubuntu@<master-private-ip>")
-    print("   Kubectl qua NLB (sau VPN): export KUBECONFIG=... và dùng NLB DNS trong kubeconfig")
+    print("   SSH qua jump: ssh -i terraform/k8s-key.pem ubuntu@%s" % openvpn_public_ip)
     if alb_dns:
         print(f"\n🌐 Rancher UI (Ingress via ALB):\n   https://{RANCHER_HOSTNAME}\n   admin / {RANCHER_BOOTSTRAP_PASSWORD}")
         print(f"\n🌐 ArgoCD UI (Ingress via ALB):\n   http://argocd.local")

@@ -24,6 +24,7 @@ check_status.sh
 kubeconfig
 rke2.yaml
 kube_config_rke2.yaml
+.kube_config_rke2_tunnel.yaml
 
 # OpenVPN client configs (chứa private key)
 *.ovpn

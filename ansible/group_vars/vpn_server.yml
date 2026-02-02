@@ -2,4 +2,4 @@
 ansible_user: ubuntu
 ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o AddressFamily=inet"
 # deploy.py overwrites with absolute path at runtime
-ansible_ssh_private_key_file: "terraform/k8s-key.pem"
+ansible_ssh_private_key_file: "/home/minhtri/Downloads/practice_RKE2/terraform/k8s-key.pem"

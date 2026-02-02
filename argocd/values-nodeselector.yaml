@@ -19,6 +19,20 @@ server:
       - path: /
         pathType: Prefix
 
+# Repo-server: tăng probe timeout để tránh crashloop do health check bị cancel
+# (Error serving health check request ... context canceled -> pod bị kill)
+repoServer:
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 6
+  livenessProbe:
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 6
+
 configs:
   params:
     server.insecure: "true"
