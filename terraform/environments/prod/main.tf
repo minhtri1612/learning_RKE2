@@ -38,9 +38,10 @@ module "vpc" {
 }
 
 module "iam" {
-  source      = "../../modules/iam"
-  environment = var.environment
-  name_prefix = var.name_prefix
+  source       = "../../modules/iam"
+  environment  = var.environment
+  name_prefix  = var.name_prefix
+  project_name = var.project_name
 }
 
 module "keys" {

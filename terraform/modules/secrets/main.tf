@@ -42,7 +42,8 @@ resource "aws_secretsmanager_secret_version" "app_credentials" {
     POSTGRES_USER     = var.postgres_user
     POSTGRES_PASSWORD = random_password.postgres_password.result
     POSTGRES_DB       = var.postgres_db
-    DATABASE_URL     = "postgresql://${var.postgres_user}:${random_password.postgres_password.result}@${var.postgres_service_host}:5432/${var.postgres_db}?schema=public"
+    # URL-encode password để ký tự đặc biệt (@, #, :, ...) không làm vỡ DATABASE_URL
+    DATABASE_URL     = "postgresql://${var.postgres_user}:${urlencode(random_password.postgres_password.result)}@${var.postgres_service_host}:5432/${var.postgres_db}?schema=public"
     NEXTAUTH_SECRET   = random_password.nextauth_secret.result
   })
 }

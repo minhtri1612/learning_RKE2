@@ -34,3 +34,14 @@ output "ssh_key_file" {
 output "environment" {
   value = var.environment
 }
+
+output "eso_access_key_id" {
+  value       = module.iam.eso_access_key_id
+  description = "ESO IAM access key (deploy.py dùng để tạo aws-secrets-credentials)"
+}
+
+output "eso_secret_access_key" {
+  value       = module.iam.eso_secret_access_key
+  sensitive   = true
+  description = "ESO IAM secret key (deploy.py dùng, không in log)"
+}

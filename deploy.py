@@ -100,12 +100,13 @@ def run_openvpn_ansible(openvpn_public_ip):
     """Chạy Ansible playbook openvpn-server.yml để cấu hình OpenVPN và tạo .ovpn (fetch về project root)."""
     print("--- Step: Ansible OpenVPN Server Setup ---")
     ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
-    print("  Waiting for OpenVPN instance to accept SSH (tối đa 5 phút)...")
+    max_wait = 300  # 5 phút (Ubuntu + cloud-init đôi khi > 2 phút)
+    print(f"  Waiting for OpenVPN instance to accept SSH (tối đa {max_wait // 60} phút)...")
     ssh_ok = False
-    for waited in range(0, 300, 10):
+    for waited in range(0, max_wait, 10):
         try:
             res = subprocess.run(
-                f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@{openvpn_public_ip} 'echo ready'",
+                f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@{openvpn_public_ip} 'echo ready'",
                 shell=True,
                 capture_output=True,
                 timeout=15,
@@ -123,9 +124,27 @@ def run_openvpn_ansible(openvpn_public_ip):
         inventory_path = os.path.join(ANSIBLE_DIR, "inventory_openvpn.yml")
         with open(inventory_path, "w") as f:
             f.write(f"vpn_server:\n  hosts:\n    {openvpn_public_ip}:\n")
-        print("  ✗ OpenVPN server SSH timeout sau 5 phút.")
-        print("     Kiểm tra: Security group openvpn_sg có cho SSH từ IP máy bạn (var.my_ip)?")
-        print("     Chạy Ansible thủ công khi instance sẵn sàng:")
+        print(f"  ✗ OpenVPN server SSH timeout sau {max_wait}s.")
+        # One verbose attempt to show why (timeout vs refused vs permission denied)
+        try:
+            r = subprocess.run(
+                f"ssh -v -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_public_ip} exit 2>&1",
+                shell=True,
+                capture_output=True,
+                timeout=15,
+            )
+            err = (r.stderr or b"") + (r.stdout or b"")
+            for line in err.decode("utf-8", errors="replace").splitlines():
+                if "debug1: Connecting" in line or "Connection refused" in line or "timed out" in line or "Permission denied" in line or "No route" in line:
+                    print(f"     [ssh] {line.strip()}")
+        except Exception as e:
+            print(f"     [ssh] {e}")
+        print("     (Lỗi này không liên quan ArgoCD – deploy fail ở bước OpenVPN SSH, trước khi tới cluster/ArgoCD.)")
+        print("     Thử: mạng khác (VPN/corp có thể chặn); hoặc recreate: ./scripts/recreate-openvpn-instance.sh " + TERRAFORM_ENV)
+        print("     Bỏ qua bước này lần chạy: SKIP_OPENVPN_ANSIBLE=1 ./deploy.py " + TERRAFORM_ENV)
+        print("     Kiểm tra SSH thủ công (timeout = mạng/firewall; refused = instance chưa sẵn sàng; denied = key sai):")
+        print(f"     ssh -o IdentitiesOnly=yes -i {ssh_key_path} -o ConnectTimeout=15 ubuntu@{openvpn_public_ip}")
+        print("     Chạy Ansible thủ công khi SSH được:")
         print(f"     cd {ANSIBLE_DIR} && ansible-playbook -i inventory_openvpn.yml -e openvpn_public_ip={openvpn_public_ip} openvpn-server.yml")
         sys.exit(1)
 
@@ -138,6 +157,12 @@ def run_openvpn_ansible(openvpn_public_ip):
         vpn_cfg = re.sub(r"ansible_ssh_private_key_file:\s*[^\n]+", key_line, vpn_cfg)
     else:
         vpn_cfg = vpn_cfg.rstrip() + "\n" + key_line + "\n"
+    # Tránh "Too many authentication failures": chỉ dùng key chỉ định, không dùng agent
+    if 'IdentitiesOnly' not in vpn_cfg:
+        if 'ansible_ssh_common_args:' in vpn_cfg:
+            vpn_cfg = re.sub(r'(ansible_ssh_common_args:\s*)"', r'\1"-o IdentitiesOnly=yes ', vpn_cfg)
+        else:
+            vpn_cfg = vpn_cfg.rstrip() + '\nansible_ssh_common_args: "-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=30"\n'
     with open(vpn_server_yml, "w") as f:
         f.write(vpn_cfg)
 
@@ -167,7 +192,7 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
     for waited in range(0, 120, 5):
         try:
             res = subprocess.run(
-                f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} 'echo ready'",
+                f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} 'echo ready'",
                 shell=True,
                 capture_output=True,
                 timeout=10,
@@ -183,15 +208,15 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
 
     print("  Copying SSH key to OpenVPN server for master access...")
     run_command(
-        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'",
+        f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'",
         timeout=15,
     )
     run_command(
-        f"scp -o StrictHostKeyChecking=no -i {ssh_key_path} {ssh_key_path} ubuntu@{openvpn_ip}:~/.ssh/k8s-key.pem",
+        f"scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i {ssh_key_path} {ssh_key_path} ubuntu@{openvpn_ip}:~/.ssh/k8s-key.pem",
         timeout=30,
     )
     run_command(
-        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'chmod 600 ~/.ssh/k8s-key.pem'",
+        f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'chmod 600 ~/.ssh/k8s-key.pem'",
         timeout=15,
     )
 
@@ -202,8 +227,8 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
     for waited in range(0, 300, 15):
         try:
             res = subprocess.run(
-                f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} "
-                f"'ssh -i ~/.ssh/k8s-key.pem -o StrictHostKeyChecking=no ubuntu@{master_private_ip} "
+                f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} "
+                f"'ssh -i ~/.ssh/k8s-key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{master_private_ip} "
                 "test -f /home/ubuntu/.kube/config && echo ready'",
                 shell=True,
                 capture_output=True,
@@ -220,8 +245,8 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
 
     print("  Fetching kubeconfig via SSH (through OpenVPN server)...")
     kubeconfig_content = subprocess.check_output(
-        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} "
-        f"'ssh -i ~/.ssh/k8s-key.pem -o StrictHostKeyChecking=no ubuntu@{master_private_ip} cat /home/ubuntu/.kube/config'",
+        f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} "
+        f"'ssh -i ~/.ssh/k8s-key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{master_private_ip} cat /home/ubuntu/.kube/config'",
         shell=True,
         timeout=30,
         stderr=subprocess.DEVNULL,
@@ -298,9 +323,9 @@ def start_openvpn_port_forward(openvpn_ip, master_private_ip, local_port=6443, r
     except Exception:
         pass
 
-    proxy_cmd = f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no -W %h:%p ubuntu@{openvpn_ip}"
+    proxy_cmd = f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -W %h:%p ubuntu@{openvpn_ip}"
     cmd = (
-        f"ssh -i {ssh_key_path} -o StrictHostKeyChecking=no "
+        f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "
         f"-o ProxyCommand=\"{proxy_cmd}\" "
         f"-N -L {local_port}:{master_private_ip}:{remote_port} ubuntu@{master_private_ip}"
     )
@@ -579,6 +604,218 @@ def wait_for_argocd_ready():
 
     print("  ⚠ ArgoCD not ready after 300s, proceeding anyway")
     return False
+
+
+def install_external_secrets_operator():
+    """Cài External Secrets Operator (ESO) để sync AWS Secrets Manager → K8s Secret."""
+    print("--- Step 7.5: Installing External Secrets Operator ---")
+    kubeconfig_path = _kubeconfig_for_deploy()
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig_path
+
+    # Check if already installed
+    res = subprocess.run(
+        "kubectl get namespace external-secrets --request-timeout=5s 2>/dev/null && "
+        "kubectl get deploy -n external-secrets external-secrets -o name 2>/dev/null",
+        shell=True,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if res.returncode == 0 and "external-secrets" in (res.stdout or ""):
+        print("  ✓ External Secrets Operator already installed.")
+        return
+
+    run_command("helm repo add external-secrets https://charts.external-secrets.io", cwd=_SCRIPT_DIR, env=env, timeout=30)
+    run_command("helm repo update external-secrets", cwd=_SCRIPT_DIR, env=env, timeout=60)
+    run_command(
+        "helm upgrade --install external-secrets external-secrets/external-secrets "
+        "-n external-secrets --create-namespace --set installCRDs=true --timeout 5m",
+        cwd=_SCRIPT_DIR,
+        env=env,
+        timeout=360,
+    )
+    print("  ✓ External Secrets Operator installed. Waiting for CRDs to be ready...")
+    crd_name = "clustersecretstores.external-secrets.io"
+    for waited in range(0, 120, 5):
+        res = subprocess.run(
+            f"kubectl get crd {crd_name} --request-timeout=5s 2>/dev/null",
+            shell=True,
+            env=env,
+            capture_output=True,
+            timeout=10,
+        )
+        if res.returncode == 0:
+            print(f"  ✓ CRD {crd_name} ready (waited {waited}s).")
+            break
+        if waited % 15 == 0 and waited > 0:
+            print(f"  Still waiting for CRDs... ({waited}s)")
+        time.sleep(5)
+    else:
+        print("  ⚠ CRD may not be ready yet; apply SecretStore later if it fails.")
+
+
+def ensure_aws_secrets_credentials():
+    """Tạo K8s Secret aws-secrets-credentials cho ESO (nếu chưa có).
+    Tự động lấy từ Terraform output (eso_access_key_id, eso_secret_access_key) do Terraform IAM module tạo.
+    Fallback: env AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY."""
+    print("--- Step 7.5b: AWS credentials for External Secrets ---")
+    kubeconfig_path = _kubeconfig_for_deploy()
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig_path
+
+    res = subprocess.run(
+        "kubectl get secret aws-secrets-credentials -n external-secrets --request-timeout=5s 2>/dev/null",
+        shell=True,
+        env=env,
+        capture_output=True,
+        timeout=10,
+    )
+    if res.returncode == 0:
+        print("  ✓ Secret aws-secrets-credentials already exists.")
+        return
+
+    access = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
+    secret_val = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
+
+    # Tự động lấy từ Terraform output (IAM user ESO do Terraform tạo)
+    if not access or not secret_val:
+        out_ak = subprocess.run(
+            ["terraform", "-chdir=environments/" + TERRAFORM_ENV, "output", "-raw", "eso_access_key_id"],
+            cwd=TERRAFORM_DIR,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        out_sk = subprocess.run(
+            ["terraform", "-chdir=environments/" + TERRAFORM_ENV, "output", "-raw", "eso_secret_access_key"],
+            cwd=TERRAFORM_DIR,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if out_ak.returncode == 0 and out_sk.returncode == 0 and out_ak.stdout and out_sk.stdout:
+            access = out_ak.stdout.strip()
+            secret_val = out_sk.stdout.strip()
+            if access and secret_val:
+                print("  Using ESO credentials from Terraform output (IAM user created by Terraform).")
+
+    if access and secret_val:
+        # Don't pass credentials via command line (would show in logs); use stdin for kubectl
+        yaml_out = subprocess.run(
+            [
+                "kubectl", "create", "secret", "generic", "aws-secrets-credentials",
+                "-n", "external-secrets",
+                "--from-literal=access-key=" + access,
+                "--from-literal=secret-access-key=" + secret_val,
+                "--dry-run=client", "-o", "yaml",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if yaml_out.returncode != 0:
+            print("  ⚠ Failed to create aws-secrets-credentials:", yaml_out.stderr)
+            return
+        apply_out = subprocess.run(
+            ["kubectl", "apply", "-f", "-"],
+            input=yaml_out.stdout,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if apply_out.returncode != 0:
+            print("  ⚠ kubectl apply failed:", apply_out.stderr)
+        else:
+            print("  ✓ Created aws-secrets-credentials (from Terraform output or env).")
+        return
+
+    print("  ⚠ Secret aws-secrets-credentials not found. ESO needs it to read AWS Secrets Manager.")
+    print("  Chạy lại: ./deploy.py", TERRAFORM_ENV, "(deploy đã chạy Terraform ở đầu, ESO IAM user sẽ có trong output)")
+    print("  Hoặc tạo tay: kubectl create secret generic aws-secrets-credentials -n external-secrets \\")
+    print('    --from-literal=access-key="..." --from-literal=secret-access-key="..."')
+
+
+def _wait_for_external_secrets_crd(env, timeout=120):
+    """Chờ CRD ClusterSecretStore có sẵn (cần khi ESO đã cài từ trước, không chạy bước install)."""
+    crd_name = "clustersecretstores.external-secrets.io"
+    for waited in range(0, timeout, 5):
+        res = subprocess.run(
+            f"kubectl get crd {crd_name} --request-timeout=5s 2>/dev/null",
+            shell=True,
+            env=env,
+            capture_output=True,
+            timeout=10,
+        )
+        if res.returncode == 0:
+            if waited > 0:
+                print(f"  ✓ CRD {crd_name} ready (waited {waited}s).")
+            return True
+        if waited % 15 == 0 and waited > 0:
+            print(f"  Waiting for External Secrets CRDs... ({waited}s)")
+        time.sleep(5)
+    return False
+
+
+def apply_external_secrets_manifests():
+    """Apply ClusterSecretStore + ExternalSecret cho env hiện tại (database + backend)."""
+    print("--- Step 7.5c: Applying External Secrets (SecretStore + ExternalSecret) ---")
+    kubeconfig_path = _kubeconfig_for_deploy()
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig_path
+
+    # Luôn chờ CRD sẵn sàng trước khi apply (kể cả khi ESO "already installed" từ lần chạy trước)
+    if not _wait_for_external_secrets_crd(env):
+        print("  ⚠ ClusterSecretStore CRD not ready after 2 min. Skipping SecretStore/ExternalSecret apply.")
+        print("     Chạy lại sau: kubectl apply -f external-secrets/secretstore.yaml")
+        return
+
+    # Webhook phải có endpoint thì apply ClusterSecretStore mới qua validation (no endpoints available)
+    print("  Waiting for External Secrets webhook to be ready...")
+    for waited in range(0, 120, 5):
+        r = subprocess.run(
+            "kubectl get endpoints external-secrets-webhook -n external-secrets -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null",
+            shell=True,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode == 0 and (r.stdout or "").strip():
+            if waited > 0:
+                print(f"  ✓ Webhook ready (waited {waited}s).")
+            break
+        if waited % 15 == 0 and waited > 0:
+            print(f"  Still waiting for webhook... ({waited}s)")
+        time.sleep(5)
+    else:
+        print("  ⚠ Webhook may not be ready; apply may fail with 'no endpoints available'.")
+
+    ext_dir = os.path.join(_SCRIPT_DIR, "external-secrets")
+    store_path = os.path.join(ext_dir, "secretstore.yaml")
+    env_dir = os.path.join(ext_dir, "environments", TERRAFORM_ENV)
+    if not os.path.isfile(store_path):
+        print(f"  ⚠ {store_path} not found, skipping.")
+        return
+    run_command(f"kubectl apply -f {store_path}", cwd=_SCRIPT_DIR, env=env, timeout=15)
+    # ExternalSecret cần namespace tồn tại trước (backend → meo-stationery, database → database)
+    for ns in ("meo-stationery", "database"):
+        subprocess.run(
+            f"kubectl create namespace {ns} --dry-run=client -o yaml | kubectl apply -f -",
+            shell=True,
+            cwd=_SCRIPT_DIR,
+            env=env,
+            timeout=10,
+            capture_output=True,
+        )
+    if os.path.isdir(env_dir):
+        for f in sorted(os.listdir(env_dir)):
+            if f.endswith(".yaml"):
+                run_command(f"kubectl apply -f {os.path.join(env_dir, f)}", cwd=_SCRIPT_DIR, env=env, timeout=15)
+    print("  ✓ External Secrets manifests applied for env:", TERRAFORM_ENV)
 
 
 def deploy_argocd_applications():
@@ -897,8 +1134,16 @@ def main():
     print("\n--- RKE2 + OpenVPN ---")
     print(f"  ✓ OpenVPN Server: {openvpn_public_ip}")
     print(f"  ✓ Master Private IP: {master_private_ip}")
-    print("  ⏳ Đợi OpenVPN instance SSH sẵn sàng rồi chạy Ansible setup...")
 
+    if os.environ.get("SKIP_OPENVPN_ANSIBLE") == "1":
+        print("  ⏭ SKIP_OPENVPN_ANSIBLE=1 → bỏ qua bước OpenVPN/Ansible.")
+        print("  Khi SSH được, chạy:")
+        print(f"    ssh -o IdentitiesOnly=yes -i terraform/environments/{TERRAFORM_ENV}/k8s-key.pem ubuntu@{openvpn_public_ip}")
+        print(f"    cd ansible && ansible-playbook -i inventory_openvpn.yml -e openvpn_public_ip={openvpn_public_ip} openvpn-server.yml")
+        print("  Sau đó chạy lại: ./deploy.py", TERRAFORM_ENV)
+        sys.exit(0)
+
+    print("  ⏳ Đợi OpenVPN instance SSH sẵn sàng rồi chạy Ansible setup...")
     run_openvpn_ansible(openvpn_public_ip)
     fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns)
     _create_tunnel_kubeconfig()
@@ -908,6 +1153,9 @@ def main():
 
     install_rancher()
     install_argocd()
+    install_external_secrets_operator()
+    ensure_aws_secrets_credentials()
+    apply_external_secrets_manifests()
     deploy_argocd_applications()
 
     print("\n--- Updating /etc/hosts for Ingress access ---")
@@ -930,9 +1178,9 @@ def main():
     print("\n📋 Cluster (một file kubeconfig, chỉ cần VPN):")
     print(f"   export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
     print(f"   kubectl get nodes")
-    print(f"   ssh -i terraform/environments/{TERRAFORM_ENV}/k8s-key.pem ubuntu@{master_private_ip}")
+    print(f"   ssh -o IdentitiesOnly=yes -i terraform/environments/{TERRAFORM_ENV}/k8s-key.pem ubuntu@{master_private_ip}")
     print(f"\n🔐 OpenVPN Server: {openvpn_public_ip}")
-    print("   SSH qua jump: ssh -i terraform/environments/%s/k8s-key.pem ubuntu@%s" % (TERRAFORM_ENV, openvpn_public_ip))
+    print("   SSH qua jump: ssh -o IdentitiesOnly=yes -i terraform/environments/%s/k8s-key.pem ubuntu@%s" % (TERRAFORM_ENV, openvpn_public_ip))
     if alb_dns:
         print(f"\n🌐 Rancher UI (Ingress via ALB):\n   https://{RANCHER_HOSTNAME}\n   admin / {RANCHER_BOOTSTRAP_PASSWORD}")
         print(f"\n🌐 ArgoCD UI (Ingress via ALB):\n   http://argocd.local")

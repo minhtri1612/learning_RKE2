@@ -1,4 +1,6 @@
 # Dev overrides (merged with values.yaml)
+existingSecret:
+  name: "meo-stationery-backend-secrets"   # from External Secrets (AWS Secrets Manager)
 replicaCount: 1
 workload:
   image: minhtri1612/meo-stationery-backend:vcl

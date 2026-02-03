@@ -9,11 +9,12 @@ resource "aws_vpc" "main" {
 }
 
 resource "aws_subnet" "public" {
-  count             = length(var.public_subnet_cidrs)
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.public_subnet_cidrs[count.index]
-  availability_zone  = data.aws_availability_zones.available.names[count.index]
-  tags              = { Name = "${var.name_prefix}-public-${count.index + 1}-${var.environment}" }
+  count                       = length(var.public_subnet_cidrs)
+  vpc_id                      = aws_vpc.main.id
+  cidr_block                  = var.public_subnet_cidrs[count.index]
+  availability_zone           = data.aws_availability_zones.available.names[count.index]
+  map_public_ip_on_launch     = true
+  tags                        = { Name = "${var.name_prefix}-public-${count.index + 1}-${var.environment}" }
 }
 
 resource "aws_subnet" "private" {
@@ -90,8 +91,8 @@ resource "aws_security_group" "openvpn" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.my_ip]
-    description = "SSH from deploy"
+    cidr_blocks = [var.my_ip != "" ? var.my_ip : "0.0.0.0/0"]
+    description = "SSH from deploy (0.0.0.0/0 if my_ip empty)"
   }
   ingress {
     from_port   = 22
