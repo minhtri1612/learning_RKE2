@@ -1,0 +1,20 @@
+# Prod overrides (merged with values.yaml)
+replicaCount: 2
+existingSecret:
+  name: "meo-stationery-backend-secrets"
+workload:
+  image: minhtri1612/meo-stationery-backend:vcl
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "128m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+autoscaling:
+  enabled: true
+  minReplicas: 4
+  maxReplicas: 7
+  targetCPUUtilizationPercentage: 80
+ingress:
+  host: meo-stationery-prod.local

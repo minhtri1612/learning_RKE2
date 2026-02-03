@@ -14,6 +14,10 @@
 *.swo
 *~
 
+# Python
+__pycache__/
+*.pyc
+
 # Misc
 natehigger
 RKE2_REVIEW_SUMMARY.md
@@ -53,10 +57,17 @@ terraform/*.key
 *.auto.tfvars
 terraform/*.tfvars
 terraform/*.auto.tfvars
+# Environment-specific state and keys
+terraform/environments/**/.terraform/
+terraform/environments/**/k8s-key.pem
+terraform/environments/**/*.tfstate
+terraform/environments/**/*.tfstate.*
 
 # Ansible - Contains IPs and connection info
 ansible/inventory.ini
 ansible/.vault_pass
+ansible/group_vars/users.yml
+ansible/group_vars/vpn_server.yml
 
 # Helm values with secrets (override with -f values-secrets.yaml, keep out of repo)
 **/values-*-secrets.yaml

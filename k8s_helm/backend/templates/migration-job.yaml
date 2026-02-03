@@ -37,7 +37,7 @@ spec:
             - configMapRef:
                 name: {{ include "backend.fullname" . }}-configmap
             - secretRef:
-                name: {{ include "backend.fullname" . }}-secret
+                name: {{ default (printf "%s-secret" (include "backend.fullname" .)) .Values.existingSecret.name }}
           command: ["/bin/sh", "-c"]
           args: 
             - |

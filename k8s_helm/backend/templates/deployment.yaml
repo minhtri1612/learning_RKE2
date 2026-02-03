@@ -38,7 +38,7 @@ spec:
         - configMapRef:
             name: {{ include "backend.fullname" . }}-configmap
         - secretRef:
-            name: {{ include "backend.fullname" . }}-secret
+            name: {{ default (printf "%s-secret" (include "backend.fullname" .)) .Values.existingSecret.name }}
         
         # Add debug environment variables
         # For production, consider removing DEBUG and setting NODE_ENV via ConfigMap

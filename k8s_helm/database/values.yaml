@@ -15,8 +15,12 @@ serviceAccount:
 
 auth:
   username: "meo_admin"
-  password: "MeoStationery2025!"
   database: "meo_stationery"
+  password: ""   # Only used when existingSecret.name is empty; prefer AWS Secrets Manager + External Secrets
+
+# When set, chart does not create Secret; StatefulSet uses this K8s Secret (synced from AWS by External Secrets Operator).
+existingSecret:
+  name: ""   # e.g. "postgres" when using External Secrets
 
 persistence:
   size: 1Gi

@@ -1,0 +1,15 @@
+# Dev overrides (merged with values.yaml)
+replicaCount: 1
+workload:
+  image: minhtri1612/meo-stationery-backend:vcl
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "64m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+autoscaling:
+  enabled: false
+ingress:
+  host: meo-stationery-dev.local

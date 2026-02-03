@@ -1,0 +1,5 @@
+# Example file (do NOT commit real IPs/secrets)
+ansible_user: ubuntu
+ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o AddressFamily=inet"
+# Set your key path locally (ignored by .gitignore)
+ansible_ssh_private_key_file: "/ABSOLUTE/PATH/TO/terraform/environments/dev/k8s-key.pem"

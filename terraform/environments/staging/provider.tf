@@ -1,0 +1,1 @@
+../../global/provider.tf

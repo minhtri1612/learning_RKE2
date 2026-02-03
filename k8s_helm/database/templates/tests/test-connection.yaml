@@ -24,6 +24,6 @@ spec:
         - name: PGPASSWORD
           valueFrom:
             secretKeyRef:
-              name: {{ include "database.fullname" . }}
+              name: {{ default (include "database.fullname" .) .Values.existingSecret.name }}
               key: POSTGRES_PASSWORD
   restartPolicy: Never

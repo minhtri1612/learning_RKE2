@@ -1,0 +1,10 @@
+# Dev overrides (merged with values.yaml)
+existingSecret:
+  name: "postgres"   # From External Secrets (AWS Secrets Manager)
+persistence:
+  size: 1Gi
+  useEBS: true
+  provisionStorageClass: false
+auth:
+  username: meo_admin
+  database: meo_stationery

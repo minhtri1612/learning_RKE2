@@ -28,17 +28,22 @@ replicaCount: 2
 config:
   nextAuthUrl: "http://meo-stationery.local"
 
-# Values for the database, to be used in the secret template
+# Values for the database (used when existingSecret not set)
 database:
   fullnameOverride: "postgres"
   namespace: "database"
   auth:
     username: "meo_admin"
-    password: "MeoStationery2025!"
     database: "meo_stationery"
+    password: ""   # Only used when existingSecret.name is empty; prefer AWS Secrets Manager + External Secrets
+
+# When set, chart does not create Secret; deployment/migration use this K8s Secret (synced from AWS Secrets Manager by External Secrets Operator).
+existingSecret:
+  name: ""   # e.g. "meo-stationery-backend-secrets" when using External Secrets
 
 secret:
-  nextAuthSecret: "APk2a8X+CiC8Ku6wuKVkb9abRh+dlXAi1qyKYacc3Hw="
+  # nextAuthSecret: only used when existingSecret.name is empty; otherwise use External Secrets
+  nextAuthSecret: ""
 
 httpRoute:
   enabled: false

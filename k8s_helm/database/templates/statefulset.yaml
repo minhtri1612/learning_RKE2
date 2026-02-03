@@ -50,17 +50,17 @@ spec:
         - name: POSTGRES_DB
           valueFrom:
             secretKeyRef:
-              name: {{ include "database.fullname" . }}
+              name: {{ default (include "database.fullname" .) .Values.existingSecret.name }}
               key: POSTGRES_DB
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
-              name: {{ include "database.fullname" . }}
+              name: {{ default (include "database.fullname" .) .Values.existingSecret.name }}
               key: POSTGRES_USER
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: {{ include "database.fullname" . }}
+              name: {{ default (include "database.fullname" .) .Values.existingSecret.name }}
               key: POSTGRES_PASSWORD
         volumeMounts:
         - name: postgres-storage

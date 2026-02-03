@@ -1,0 +1,17 @@
+# Example file (do NOT commit real IPs/secrets)
+vpn_users:
+  - { name: "user1", ip: "<SET_STATIC_VPN_IP>" }
+  # - { name: "user2", ip: "<SET_STATIC_VPN_IP>" }
+
+vpn_policy:
+  cipher: "AES-256-GCM"
+  auth: "SHA256"
+  keepalive: "10 120"
+  push_dns: []
+  redirect_gateway: false
+  verb: "3"
+
+vpn_nat: false
+
+vpn_target:
+  - { cidr: "<VPC_CIDR>", mask: "<VPC_NETMASK>" }

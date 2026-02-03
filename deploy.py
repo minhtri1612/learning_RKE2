@@ -10,6 +10,24 @@ import time
 # Configuration (absolute paths so deploy.py works from any CWD)
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TERRAFORM_DIR = os.path.join(_SCRIPT_DIR, "terraform")
+
+_VALID_ENVS = ("dev", "staging", "prod")
+
+
+def _get_terraform_env():
+    """dev | staging | prod: từ ./deploy.py <env> hoặc biến môi trường TF_ENV."""
+    if len(sys.argv) >= 2:
+        env = sys.argv[1].lower()
+        if env in _VALID_ENVS:
+            return env
+        print(f"Usage: {sys.argv[0]} [dev|staging|prod]", file=sys.stderr)
+        print(f"Invalid environment: {sys.argv[1]}", file=sys.stderr)
+        sys.exit(1)
+    return os.environ.get("TF_ENV", "dev")
+
+
+TERRAFORM_ENV = _get_terraform_env()
+TERRAFORM_ENV_DIR = os.path.join(TERRAFORM_DIR, "environments", TERRAFORM_ENV)
 ANSIBLE_DIR = os.path.join(_SCRIPT_DIR, "ansible")
 HELM_DIR = os.path.join(_SCRIPT_DIR, "k8s_helm")
 KUBECONFIG_FILE = os.path.join(_SCRIPT_DIR, "kube_config_rke2.yaml")
@@ -47,23 +65,41 @@ def run_command(command, cwd=None, env=None, timeout=None):
 
 
 def get_terraform_output():
-    """Gets Terraform output as JSON."""
+    """Gets Terraform output as JSON (from environments/<env>)."""
     print("Fetching Terraform outputs...")
-    output = subprocess.check_output("terraform output -json", shell=True, cwd=TERRAFORM_DIR).decode("utf-8")
+    cmd = f"terraform -chdir=environments/{TERRAFORM_ENV} output -json"
+    output = subprocess.check_output(cmd, shell=True, cwd=TERRAFORM_DIR).decode("utf-8")
     return json.loads(output)
 
 
 def setup_terraform():
-    """Applies Terraform configuration."""
+    """Applies Terraform configuration (environments/<env>)."""
+    tfvars = os.path.join(TERRAFORM_ENV_DIR, "terraform.tfvars")
+    if not os.path.isfile(tfvars):
+        example = os.path.join(TERRAFORM_ENV_DIR, "terraform.tfvars.example")
+        if os.path.isfile(example):
+            with open(example, "r") as f:
+                content = f.read()
+            # Replace placeholder my_ip so Terraform apply runs (user can edit tfvars later for real prod)
+            content = content.replace("YOUR_OFFICE_OR_VPN_IP/32", "0.0.0.0/0")
+            with open(tfvars, "w") as f:
+                f.write(content)
+            print(f"Created {tfvars} from .example (my_ip=0.0.0.0/0). Edit for production.")
+        else:
+            print(f"Error: terraform.tfvars not found and no terraform.tfvars.example in {TERRAFORM_ENV}.")
+            sys.exit(1)
     print("--- Step 1: Terraform Apply ---")
-    run_command("terraform init -input=false", cwd=TERRAFORM_DIR)
-    run_command("terraform apply -auto-approve -input=false", cwd=TERRAFORM_DIR)
+    run_command(f"terraform -chdir=environments/{TERRAFORM_ENV} init -input=false", cwd=TERRAFORM_DIR)
+    run_command(
+        f"terraform -chdir=environments/{TERRAFORM_ENV} apply -auto-approve -input=false -var-file=terraform.tfvars",
+        cwd=TERRAFORM_DIR,
+    )
 
 
 def run_openvpn_ansible(openvpn_public_ip):
     """Chạy Ansible playbook openvpn-server.yml để cấu hình OpenVPN và tạo .ovpn (fetch về project root)."""
     print("--- Step: Ansible OpenVPN Server Setup ---")
-    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
+    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
     print("  Waiting for OpenVPN instance to accept SSH (tối đa 5 phút)...")
     ssh_ok = False
     for waited in range(0, 300, 10):
@@ -125,7 +161,7 @@ def run_openvpn_ansible(openvpn_public_ip):
 def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
     """Fetches and configures kubeconfig via SSH through OpenVPN server (jump host)."""
     print("--- Step 4: Fetching Kubeconfig via OpenVPN Server (jump) ---")
-    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
+    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
 
     print("  Waiting for OpenVPN server to be ready...")
     for waited in range(0, 120, 5):
@@ -253,7 +289,7 @@ def _create_tunnel_kubeconfig():
 def start_openvpn_port_forward(openvpn_ip, master_private_ip, local_port=6443, remote_port=6443):
     """Starts SSH port forwarding through OpenVPN server: local 6443 -> master:6443."""
     print("--- Step 4.5: Starting SSH Port Forward (OpenVPN -> Master 6443) ---")
-    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_DIR, SSH_KEY_FILE_NAME))
+    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
     log_file = "/tmp/openvpn-k8s-pf.log"
 
     try:
@@ -556,11 +592,15 @@ def deploy_argocd_applications():
     print("  Waiting additional 10 seconds for ArgoCD components...")
     time.sleep(10)
 
-    argocd_dir = os.path.abspath("./argocd")
-    run_command("kubectl apply -f be-application.yaml", cwd=argocd_dir, env=env)
-    run_command("kubectl apply -f data-application.yaml", cwd=argocd_dir, env=env)
-    print("  ✓ ArgoCD Applications deployed.")
+    argocd_env_dir = os.path.join(_SCRIPT_DIR, "argocd", "environments", TERRAFORM_ENV)
+    if not os.path.isdir(argocd_env_dir):
+        print(f"  Error: argocd/environments/{TERRAFORM_ENV}/ not found.")
+        sys.exit(1)
+    run_command("kubectl apply -f be-application.yaml", cwd=argocd_env_dir, env=env)
+    run_command("kubectl apply -f data-application.yaml", cwd=argocd_env_dir, env=env)
+    print("  ✓ ArgoCD Applications deployed (argocd/environments/{}/).".format(TERRAFORM_ENV))
     print("  📝 GitOps Repo: https://github.com/minhtri1612/learning_RKE2.git")
+    print("  📌 Để apply từ master: clone repo có argocd/environments/, rồi ./scripts/apply-argocd-apps.sh {}".format(TERRAFORM_ENV))
     run_backend_migration_after_sync()
 
 
@@ -624,8 +664,15 @@ def resolve_dns_to_ip(dns_name):
         return None
 
 
-# Hostnames cần trỏ ALB (để mở web meo-stationery, rancher, argocd)
-INGRESS_HOSTNAMES = ("meo-stationery.local", RANCHER_HOSTNAME, "argocd.local")
+# Hostnames cần trỏ ALB: app theo từng env + rancher + argocd
+APP_INGRESS_HOST = f"meo-stationery-{TERRAFORM_ENV}.local"
+INGRESS_HOSTNAMES = (
+    "meo-stationery-dev.local",
+    "meo-stationery-staging.local",
+    "meo-stationery-prod.local",
+    RANCHER_HOSTNAME,
+    "argocd.local",
+)
 
 
 def update_etc_hosts(hostname, ip_or_dns):
@@ -668,7 +715,7 @@ def update_etc_hosts(hostname, ip_or_dns):
 
 
 def update_etc_hosts_for_alb(alb_dns):
-    """Cập nhật /etc/hosts một dòng cho cả meo-stationery.local, rancher.local, argocd.local (trỏ ALB)."""
+    """Cập nhật /etc/hosts một dòng cho meo-stationery-{dev,staging,prod}.local, rancher.local, argocd.local (trỏ ALB)."""
     if not alb_dns:
         return False
     print(f"  Using ALB DNS: {alb_dns}")
@@ -692,7 +739,7 @@ def update_etc_hosts_for_alb(alb_dns):
             tmp_path = tmp.name
         subprocess.check_call(f"sudo cp {tmp_path} {hosts_file} && sudo chmod 644 {hosts_file}", shell=True)
         os.unlink(tmp_path)
-        print(f"  ✓ /etc/hosts updated: {ip} -> meo-stationery.local, rancher.local, argocd.local")
+        print(f"  ✓ /etc/hosts updated: {ip} -> meo-stationery-{{dev,staging,prod}}.local, rancher.local, argocd.local")
         return True
     except subprocess.CalledProcessError:
         _write_setup_hosts_script(alb_dns, ip)
@@ -707,14 +754,17 @@ def _write_setup_hosts_script(alb_dns, alb_ip):
     scripts_dir = os.path.join(_SCRIPT_DIR, "scripts")
     os.makedirs(scripts_dir, exist_ok=True)
     script_path = os.path.join(scripts_dir, "setup-hosts.sh")
+    hosts_str = " ".join(INGRESS_HOSTNAMES)
+    # sed -E: extended regex so | = OR; escape dots for literal match
+    sed_pattern = "|".join(h.replace(".", "\\.") for h in INGRESS_HOSTNAMES)
     content = f"""#!/usr/bin/env bash
 # Chạy 1 lần sau ./deploy.py nếu /etc/hosts chưa được cập nhật (sudo): sudo bash {script_path}
 set -e
-ENTRY="{alb_ip}\tmeo-stationery.local rancher.local argocd.local"
+ENTRY="{alb_ip}\t{hosts_str}"
 # Xóa dòng cũ có các host này
-sudo sed -i.bak '/meo-stationery\\.local\\|rancher\\.local\\|argocd\\.local/d' /etc/hosts
+sudo sed -i.bak -E '/{sed_pattern}/d' /etc/hosts
 echo "$ENTRY" | sudo tee -a /etc/hosts
-echo "Done. Open: http://meo-stationery.local https://rancher.local http://argocd.local"
+echo "Done. Open: https://meo-stationery-dev.local (dev) | meo-stationery-staging.local (staging) | meo-stationery-prod.local (prod) | rancher.local | argocd.local"
 """
     with open(script_path, "w") as f:
         f.write(content)
@@ -864,7 +914,7 @@ def main():
     alb_dns = tf_out.get("web_alb_dns_name", {}).get("value", "")
     if alb_dns:
         if not update_etc_hosts_for_alb(alb_dns):
-            print("  You can run the script above once to add ALB -> meo-stationery.local, rancher.local, argocd.local")
+            print("  You can run the script above once to add ALB -> meo-stationery-{dev,staging,prod}.local, rancher.local, argocd.local")
     else:
         print("  ⚠ ALB DNS not available yet, skipping /etc/hosts update")
         print("  You can update manually after ALB is ready")
@@ -880,13 +930,13 @@ def main():
     print("\n📋 Cluster (một file kubeconfig, chỉ cần VPN):")
     print(f"   export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
     print(f"   kubectl get nodes")
-    print(f"   ssh -i terraform/k8s-key.pem ubuntu@{master_private_ip}")
+    print(f"   ssh -i terraform/environments/{TERRAFORM_ENV}/k8s-key.pem ubuntu@{master_private_ip}")
     print(f"\n🔐 OpenVPN Server: {openvpn_public_ip}")
-    print("   SSH qua jump: ssh -i terraform/k8s-key.pem ubuntu@%s" % openvpn_public_ip)
+    print("   SSH qua jump: ssh -i terraform/environments/%s/k8s-key.pem ubuntu@%s" % (TERRAFORM_ENV, openvpn_public_ip))
     if alb_dns:
         print(f"\n🌐 Rancher UI (Ingress via ALB):\n   https://{RANCHER_HOSTNAME}\n   admin / {RANCHER_BOOTSTRAP_PASSWORD}")
         print(f"\n🌐 ArgoCD UI (Ingress via ALB):\n   http://argocd.local")
-        print(f"\n🌐 App (Ingress via ALB):\n   http://meo-stationery.local")
+        print(f"\n🌐 App (Ingress via ALB, env={TERRAFORM_ENV}):\n   https://{APP_INGRESS_HOST}")
     print("\n🌐 Rancher UI (port-forward backup):\n   https://localhost:8443")
     print("\n⚠️  TLS note: self-signed cert → browser warning is expected.")
     print("=" * 60)

@@ -1,0 +1,10 @@
+# Staging overrides (merged with values.yaml)
+existingSecret:
+  name: "postgres"
+persistence:
+  size: 5Gi
+  useEBS: true
+  provisionStorageClass: false
+auth:
+  username: meo_admin
+  database: meo_stationery
