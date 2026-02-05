@@ -1359,10 +1359,64 @@ def _run_deploy_all():
     env = os.environ.copy()
     if argocd_password:
         env["ARGOCD_PASSWORD"] = argocd_password
+        print(f"  ✓ ArgoCD password: {argocd_password}")
+        
+        # Add clusters directly via Management Master instead of tunnels
+        print("  Adding dev/prod clusters to ArgoCD via Management Master...")
+        mgmt_key = os.path.join(TERRAFORM_DIR, "environments", "management", "k8s-key.pem")
+        
+        # SSH to Management Master and run ArgoCD commands directly
+        ssh_cmd = f"ssh -i {mgmt_key} -o StrictHostKeyChecking=no ubuntu@{master_ip}"
+        
+        # Install ArgoCD CLI on Management Master if not exists
+        run_command(f"{ssh_cmd} 'which argocd || (curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && chmod +x /tmp/argocd && sudo mv /tmp/argocd /usr/local/bin/)'", timeout=120)
+        
+        # Add /etc/hosts entry for argocd.local
+        run_command(f"{ssh_cmd} 'grep -q argocd.local /etc/hosts || echo \"127.0.0.1 argocd.local\" | sudo tee -a /etc/hosts'", timeout=30)
+        
+        # Login ArgoCD
+        run_command(f"{ssh_cmd} 'argocd login argocd.local --insecure --grpc-web --username admin --password \"{argocd_password}\"'", timeout=60)
+        
+        # Get dev/prod master IPs and add clusters
+        for env_name in ["dev", "prod"]:
+            try:
+                env_out = subprocess.check_output(
+                    f"terraform -chdir=environments/{env_name} output -json",
+                    shell=True, cwd=TERRAFORM_DIR, timeout=30
+                )
+                env_data = json.loads(env_out)
+                env_master_ips = env_data.get("master_private_ip", {}).get("value", [])
+                env_master_ip = env_master_ips[0] if env_master_ips else ""
+                
+                if env_master_ip:
+                    print(f"  Adding {env_name} cluster ({env_master_ip}) to ArgoCD...")
+                    
+                    # Create kubeconfig for the environment
+                    run_command(f"{ssh_cmd} 'ssh -i ~/.ssh/k8s-key-{env_name}.pem ubuntu@{env_master_ip} \"cat ~/.kube/config\" > ~/.kube/config-{env_name}'", timeout=60)
+                    
+                    # Fix kubeconfig server URL and TLS
+                    run_command(f"{ssh_cmd} 'sed -i \"s/server: https:\\/\\/127.0.0.1:6443/server: https:\\/\\/{env_master_ip}:6443/\" ~/.kube/config-{env_name}'", timeout=30)
+                    run_command(f"{ssh_cmd} 'sed -i \"s/certificate-authority-data:.*/insecure-skip-tls-verify: true/\" ~/.kube/config-{env_name}'", timeout=30)
+                    
+                    # Add cluster to ArgoCD
+                    run_command(f"{ssh_cmd} 'echo y | argocd cluster add default --name {env_name} --kubeconfig ~/.kube/config-{env_name}'", timeout=120)
+                    
+                    print(f"  ✓ {env_name} cluster added to ArgoCD")
+            except Exception as e:
+                print(f"  ⚠ Failed to add {env_name} cluster: {e}")
+        
+        # Apply ArgoCD Applications and patch cluster URLs
+        run_command("bash scripts/setup-argocd-management-apps.sh", cwd=_SCRIPT_DIR, env=env, timeout=120)
+        
+        # Patch application cluster URLs to use correct IPs
+        print("  Patching ArgoCD application cluster URLs...")
+        patch_cmd = f"{ssh_cmd} 'kubectl patch application meo-station-backend-dev -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.1.101.190:6443\\\"}}}}}}\" && kubectl patch application meo-station-database-dev -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.1.101.190:6443\\\"}}}}}}\" && kubectl patch application meo-station-backend-prod -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.2.101.223:6443\\\"}}}}}}\" && kubectl patch application meo-station-database-prod -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.2.101.223:6443\\\"}}}}}}\"\'"
+        run_command(patch_cmd, timeout=60)
+        
     else:
         print("  ⚠ Không lấy được ArgoCD password. Set ARGOCD_PASSWORD=<admin-pass> rồi chạy lại 2 script sau.")
-    run_command("bash scripts/argocd-add-clusters.sh", cwd=_SCRIPT_DIR, env=env, timeout=600)
-    run_command("bash scripts/setup-argocd-management-apps.sh", cwd=_SCRIPT_DIR, env=env, timeout=120)
+        run_command("bash scripts/argocd-add-clusters.sh", cwd=_SCRIPT_DIR, env=env, timeout=600)
+        run_command("bash scripts/setup-argocd-management-apps.sh", cwd=_SCRIPT_DIR, env=env, timeout=120)
     print("\n" + "=" * 60)
     print("  Done. ArgoCD sẽ sync từ Git xuống dev + prod.")
     print("  http://argocd.local — Applications (backend-dev, data-dev, backend-prod, data-prod)")
