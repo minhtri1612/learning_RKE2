@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply Argo CD Applications cho một env (dev|staging|prod).
+# Apply Argo CD Applications cho một env (dev|prod).
 # Chạy từ thư mục gốc repo (có argocd/environments/).
 # Ví dụ: ./scripts/apply-argocd-apps.sh dev
 set -e
@@ -10,7 +10,7 @@ ARGOCD_ENV_DIR="${REPO_DIR}/argocd/environments/${ENV}"
 
 if [[ ! -d "$ARGOCD_ENV_DIR" ]]; then
   echo "Error: argocd/environments/${ENV}/ not found."
-  echo "Usage: $0 [dev|staging|prod]"
+  echo "Usage: $0 [dev|prod]"
   exit 1
 fi
 

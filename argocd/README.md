@@ -1,19 +1,18 @@
-# Argo CD Applications (dev / staging / prod)
+# Argo CD Applications (dev / prod)
 
 Cấu trúc theo môi trường:
 
 - `environments/dev/` – backend + database cho **dev** (meo-station-backend-dev, meo-station-database-dev)
-- `environments/staging/` – cho **staging**
 - `environments/prod/` – cho **prod**
+- `environments/management/` – Applications trên management cluster (deploy xuống dev/prod)
 
 ## Apply từ repo (local hoặc trên master)
 
 Từ thư mục gốc repo (có `argocd/environments/`):
 
 ```bash
-./scripts/apply-argocd-apps.sh dev      # dev
-./scripts/apply-argocd-apps.sh staging   # staging
-./scripts/apply-argocd-apps.sh prod      # prod
+./scripts/apply-argocd-apps.sh dev   # dev
+./scripts/apply-argocd-apps.sh prod   # prod
 ```
 
 `deploy.py` cũng apply từ đây: `argocd/environments/$TERRAFORM_ENV/` (khi chạy từ máy local có KUBECONFIG trỏ cluster).

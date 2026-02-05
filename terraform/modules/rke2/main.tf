@@ -31,6 +31,13 @@ resource "aws_instance" "masters" {
     rke2_token = var.rke2_token
     nlb_dns    = var.nlb_dns_name
   })
+  # Spot one-time instances cannot be stopped for in-place user_data updates.
+  # Force replacement when user_data changes.
+  user_data_replace_on_change = true
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   tags = { Name = "${var.name_prefix}-master-${count.index + 1}-${var.environment}" }
 }
@@ -64,6 +71,13 @@ resource "aws_instance" "workers" {
     rke2_token   = var.rke2_token
     master_ip    = aws_instance.masters[0].private_ip
   })
+  # Spot one-time instances cannot be stopped for in-place user_data updates.
+  # Force replacement when user_data changes.
+  user_data_replace_on_change = true
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   tags = { Name = "${var.name_prefix}-worker-${count.index + 1}-${var.environment}" }
   depends_on = [aws_instance.masters]

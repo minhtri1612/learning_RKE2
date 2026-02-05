@@ -11,28 +11,31 @@ import time
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TERRAFORM_DIR = os.path.join(_SCRIPT_DIR, "terraform")
 
-_VALID_ENVS = ("dev", "staging", "prod")
+_VALID_ENVS = ("dev", "prod", "management", "all")
 
 
 def _get_terraform_env():
-    """dev | staging | prod: từ ./deploy.py <env> hoặc biến môi trường TF_ENV."""
+    """Không truyền gì → deploy toàn bộ (management + dev + prod + ArgoCD GitOps). Có truyền → dev | prod | management."""
     if len(sys.argv) >= 2:
         env = sys.argv[1].lower()
         if env in _VALID_ENVS:
             return env
-        print(f"Usage: {sys.argv[0]} [dev|staging|prod]", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]}  (deploy tất cả)  hoặc  {sys.argv[0]} [dev|prod|management]", file=sys.stderr)
         print(f"Invalid environment: {sys.argv[1]}", file=sys.stderr)
         sys.exit(1)
-    return os.environ.get("TF_ENV", "dev")
+    return os.environ.get("TF_ENV", "all")
 
 
 TERRAFORM_ENV = _get_terraform_env()
 TERRAFORM_ENV_DIR = os.path.join(TERRAFORM_DIR, "environments", TERRAFORM_ENV)
 ANSIBLE_DIR = os.path.join(_SCRIPT_DIR, "ansible")
 HELM_DIR = os.path.join(_SCRIPT_DIR, "k8s_helm")
-KUBECONFIG_FILE = os.path.join(_SCRIPT_DIR, "kube_config_rke2.yaml")
+# Per-env kubeconfig để dev/prod không ghi đè lên nhau
+KUBECONFIG_FILE = os.path.join(_SCRIPT_DIR, f"kube_config_rke2_{TERRAFORM_ENV}.yaml")
 SSH_KEY_FILE_NAME = "k8s-key.pem"
-# Trong deploy: file tạm 127.0.0.1 cho tunnel; file ghi ra cho user (KUBECONFIG_FILE) = master IP
+# Cổng tunnel riêng mỗi env để chạy nhiều env cùng lúc không xung đột
+LOCAL_PORT_BY_ENV = {"dev": 6443, "prod": 6445, "management": 6446}
+# Trong deploy: file tạm 127.0.0.1:<port> cho tunnel; file ghi ra cho user (KUBECONFIG_FILE) = master IP
 KUBECONFIG_TUNNEL_FILE = None
 
 
@@ -70,6 +73,21 @@ def get_terraform_output():
     cmd = f"terraform -chdir=environments/{TERRAFORM_ENV} output -json"
     output = subprocess.check_output(cmd, shell=True, cwd=TERRAFORM_DIR).decode("utf-8")
     return json.loads(output)
+
+
+def get_management_openvpn_ip():
+    """Lấy OpenVPN public IP của management (dùng làm jump host cho dev/prod)."""
+    try:
+        out = subprocess.check_output(
+            "terraform -chdir=environments/management output -json",
+            shell=True,
+            cwd=TERRAFORM_DIR,
+            timeout=15,
+        )
+        data = json.loads(out)
+        return data.get("openvpn_public_ip", {}).get("value", "")
+    except Exception:
+        return ""
 
 
 def setup_terraform():
@@ -183,16 +201,20 @@ def run_openvpn_ansible(openvpn_public_ip):
     print("  ✓ OpenVPN server configured; .ovpn files fetched to project root (e.g. client1.ovpn)")
 
 
-def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
-    """Fetches and configures kubeconfig via SSH through OpenVPN server (jump host)."""
+def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns, jump_ssh_key_path=None, key_on_jump="k8s-key.pem"):
+    """Fetches and configures kubeconfig via SSH through OpenVPN server (jump host).
+    jump_ssh_key_path: key to SSH to jump (management); None = use current env key.
+    key_on_jump: path on jump host for key to master (~/.ssh/<name>)."""
+    key_to_jump = jump_ssh_key_path or os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
+    master_key_path = os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
+
     print("--- Step 4: Fetching Kubeconfig via OpenVPN Server (jump) ---")
-    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
 
     print("  Waiting for OpenVPN server to be ready...")
     for waited in range(0, 120, 5):
         try:
             res = subprocess.run(
-                f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} 'echo ready'",
+                f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} 'echo ready'",
                 shell=True,
                 capture_output=True,
                 timeout=10,
@@ -208,31 +230,32 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
 
     print("  Copying SSH key to OpenVPN server for master access...")
     run_command(
-        f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'",
+        f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'",
         timeout=15,
     )
     run_command(
-        f"scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i {ssh_key_path} {ssh_key_path} ubuntu@{openvpn_ip}:~/.ssh/k8s-key.pem",
+        f"scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i {key_to_jump} {master_key_path} ubuntu@{openvpn_ip}:~/.ssh/{key_on_jump}",
         timeout=30,
     )
     run_command(
-        f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'chmod 600 ~/.ssh/k8s-key.pem'",
+        f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'chmod 600 ~/.ssh/{key_on_jump}'",
         timeout=15,
     )
 
     print("  Waiting for RKE2 to generate kubeconfig (user_data đang chạy)...")
-    time.sleep(120)
+    time.sleep(180)
 
-    print("  Waiting for SSH to master via OpenVPN server...")
-    for waited in range(0, 300, 15):
+    inner_ssh = f"ssh -i ~/.ssh/{key_on_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@{master_private_ip}"
+    print("  Waiting for SSH to master via OpenVPN server (và file kubeconfig)...")
+    for waited in range(0, 420, 15):
         try:
+            # Kiểm tra /home/ubuntu/.kube/config hoặc /etc/rancher/rke2/rke2.yaml (RKE2 tạo rke2.yaml trước)
             res = subprocess.run(
-                f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} "
-                f"'ssh -i ~/.ssh/k8s-key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{master_private_ip} "
-                "test -f /home/ubuntu/.kube/config && echo ready'",
+                f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} "
+                f"'{inner_ssh} \"test -f /home/ubuntu/.kube/config || sudo test -f /etc/rancher/rke2/rke2.yaml\" && echo ready'",
                 shell=True,
                 capture_output=True,
-                timeout=20,
+                timeout=25,
             )
             if res.returncode == 0 and b"ready" in (res.stdout or b""):
                 print(f"  ✓ kubeconfig ready (waited {waited}s)")
@@ -244,13 +267,33 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
         time.sleep(15)
 
     print("  Fetching kubeconfig via SSH (through OpenVPN server)...")
-    kubeconfig_content = subprocess.check_output(
-        f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} "
-        f"'ssh -i ~/.ssh/k8s-key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{master_private_ip} cat /home/ubuntu/.kube/config'",
-        shell=True,
-        timeout=30,
-        stderr=subprocess.DEVNULL,
-    )
+    kubeconfig_content = None
+    try:
+        kubeconfig_content = subprocess.check_output(
+            f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} "
+            f"'{inner_ssh} cat /home/ubuntu/.kube/config'",
+            shell=True,
+            timeout=30,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as e:
+        if e.returncode != 0 and e.stderr:
+            print(f"  (cat /home/ubuntu/.kube/config failed: {e.stderr.decode(errors='replace')[:200]})")
+        try:
+            kubeconfig_content = subprocess.check_output(
+                f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} "
+                f"'{inner_ssh} sudo cat /etc/rancher/rke2/rke2.yaml'",
+                shell=True,
+                timeout=30,
+                stderr=subprocess.PIPE,
+            )
+            print("  ✓ Used /etc/rancher/rke2/rke2.yaml (fallback)")
+        except subprocess.CalledProcessError as e2:
+            if e2.stderr:
+                print(f"  Fallback failed: {e2.stderr.decode(errors='replace')[:300]}", file=sys.stderr)
+            raise
+    if kubeconfig_content is None or len(kubeconfig_content) == 0:
+        raise RuntimeError("Could not fetch kubeconfig from master (SSH or file missing)")
     with open(KUBECONFIG_FILE, "wb") as f:
         f.write(kubeconfig_content)
 
@@ -299,46 +342,134 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns):
 
 
 def _create_tunnel_kubeconfig():
-    """Tạo file kubeconfig tạm 127.0.0.1:6443 để deploy dùng tunnel (trong khi file chính = master IP cho user)."""
+    """Tạo file kubeconfig tạm 127.0.0.1:<port> để deploy dùng tunnel (port riêng mỗi env)."""
     global KUBECONFIG_TUNNEL_FILE
+    local_port = LOCAL_PORT_BY_ENV.get(TERRAFORM_ENV, 6443)
     with open(KUBECONFIG_FILE, "r") as f:
         config = f.read()
-    config_tunnel = re.sub(r'server:\s*https://[^\s\n]+', 'server: https://127.0.0.1:6443', config)
-    path = os.path.join(_SCRIPT_DIR, ".kube_config_rke2_tunnel.yaml")
+    config_tunnel = re.sub(r'server:\s*https://[^\s\n]+', f'server: https://127.0.0.1:{local_port}', config)
+    path = os.path.join(_SCRIPT_DIR, f".kube_config_rke2_{TERRAFORM_ENV}_tunnel.yaml")
     with open(path, "w") as f:
         f.write(config_tunnel)
     os.chmod(path, 0o600)
     KUBECONFIG_TUNNEL_FILE = path
 
 
-def start_openvpn_port_forward(openvpn_ip, master_private_ip, local_port=6443, remote_port=6443):
-    """Starts SSH port forwarding through OpenVPN server: local 6443 -> master:6443."""
-    print("--- Step 4.5: Starting SSH Port Forward (OpenVPN -> Master 6443) ---")
-    ssh_key_path = os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
-    log_file = "/tmp/openvpn-k8s-pf.log"
+def wait_for_api_from_openvpn(openvpn_ip, master_private_ip, max_wait=600, jump_ssh_key_path=None):
+    """Đợi API server thật sự trả lời từ OpenVPN (curl /readyz). RKE2 user_data có thể mất 5–10 phút."""
+    key_path = jump_ssh_key_path or os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
+    print("  Waiting for Kubernetes API from OpenVPN (curl https://master:6443/readyz)...")
+    last_curl_out, last_curl_err = "", ""
+    for waited in range(0, max_wait, 15):
+        try:
+            res = subprocess.run(
+                f"ssh -i {key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@{openvpn_ip} "
+                f"curl -k -s -o /dev/null -w '%{{http_code}}' --connect-timeout 5 https://{master_private_ip}:6443/readyz 2>&1; echo ' exit='$?",
+                shell=True,
+                capture_output=True,
+                timeout=20,
+            )
+            out = (res.stdout or b"").decode(errors="replace").strip()
+            err = (res.stderr or b"").decode(errors="replace").strip()
+            last_curl_out, last_curl_err = out, err
+            # 200 = OK, 401/403 = API đang chạy nhưng từ chối vì curl không gửi client cert (bình thường)
+            if res.returncode == 0 and ("200" in out or "401" in out or "403" in out):
+                print("  ✓ API reachable from OpenVPN (waited %ds, curl: %s)" % (waited, out.split()[0] if out else "ok"))
+                return True
+            if waited % 60 == 0 and waited > 0:
+                # In ra lỗi thật: 000 = không kết nối được, exit=7 = refused, exit=28 = timeout
+                hint = out or err or ("ssh_rc=%s" % res.returncode)
+                print("  Still waiting... (%ds) curl: %s" % (waited, hint[:120]))
+        except subprocess.TimeoutExpired:
+            last_curl_err = "ssh/curl timeout"
+        except Exception as e:
+            last_curl_err = str(e)
+        time.sleep(15)
+    print("  ✗ API not reachable from OpenVPN after %ds." % max_wait)
+    print("  Curl last output: %s" % (last_curl_out or "(empty)"))
+    if last_curl_err:
+        print("  Curl last stderr: %s" % last_curl_err[:200])
+    print("  Debug: (1) terraform apply đã chạy xong? SG k8s_master có rule 6443 từ openvpn SG.")
+    print("         (2) Trên master: ssh ubuntu@<master_ip> rồi sudo tail -100 /var/log/cloud-init-output.log")
+    print("         (3) Từ OpenVPN: ssh ubuntu@<master_ip> rồi curl -k -v https://localhost:6443/readyz")
+    return False
+
+
+def _tunnel_log_path():
+    return f"/tmp/openvpn-k8s-pf-{TERRAFORM_ENV}.log"
+
+
+def _dump_tunnel_diagnostics(local_port=6443):
+    """In log tunnel và trạng thái process khi API không kết nối được."""
+    log_file = _tunnel_log_path()
+    print("  --- Tunnel diagnostics ---")
+    if os.path.isfile(log_file):
+        with open(log_file, "r") as f:
+            lines = f.readlines()
+        tail = lines[-25:] if len(lines) >= 25 else lines
+        print("  Tunnel log (%s) last %d lines:" % (log_file, len(tail)))
+        for line in tail:
+            print("    " + line.rstrip())
+    else:
+        print("  Tunnel log not found: %s" % log_file)
+    try:
+        r = subprocess.run(
+            "pgrep -af 'ssh.*%s:.*6443'" % local_port,
+            shell=True,
+            capture_output=True,
+            timeout=5,
+        )
+        if r.returncode == 0 and r.stdout:
+            print("  Tunnel process: running")
+        else:
+            print("  Tunnel process: NOT running (tunnel đã tắt → kiểm tra SSH từ máy bạn tới OpenVPN)")
+    except Exception:
+        print("  Tunnel process: (check failed)")
+
+
+def start_openvpn_port_forward(openvpn_ip, master_private_ip, local_port=None, remote_port=6443, jump_ssh_key_path=None):
+    """SSH tunnel: local:port -> OpenVPN server connects to master:6443 (một bước, ổn định hơn ProxyCommand)."""
+    if local_port is None:
+        local_port = LOCAL_PORT_BY_ENV.get(TERRAFORM_ENV, 6443)
+    print(f"--- Step 4.5: Starting SSH Port Forward (local:{local_port} -> OpenVPN -> master:{remote_port}) ---")
+    ssh_key_path = jump_ssh_key_path or os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
+    log_file = _tunnel_log_path()
 
     try:
-        subprocess.run("pkill -f 'ssh.*6443:.*6443' 2>/dev/null || true", shell=True)
+        subprocess.run("pkill -f 'ssh.*%s:.*%s' 2>/dev/null || true" % (local_port, remote_port), shell=True)
         time.sleep(1)
     except Exception:
         pass
 
-    proxy_cmd = f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -W %h:%p ubuntu@{openvpn_ip}"
     cmd = (
         f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "
-        f"-o ProxyCommand=\"{proxy_cmd}\" "
-        f"-N -L {local_port}:{master_private_ip}:{remote_port} ubuntu@{master_private_ip}"
+        f"-o ConnectTimeout=30 -o ServerAliveInterval=30 "
+        f"-N -L 127.0.0.1:{local_port}:{master_private_ip}:{remote_port} ubuntu@{openvpn_ip}"
     )
     with open(log_file, "w") as f:
         proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=subprocess.STDOUT)
 
-    time.sleep(2)
-    if proc.poll() is None:
-        print(f"  ✓ Port-forward started (PID: {proc.pid})")
-        print(f"  ✓ Logs: {log_file}")
-        return proc
-    print(f"  ⚠ Port-forward may have failed. Check: {log_file}")
-    return None
+    time.sleep(5)
+    if proc.poll() is not None:
+        print("  ✗ Port-forward process exited. Log:")
+        _dump_tunnel_diagnostics(local_port)
+        return None
+    try:
+        r = subprocess.run(
+            "curl -k -s -o /dev/null -w '%%{http_code}' --connect-timeout 8 https://127.0.0.1:%s/readyz" % local_port,
+            shell=True,
+            capture_output=True,
+            timeout=12,
+        )
+        out = (r.stdout or b"").decode().strip()
+        if r.returncode == 0 and out == "200":
+            print("  ✓ Port-forward OK, API reachable via 127.0.0.1:%s (PID %s)" % (local_port, proc.pid))
+        else:
+            print("  ⚠ Tunnel up but /readyz returned: %s. Log: %s" % (out or "timeout/error", log_file))
+    except Exception as e:
+        print("  ⚠ Tunnel verify failed: %s. Log: %s" % (e, log_file))
+    print("  Logs: %s" % log_file)
+    return proc
 
 
 def wait_for_nlb_health_checks():
@@ -348,11 +479,11 @@ def wait_for_nlb_health_checks():
     time.sleep(120)  # Tăng thời gian đợi lên 2 phút
 
 
-def wait_for_k8s_api(kubeconfig_path, max_wait=300):
+def wait_for_k8s_api(kubeconfig_path, max_wait=120):
+    """Đợi API server qua tunnel (API đã được kiểm tra từ OpenVPN trước khi mở tunnel)."""
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
-    print("  Waiting for Kubernetes API server to be accessible...")
-    print("  Note: NLB health checks may take 1-2 minutes to pass...")
+    print("  Waiting for Kubernetes API server to be accessible (via tunnel)...")
     waited = 0
     last_error = ""
     while waited < max_wait:
@@ -367,19 +498,20 @@ def wait_for_k8s_api(kubeconfig_path, max_wait=300):
             print(f"  ✓ API server is accessible (waited {waited}s)")
             return True
         
-        # Lấy error message
         err = (res.stderr or b"").decode(errors="ignore").strip()
         if err and err != last_error:
             last_error = err
-            if waited % 30 == 0:  # Print mỗi 30s
+            if waited % 30 == 0:
                 print(f"  Still waiting... ({err[:150]})")
         
         time.sleep(10)
         waited += 10
     
-    print(f"  ⚠ API server not accessible after {max_wait}s")
+    print("  ⚠ API server not accessible after %ds" % max_wait)
     if last_error:
-        print(f"  Last error: {last_error[:200]}")
+        print("  Last error: %s" % last_error[:200])
+    local_port = LOCAL_PORT_BY_ENV.get(TERRAFORM_ENV, 6443)
+    _dump_tunnel_diagnostics(local_port)
     print("  Continuing anyway...")
     return False
 
@@ -391,7 +523,7 @@ def install_ebs_csi_driver():
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
-    wait_for_k8s_api(kubeconfig_path, max_wait=300)
+    wait_for_k8s_api(kubeconfig_path, max_wait=120)
 
     # Create ServiceAccount for EBS CSI controller (required when serviceAccount.create=false)
     print("  Creating ServiceAccount for EBS CSI controller...")
@@ -901,15 +1033,13 @@ def resolve_dns_to_ip(dns_name):
         return None
 
 
-# Hostnames cần trỏ ALB: app theo từng env + rancher + argocd
+# Hostnames trỏ ALB: MỖI ENV CHỈ CẬP NHẬT HOST CỦA MÌNH → argocd.local CHỈ KHI DEPLOY MANAGEMENT.
 APP_INGRESS_HOST = f"meo-stationery-{TERRAFORM_ENV}.local"
-INGRESS_HOSTNAMES = (
-    "meo-stationery-dev.local",
-    "meo-stationery-staging.local",
-    "meo-stationery-prod.local",
-    RANCHER_HOSTNAME,
-    "argocd.local",
-)
+HOSTNAMES_FOR_ALB_BY_ENV = {
+    "management": ("argocd.local",),
+    "dev": ("meo-stationery-dev.local", RANCHER_HOSTNAME),
+    "prod": ("meo-stationery-prod.local", RANCHER_HOSTNAME),
+}
 
 
 def update_etc_hosts(hostname, ip_or_dns):
@@ -952,8 +1082,11 @@ def update_etc_hosts(hostname, ip_or_dns):
 
 
 def update_etc_hosts_for_alb(alb_dns):
-    """Cập nhật /etc/hosts một dòng cho meo-stationery-{dev,staging,prod}.local, rancher.local, argocd.local (trỏ ALB)."""
+    """Cập nhật /etc/hosts CHỈ hostnames của env hiện tại. Management → argocd.local; dev/prod → app + rancher (không đụng argocd.local)."""
     if not alb_dns:
+        return False
+    hostnames = HOSTNAMES_FOR_ALB_BY_ENV.get(TERRAFORM_ENV, ())
+    if not hostnames:
         return False
     print(f"  Using ALB DNS: {alb_dns}")
     ip = resolve_dns_to_ip(alb_dns)
@@ -961,13 +1094,13 @@ def update_etc_hosts_for_alb(alb_dns):
         print("  ⚠ Cannot resolve ALB, skipping /etc/hosts update")
         return False
     hosts_file = "/etc/hosts"
-    entry = f"{ip}\t" + " ".join(INGRESS_HOSTNAMES)
+    entry = f"{ip}\t" + " ".join(hostnames)
     try:
         result = subprocess.run(f"sudo cat {hosts_file}", shell=True, capture_output=True, text=True, check=True)
         lines = result.stdout.splitlines()
         new_lines = []
         for line in lines:
-            if any(h in line for h in INGRESS_HOSTNAMES):
+            if any(h in line for h in hostnames):
                 continue
             new_lines.append(line)
         new_lines.append(entry)
@@ -976,32 +1109,34 @@ def update_etc_hosts_for_alb(alb_dns):
             tmp_path = tmp.name
         subprocess.check_call(f"sudo cp {tmp_path} {hosts_file} && sudo chmod 644 {hosts_file}", shell=True)
         os.unlink(tmp_path)
-        print(f"  ✓ /etc/hosts updated: {ip} -> meo-stationery-{{dev,staging,prod}}.local, rancher.local, argocd.local")
+        print(f"  ✓ /etc/hosts updated: {ip} -> {' '.join(hostnames)}")
         return True
     except subprocess.CalledProcessError:
-        _write_setup_hosts_script(alb_dns, ip)
+        _write_setup_hosts_script(alb_dns, ip, hostnames)
         return False
     except Exception:
-        _write_setup_hosts_script(alb_dns, ip)
+        _write_setup_hosts_script(alb_dns, ip, hostnames)
         return False
 
 
-def _write_setup_hosts_script(alb_dns, alb_ip):
+def _write_setup_hosts_script(alb_dns, alb_ip, hostnames=None):
     """Ghi script để user chạy sudo khi deploy.py không có quyền sửa /etc/hosts."""
+    if hostnames is None:
+        hostnames = HOSTNAMES_FOR_ALB_BY_ENV.get(TERRAFORM_ENV, ())
     scripts_dir = os.path.join(_SCRIPT_DIR, "scripts")
     os.makedirs(scripts_dir, exist_ok=True)
     script_path = os.path.join(scripts_dir, "setup-hosts.sh")
-    hosts_str = " ".join(INGRESS_HOSTNAMES)
+    hosts_str = " ".join(hostnames)
     # sed -E: extended regex so | = OR; escape dots for literal match
-    sed_pattern = "|".join(h.replace(".", "\\.") for h in INGRESS_HOSTNAMES)
+    sed_pattern = "|".join(h.replace(".", "\\.") for h in hostnames)
     content = f"""#!/usr/bin/env bash
-# Chạy 1 lần sau ./deploy.py nếu /etc/hosts chưa được cập nhật (sudo): sudo bash {script_path}
+# Chạy 1 lần sau ./deploy.py (env={TERRAFORM_ENV}) nếu /etc/hosts chưa được cập nhật: sudo bash {script_path}
 set -e
 ENTRY="{alb_ip}\t{hosts_str}"
 # Xóa dòng cũ có các host này
 sudo sed -i.bak -E '/{sed_pattern}/d' /etc/hosts
 echo "$ENTRY" | sudo tee -a /etc/hosts
-echo "Done. Open: https://meo-stationery-dev.local (dev) | meo-stationery-staging.local (staging) | meo-stationery-prod.local (prod) | rancher.local | argocd.local"
+echo "Done. Hosts for {TERRAFORM_ENV}: {hosts_str}"
 """
     with open(script_path, "w") as f:
         f.write(content)
@@ -1123,51 +1258,194 @@ done
         print(f"  ⚠ Port-forward may have failed. Check logs: {log_file}")
 
 
+def _run_deploy_all():
+    """Deploy management + dev + prod, rồi ArgoCD add cluster + apply Applications → GitOps sync mọi thứ."""
+    deploy_py = os.path.abspath(os.path.join(_SCRIPT_DIR, "deploy.py"))
+    if not os.path.isfile(deploy_py):
+        deploy_py = sys.argv[0]
+    print("\n" + "=" * 60)
+    print("  ./deploy.py (no args) = FULL PIPELINE: management + dev + prod + ArgoCD add clusters + Applications")
+    print("  ArgoCD sẽ sync app từ Git xuống dev/prod — không cần chạy tay script nào.")
+    print("=" * 60)
+    # 1. Management full deploy (OpenVPN + RKE2 + ArgoCD)
+    print(f"\n--- Deploy env: management ---")
+    run_command(f"{sys.executable} {deploy_py} management", cwd=_SCRIPT_DIR, timeout=3600)
+    # 2. Chỉ Terraform apply dev + prod (chưa peering nên chưa chạy fetch_kubeconfig)
+    for env in ("dev", "prod"):
+        env_dir = os.path.join(TERRAFORM_DIR, "environments", env)
+        tfvars = os.path.join(env_dir, "terraform.tfvars")
+        if not os.path.isfile(tfvars):
+            ex = os.path.join(env_dir, "terraform.tfvars.example")
+            if os.path.isfile(ex):
+                with open(ex) as f:
+                    c = f.read().replace("YOUR_OFFICE_OR_VPN_IP/32", "0.0.0.0/0")
+                with open(tfvars, "w") as f:
+                    f.write(c)
+        print(f"\n--- Terraform apply: {env} ---")
+        run_command(
+            f"terraform -chdir=environments/{env} init -input=false && terraform -chdir=environments/{env} apply -auto-approve -input=false -var-file=terraform.tfvars",
+            cwd=TERRAFORM_DIR,
+            timeout=1800,
+        )
+    # 3. VPC peering trước khi SSH từ Management OpenVPN -> dev/prod master
+    print("\n--- Networking: VPC peering (management <-> dev, management <-> prod) ---")
+    run_command(
+        "terraform -chdir=environments/networking init -input=false && terraform -chdir=environments/networking apply -auto-approve -input=false",
+        cwd=TERRAFORM_DIR,
+        timeout=300,
+    )
+    # 4. Dev/Prod: fetch kubeconfig qua jump + Rancher/ESO (đã có peering nên SSH được)
+    for env in ("dev", "prod"):
+        print(f"\n--- Deploy env: {env} (kubeconfig + Rancher + ESO) ---")
+        env_with_skip = os.environ.copy()
+        env_with_skip["SKIP_TERRAFORM"] = "1"
+        run_command(f"{sys.executable} {deploy_py} {env}", cwd=_SCRIPT_DIR, timeout=3600, env=env_with_skip)
+    print("\n--- ArgoCD: add clusters + apply Applications (GitOps) ---")
+    # Lấy ArgoCD admin password từ management cluster (qua SSH tunnel)
+    mgmt_tf = "environments/management"
+    try:
+        out = subprocess.check_output(
+            f"terraform -chdir={mgmt_tf} output -json",
+            shell=True,
+            cwd=TERRAFORM_DIR,
+            timeout=30,
+        )
+        tf_json = json.loads(out)
+        openvpn_ip = tf_json.get("openvpn_public_ip", {}).get("value", "")
+        master_ips = tf_json.get("master_private_ip", {}).get("value", [])
+        master_ip = master_ips[0] if master_ips else ""
+    except Exception:
+        openvpn_ip, master_ip = "", ""
+    argocd_password = os.environ.get("ARGOCD_PASSWORD", "")
+    if not argocd_password and openvpn_ip and master_ip:
+        key = os.path.join(TERRAFORM_DIR, "environments", "management", "k8s-key.pem")
+        # Avoid collisions with other tunnels (argocd-add-clusters uses its own ports)
+        port = 6444
+        try:
+            subprocess.run(f"pkill -f 'ssh -L {port}:' 2>/dev/null || true", shell=True, cwd=_SCRIPT_DIR, timeout=5)
+        except Exception:
+            pass
+        tunnel_proc = subprocess.Popen(
+            f"ssh -L {port}:{master_ip}:6443 -i {key} -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes ubuntu@{openvpn_ip} -N",
+            shell=True,
+            cwd=_SCRIPT_DIR,
+        )
+        time.sleep(5)
+        try:
+            kc_mgmt = os.path.join(_SCRIPT_DIR, "kube_config_rke2_management.yaml")
+            if os.path.isfile(kc_mgmt):
+                with open(kc_mgmt) as f:
+                    kc_content = f.read()
+                kc_content = re.sub(r"server: https://[^:]+:6443", f"server: https://127.0.0.1:{port}", kc_content)
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
+                    tmp.write(kc_content)
+                    tmp_kc = tmp.name
+                for _ in range(24):
+                    try:
+                        out = subprocess.check_output(
+                            f"kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{{.data.password}}'",
+                            shell=True,
+                            env={**os.environ, "KUBECONFIG": tmp_kc},
+                            timeout=10,
+                        )
+                        argocd_password = subprocess.check_output("base64 -d", input=out, shell=True).decode().strip()
+                        break
+                    except subprocess.CalledProcessError:
+                        time.sleep(10)
+                os.unlink(tmp_kc)
+        finally:
+            tunnel_proc.terminate()
+            tunnel_proc.wait(timeout=5)
+    env = os.environ.copy()
+    if argocd_password:
+        env["ARGOCD_PASSWORD"] = argocd_password
+    else:
+        print("  ⚠ Không lấy được ArgoCD password. Set ARGOCD_PASSWORD=<admin-pass> rồi chạy lại 2 script sau.")
+    run_command("bash scripts/argocd-add-clusters.sh", cwd=_SCRIPT_DIR, env=env, timeout=600)
+    run_command("bash scripts/setup-argocd-management-apps.sh", cwd=_SCRIPT_DIR, env=env, timeout=120)
+    print("\n" + "=" * 60)
+    print("  Done. ArgoCD sẽ sync từ Git xuống dev + prod.")
+    print("  http://argocd.local — Applications (backend-dev, data-dev, backend-prod, data-prod)")
+    print("=" * 60)
+
+
 def main():
-    setup_terraform()
+    if TERRAFORM_ENV == "all":
+        _run_deploy_all()
+        return
+    if os.environ.get("SKIP_TERRAFORM") != "1":
+        setup_terraform()
     tf_out = get_terraform_output()
 
     nlb_dns = tf_out["nlb_dns_name"]["value"]
-    openvpn_public_ip = tf_out["openvpn_public_ip"]["value"]
     master_private_ip = tf_out["master_private_ip"]["value"][0]
 
+    # Chỉ Management có OpenVPN; dev/prod dùng Management làm jump host
+    if TERRAFORM_ENV == "management":
+        openvpn_public_ip = tf_out["openvpn_public_ip"]["value"]
+        jump_key_path = None
+        key_on_jump = "k8s-key.pem"
+    else:
+        openvpn_public_ip = get_management_openvpn_ip()
+        if not openvpn_public_ip:
+            print("  ✗ Dev/Prod cần Management OpenVPN làm jump. Chạy terraform apply cho management trước.")
+            sys.exit(1)
+        jump_key_path = os.path.join(TERRAFORM_DIR, "environments", "management", SSH_KEY_FILE_NAME)
+        if not os.path.isfile(jump_key_path):
+            print(f"  ✗ Thiếu key Management: {jump_key_path}")
+            sys.exit(1)
+        jump_key_path = os.path.abspath(jump_key_path)
+        key_on_jump = f"k8s-key-{TERRAFORM_ENV}.pem"
+
     print("\n--- RKE2 + OpenVPN ---")
-    print(f"  ✓ OpenVPN Server: {openvpn_public_ip}")
+    print(f"  ✓ Jump / OpenVPN: {openvpn_public_ip}" + (" (Management)" if TERRAFORM_ENV != "management" else ""))
     print(f"  ✓ Master Private IP: {master_private_ip}")
 
     if os.environ.get("SKIP_OPENVPN_ANSIBLE") == "1":
         print("  ⏭ SKIP_OPENVPN_ANSIBLE=1 → bỏ qua bước OpenVPN/Ansible.")
-        print("  Khi SSH được, chạy:")
-        print(f"    ssh -o IdentitiesOnly=yes -i terraform/environments/{TERRAFORM_ENV}/k8s-key.pem ubuntu@{openvpn_public_ip}")
-        print(f"    cd ansible && ansible-playbook -i inventory_openvpn.yml -e openvpn_public_ip={openvpn_public_ip} openvpn-server.yml")
+        if TERRAFORM_ENV == "management":
+            print("  Khi SSH được, chạy:")
+            print(f"    ssh -o IdentitiesOnly=yes -i terraform/environments/{TERRAFORM_ENV}/k8s-key.pem ubuntu@{openvpn_public_ip}")
+            print(f"    cd ansible && ansible-playbook -i inventory_openvpn.yml -e openvpn_public_ip={openvpn_public_ip} openvpn-server.yml")
         print("  Sau đó chạy lại: ./deploy.py", TERRAFORM_ENV)
         sys.exit(0)
 
-    print("  ⏳ Đợi OpenVPN instance SSH sẵn sàng rồi chạy Ansible setup...")
-    run_openvpn_ansible(openvpn_public_ip)
-    fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns)
+    if TERRAFORM_ENV == "management":
+        print("  ⏳ Đợi OpenVPN instance SSH sẵn sàng rồi chạy Ansible setup...")
+        run_openvpn_ansible(openvpn_public_ip)
+
+    fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns, jump_ssh_key_path=jump_key_path, key_on_jump=key_on_jump)
     _create_tunnel_kubeconfig()
-    start_openvpn_port_forward(openvpn_public_ip, master_private_ip, local_port=6443, remote_port=6443)
+    print("--- Step 4.4: Waiting for API server reachable from OpenVPN ---")
+    if not wait_for_api_from_openvpn(openvpn_public_ip, master_private_ip, jump_ssh_key_path=jump_key_path):
+        sys.exit(1)
+    start_openvpn_port_forward(openvpn_public_ip, master_private_ip, jump_ssh_key_path=jump_key_path)
     wait_for_nlb_health_checks()
     install_ebs_csi_driver()
 
-    install_rancher()
-    install_argocd()
-    install_external_secrets_operator()
-    ensure_aws_secrets_credentials()
-    apply_external_secrets_manifests()
-    deploy_argocd_applications()
+    if TERRAFORM_ENV == "management":
+        # Cluster management: CHỈ cài ArgoCD. ArgoCD này quản lý deploy sang dev/prod (không cài ArgoCD trên prod/dev).
+        install_argocd()
+        wait_for_argocd_ready()
+        # Sau khi có argocd/environments/management/ (Application target dev/prod), có thể gọi deploy_argocd_applications() ở đây.
+    else:
+        # Dev/Staging/Prod: KHÔNG cài ArgoCD. Chỉ Rancher, ESO, secrets. Apps deploy qua ArgoCD trên management (add cluster + chạy setup-argocd-management-apps.sh).
+        install_rancher()
+        install_external_secrets_operator()
+        ensure_aws_secrets_credentials()
+        apply_external_secrets_manifests()
 
     print("\n--- Updating /etc/hosts for Ingress access ---")
     alb_dns = tf_out.get("web_alb_dns_name", {}).get("value", "")
     if alb_dns:
         if not update_etc_hosts_for_alb(alb_dns):
-            print("  You can run the script above once to add ALB -> meo-stationery-{dev,staging,prod}.local, rancher.local, argocd.local")
+            print(f"  You can run the script above once to add ALB -> {' '.join(HOSTNAMES_FOR_ALB_BY_ENV.get(TERRAFORM_ENV, ()))}")
     else:
         print("  ⚠ ALB DNS not available yet, skipping /etc/hosts update")
         print("  You can update manually after ALB is ready")
 
-    start_rancher_portforward()
+    if TERRAFORM_ENV != "management":
+        start_rancher_portforward()
 
     # VPN chạy nền: tạo systemd service (project này) để không cần giữ terminal
     _setup_openvpn_systemd_service()
@@ -1175,17 +1453,29 @@ def main():
     print("\n" + "=" * 60)
     print("XXX Deployment Complete! XXX")
     print("=" * 60)
-    print("\n📋 Cluster (một file kubeconfig, chỉ cần VPN):")
+    print("\n📋 Cluster (kubeconfig theo env, chỉ cần VPN):")
     print(f"   export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
     print(f"   kubectl get nodes")
-    print(f"   ssh -o IdentitiesOnly=yes -i terraform/environments/{TERRAFORM_ENV}/k8s-key.pem ubuntu@{master_private_ip}")
-    print(f"\n🔐 OpenVPN Server: {openvpn_public_ip}")
-    print("   SSH qua jump: ssh -o IdentitiesOnly=yes -i terraform/environments/%s/k8s-key.pem ubuntu@%s" % (TERRAFORM_ENV, openvpn_public_ip))
-    if alb_dns:
-        print(f"\n🌐 Rancher UI (Ingress via ALB):\n   https://{RANCHER_HOSTNAME}\n   admin / {RANCHER_BOOTSTRAP_PASSWORD}")
-        print(f"\n🌐 ArgoCD UI (Ingress via ALB):\n   http://argocd.local")
-        print(f"\n🌐 App (Ingress via ALB, env={TERRAFORM_ENV}):\n   https://{APP_INGRESS_HOST}")
-    print("\n🌐 Rancher UI (port-forward backup):\n   https://localhost:8443")
+    if TERRAFORM_ENV == "management":
+        print(f"   ssh -o IdentitiesOnly=yes -i terraform/environments/{TERRAFORM_ENV}/k8s-key.pem ubuntu@{master_private_ip}")
+        print(f"\n🔐 OpenVPN Server: {openvpn_public_ip}")
+        print("   SSH qua jump: ssh -o IdentitiesOnly=yes -i terraform/environments/management/k8s-key.pem ubuntu@%s" % openvpn_public_ip)
+    else:
+        print(f"   SSH qua Management: ssh -i .../management/k8s-key.pem ubuntu@{openvpn_public_ip} rồi ssh -i .../%s/k8s-key.pem ubuntu@%s" % (TERRAFORM_ENV, master_private_ip))
+        print(f"\n🔐 Jump host (Management OpenVPN): {openvpn_public_ip}")
+    if TERRAFORM_ENV == "management":
+        if alb_dns:
+            print(f"\n🌐 ArgoCD UI (Ingress via ALB):\n   http://argocd.local")
+        print("\n   ArgoCD (port-forward nếu chưa có Ingress):\n   kubectl port-forward svc/argocd-server -n argocd 8080:443")
+        print("\n   Cluster management chỉ chạy ArgoCD.")
+        print("   Để deploy full (management + dev + prod + ArgoCD sync GitOps): chạy ./deploy.py (không tham số).")
+        print("   Nếu chỉ deploy từng env tay: sau đó chạy ./deploy.py (không tham số) để add clusters + apps.")
+    else:
+        if alb_dns:
+            print(f"\n🌐 Rancher UI (Ingress via ALB):\n   https://{RANCHER_HOSTNAME}\n   admin / {RANCHER_BOOTSTRAP_PASSWORD}")
+            print(f"\n🌐 App (Ingress via ALB, env={TERRAFORM_ENV}):\n   https://{APP_INGRESS_HOST}")
+        print("\n🌐 Rancher UI (port-forward backup):\n   https://localhost:8443")
+        print("   ArgoCD chỉ chạy trên cluster management → http://argocd.local (sau khi deploy management).")
     print("\n⚠️  TLS note: self-signed cert → browser warning is expected.")
     print("=" * 60)
 

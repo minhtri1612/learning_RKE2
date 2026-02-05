@@ -157,6 +157,17 @@ resource "aws_security_group" "k8s_common" {
     cidr_blocks = [for s in aws_subnet.private : s.cidr_block]
     description = "Ping from K8s private subnets"
   }
+  # SSH từ bất kỳ EC2 nào trong VPC peering (Management): có thể SSH vào mọi EC2 private dev/prod
+  dynamic "ingress" {
+    for_each = length(var.peer_vpc_cidrs) > 0 ? [1] : []
+    content {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = var.peer_vpc_cidrs
+      description = "SSH from any EC2 in peered VPCs (e.g. Management)"
+    }
+  }
   egress {
     from_port   = 0
     to_port     = 0
@@ -201,6 +212,25 @@ resource "aws_security_group" "k8s_master" {
     to_port     = 6443
     protocol    = "tcp"
     cidr_blocks = concat([for s in aws_subnet.private : s.cidr_block], [for s in aws_subnet.public : s.cidr_block], ["10.8.0.0/24"])
+  }
+  # Cho phép API server được gọi từ các VPC peering (ví dụ VPC management chạy ArgoCD)
+  dynamic "ingress" {
+    for_each = length(var.peer_vpc_cidrs) > 0 ? [1] : []
+    content {
+      from_port   = 6443
+      to_port     = 6443
+      protocol    = "tcp"
+      cidr_blocks = var.peer_vpc_cidrs
+      description = "K8s API from peered VPCs (management / tooling)"
+    }
+  }
+  # OpenVPN server (jump host) cần gọi master:6443 để tunnel /readyz
+  ingress {
+    from_port       = 6443
+    to_port         = 6443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.openvpn.id]
+    description     = "K8s API from OpenVPN (deploy tunnel)"
   }
   ingress {
     from_port   = 9345

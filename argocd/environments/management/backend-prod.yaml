@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: meo-station-backend-staging
+  name: meo-station-backend-prod
   namespace: argocd
 spec:
   project: default
@@ -12,9 +12,9 @@ spec:
     helm:
       valueFiles:
         - values.yaml
-        - values-staging.yaml
+        - values-prod.yaml
   destination:
-    server: https://kubernetes.default.svc
+    server: __CLUSTER_SERVER_PROD__
     namespace: meo-stationery
   syncPolicy:
     automated:

@@ -35,6 +35,11 @@ module "vpc" {
   name_prefix  = var.name_prefix
   vpc_cidr     = var.vpc_cidr
   my_ip        = var.my_ip
+  # Prod nằm VPC riêng (10.2.0.0/16)
+  public_subnet_cidrs  = ["10.2.1.0/24", "10.2.2.0/24"]
+  private_subnet_cidrs = ["10.2.101.0/24", "10.2.102.0/24"]
+  # Cho phép VPC management (10.0.0.0/16) gọi API prod qua peering
+  peer_vpc_cidrs       = ["10.0.0.0/16"]
 }
 
 module "iam" {
@@ -72,23 +77,7 @@ module "loadbalancers" {
   alb_certificate_arn  = module.certificate.certificate_arn
 }
 
-module "openvpn" {
-  source             = "../../modules/openvpn"
-  environment        = var.environment
-  name_prefix        = var.name_prefix
-  ami_id             = local.ami_id
-  instance_type      = var.instance_type
-  subnet_id          = module.vpc.public_subnet_a_id
-  security_group_ids = [module.vpc.openvpn_sg_id]
-  key_name           = module.keys.key_name
-}
-
-# Route: VPN reply path (traffic từ private subnet về 10.8.0.0/24 qua OpenVPN)
-resource "aws_route" "vpn_reply" {
-  route_table_id         = module.vpc.private_route_table_id
-  destination_cidr_block = "10.8.0.0/24"
-  network_interface_id   = module.openvpn.primary_network_interface_id
-}
+# OpenVPN chỉ có ở Management; dev/prod truy cập qua VPC peering từ Management.
 
 module "rke2" {
   source                    = "../../modules/rke2"

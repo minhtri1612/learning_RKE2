@@ -1,7 +1,4 @@
-output "openvpn_public_ip" {
-  value       = module.openvpn.openvpn_public_ip
-  description = "Elastic IP OpenVPN – SSH: ssh -i k8s-key.pem ubuntu@<this-ip>"
-}
+# OpenVPN chỉ có ở Management; prod truy cập qua jump host Management.
 
 output "master_private_ip" {
   value       = module.rke2.master_private_ips
@@ -19,6 +16,11 @@ output "worker_public_ips" {
 output "nlb_dns_name" {
   value       = module.loadbalancers.nlb_dns_name
   description = "NLB DNS cho Kubernetes API"
+}
+
+output "cluster_api_url" {
+  value       = "https://${module.loadbalancers.nlb_dns_name}:6443"
+  description = "Kubernetes API URL cho ArgoCD đăng ký cluster (management deploy xuống env này)"
 }
 
 output "web_alb_dns_name" {

@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: meo-station-database-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: HEAD
+    path: k8s_helm/database
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+  destination:
+    server: __CLUSTER_SERVER_PROD__
+    namespace: database
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - Replace=true
+  ignoreDifferences:
+  - group: apps
+    kind: StatefulSet
+    jsonPointers:
+    - /spec/volumeClaimTemplates
+    - /spec/serviceName

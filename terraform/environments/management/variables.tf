@@ -1,10 +1,10 @@
 # -----------------------------------------------------------------------------
-# Staging environment variables
+# Management environment variables
 # -----------------------------------------------------------------------------
 
 variable "environment" {
   type    = string
-  default = "staging"
+  default = "management"
 }
 
 variable "region" {
@@ -18,14 +18,15 @@ variable "project_name" {
 }
 
 variable "my_ip" {
-  description = "CIDR cho phép SSH vào OpenVPN"
+  description = "CIDR cho phép SSH vào OpenVPN (0.0.0.0/0 = mọi nơi)"
   type        = string
   default     = "0.0.0.0/0"
 }
 
 variable "ami_id" {
-  type    = string
-  default = ""
+  type        = string
+  description = "AMI override (để trống thì dùng Ubuntu 22.04 mới nhất)"
+  default     = ""
 }
 
 variable "instance_type" {
@@ -40,7 +41,7 @@ variable "master_count" {
 
 variable "worker_count" {
   type    = number
-  default = 2
+  default = 1
 }
 
 variable "use_spot_instances" {

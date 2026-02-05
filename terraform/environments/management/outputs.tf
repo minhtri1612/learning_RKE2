@@ -5,7 +5,7 @@ output "openvpn_public_ip" {
 
 output "master_private_ip" {
   value       = module.rke2.master_private_ips
-  description = "Private IPs master nodes"
+  description = "Private IPs master nodes (sau khi VPN: ssh ubuntu@<ip>)"
 }
 
 output "master_public_ip" {
@@ -23,7 +23,7 @@ output "nlb_dns_name" {
 
 output "web_alb_dns_name" {
   value       = module.loadbalancers.web_alb_dns_name
-  description = "ALB DNS cho web"
+  description = "ALB DNS cho ArgoCD UI (argocd.local)"
 }
 
 output "ssh_key_file" {
@@ -37,11 +37,10 @@ output "environment" {
 
 output "eso_access_key_id" {
   value       = module.iam.eso_access_key_id
-  description = "ESO IAM access key (deploy.py dùng để tạo aws-secrets-credentials)"
+  description = "ESO IAM (management không dùng ESO, giữ cho tương thích)"
 }
 
 output "eso_secret_access_key" {
   value       = module.iam.eso_secret_access_key
   sensitive   = true
-  description = "ESO IAM secret key (deploy.py dùng, không in log)"
 }

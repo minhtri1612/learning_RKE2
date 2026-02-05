@@ -1,12 +1,13 @@
 # -----------------------------------------------------------------------------
-# Staging – mặc định; terraform.tfvars tự tạo từ file này nếu chưa có (deploy.py)
+# Management – cluster chỉ chạy ArgoCD (GitOps)
+# Copy to terraform.tfvars và chỉnh my_ip nếu cần
 # -----------------------------------------------------------------------------
-environment        = "staging"
+environment        = "management"
 region             = "ap-southeast-2"
 my_ip              = "0.0.0.0/0"
 instance_type      = "t3.medium"
 master_count       = 1
-worker_count       = 2
+worker_count       = 1
 use_spot_instances = true
 vpc_cidr           = "10.0.0.0/16"
 name_prefix        = "k8s"

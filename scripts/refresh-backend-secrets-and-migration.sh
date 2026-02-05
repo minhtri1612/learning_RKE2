@@ -3,7 +3,7 @@
 # backend migration job so it uses the updated DATABASE_URL (e.g. after Terraform
 # applied urlencode fix). Run this where kubectl can reach the cluster (e.g. SSH
 # to master or via VPN).
-# Usage: ./scripts/refresh-backend-secrets-and-migration.sh [dev|staging|prod]
+# Usage: ./scripts/refresh-backend-secrets-and-migration.sh [dev|prod]
 
 set -e
 ENV="${1:-dev}"

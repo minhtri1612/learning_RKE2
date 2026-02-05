@@ -1,6 +1,6 @@
 variable "environment" {
   type        = string
-  description = "Environment name (dev, staging, prod)"
+  description = "Environment name (dev, prod)"
 }
 
 variable "name_prefix" {
@@ -29,4 +29,10 @@ variable "public_subnet_cidrs" {
 variable "private_subnet_cidrs" {
   type    = list(string)
   default = ["10.0.101.0/24", "10.0.102.0/24"]
+}
+
+variable "peer_vpc_cidrs" {
+  type        = list(string)
+  default     = []
+  description = "CIDR các VPC peering (ví dụ VPC management) được phép truy cập API master (6443)."
 }

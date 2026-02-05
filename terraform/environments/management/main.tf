@@ -1,12 +1,8 @@
 # -----------------------------------------------------------------------------
-# Dev environment – RKE2 + OpenVPN + ALB/NLB
-# Provider: symlink provider.tf -> ../../global/provider.tf (dùng chung)
-# Chạy: terraform -chdir=environments/dev init && terraform -chdir=environments/dev apply -var-file=terraform.tfvars
+# Management environment – cluster chỉ chạy ArgoCD (GitOps), không app/DB
+# Cấu trúc giống dev: RKE2 + OpenVPN + ALB/NLB
 # -----------------------------------------------------------------------------
 
-# -----------------------------------------------------------------------------
-# Data & locals
-# -----------------------------------------------------------------------------
 data "aws_availability_zones" "available" { state = "available" }
 
 data "aws_ami" "ubuntu" {
@@ -26,33 +22,25 @@ locals {
   ami_id = var.ami_id != "" ? var.ami_id : data.aws_ami.ubuntu.id
 }
 
-# -----------------------------------------------------------------------------
-# Modules
-# -----------------------------------------------------------------------------
 module "vpc" {
   source       = "../../modules/vpc"
   environment  = var.environment
   name_prefix  = var.name_prefix
   vpc_cidr     = var.vpc_cidr
   my_ip        = var.my_ip
-  # Dev nằm VPC riêng (10.1.0.0/16)
-  public_subnet_cidrs  = ["10.1.1.0/24", "10.1.2.0/24"]
-  private_subnet_cidrs = ["10.1.101.0/24", "10.1.102.0/24"]
-  # Cho phép VPC management (10.0.0.0/16) gọi API dev qua peering
-  peer_vpc_cidrs       = ["10.0.0.0/16"]
 }
 
 module "iam" {
-  source       = "../../modules/iam"
-  environment  = var.environment
-  name_prefix  = var.name_prefix
-  project_name = var.project_name
+  source        = "../../modules/iam"
+  environment   = var.environment
+  name_prefix   = var.name_prefix
+  project_name  = var.project_name
 }
 
 module "keys" {
-  source      = "../../modules/keys"
-  environment = var.environment
-  name_prefix = var.name_prefix
+  source       = "../../modules/keys"
+  environment  = var.environment
+  name_prefix  = var.name_prefix
   key_filename = "${path.module}/k8s-key.pem"
 }
 
@@ -62,11 +50,11 @@ module "certificate" {
 }
 
 module "secrets" {
-  source                      = "../../modules/secrets"
-  environment                 = var.environment
-  project_name                = var.project_name
-  secret_name_suffix          = "rke2-token-v4"   # v4 vì v3 đang scheduled for deletion trên AWS
-  app_credentials_name_suffix = "-v2"              # v2 vì app-credentials cũ đang scheduled for deletion
+  source                       = "../../modules/secrets"
+  environment                  = var.environment
+  project_name                 = var.project_name
+  secret_name_suffix           = "rke2-token-v4"
+  app_credentials_name_suffix  = "-v2"
 }
 
 module "loadbalancers" {
@@ -79,7 +67,22 @@ module "loadbalancers" {
   alb_certificate_arn  = module.certificate.certificate_arn
 }
 
-# OpenVPN chỉ có ở Management; dev/prod truy cập qua VPC peering từ Management.
+module "openvpn" {
+  source              = "../../modules/openvpn"
+  environment         = var.environment
+  name_prefix         = var.name_prefix
+  ami_id              = local.ami_id
+  instance_type       = var.instance_type
+  subnet_id           = module.vpc.public_subnet_a_id
+  security_group_ids  = [module.vpc.openvpn_sg_id]
+  key_name            = module.keys.key_name
+}
+
+resource "aws_route" "vpn_reply" {
+  route_table_id         = module.vpc.private_route_table_id
+  destination_cidr_block = "10.8.0.0/24"
+  network_interface_id   = module.openvpn.primary_network_interface_id
+}
 
 module "rke2" {
   source                    = "../../modules/rke2"
@@ -92,7 +95,7 @@ module "rke2" {
   private_subnet_ids        = module.vpc.private_subnet_ids
   k8s_common_sg_id          = module.vpc.k8s_common_sg_id
   k8s_master_sg_id          = module.vpc.k8s_master_sg_id
-  k8s_worker_sg_id          = module.vpc.k8s_worker_sg_id
+  k8s_worker_sg_id         = module.vpc.k8s_worker_sg_id
   iam_instance_profile_name = module.iam.instance_profile_name
   key_name                  = module.keys.key_name
   nlb_dns_name              = module.loadbalancers.nlb_dns_name
@@ -100,7 +103,6 @@ module "rke2" {
   use_spot_instances        = var.use_spot_instances
 }
 
-# NLB target group attachment (masters)
 resource "aws_lb_target_group_attachment" "nlb_masters" {
   count            = length(module.rke2.master_ids)
   target_group_arn = module.loadbalancers.nlb_tg_arn
@@ -108,7 +110,6 @@ resource "aws_lb_target_group_attachment" "nlb_masters" {
   port             = 6443
 }
 
-# ALB target group attachments (masters + workers, HTTP + HTTPS)
 resource "aws_lb_target_group_attachment" "web_http_masters" {
   count            = length(module.rke2.master_ids)
   target_group_arn = module.loadbalancers.web_http_tg_arn
