@@ -1219,6 +1219,98 @@ WantedBy=multi-user.target
         print(f"  Nếu VPN đang chạy với .ovpn cũ, chạy: sudo systemctl restart {service_name}")
 
 
+def _update_hosts_file():
+    """Tự động cập nhật /etc/hosts với ALB DNS cho ingress domains."""
+    print("--- Step: Updating /etc/hosts for ALB domains ---")
+    
+    try:
+        # Lấy terraform outputs
+        tf_outputs = get_terraform_output()
+        alb_dns = tf_outputs.get("web_alb_dns_name", {}).get("value", "")
+        
+        if not alb_dns:
+            print("  ⚠️  No ALB DNS found in terraform output")
+            return
+            
+        # Resolve ALB DNS to IP
+        print(f"  Resolving ALB DNS: {alb_dns}")
+        try:
+            import socket
+            alb_ip = socket.gethostbyname(alb_dns)
+            print(f"  ✓ ALB IP: {alb_ip}")
+        except socket.gaierror as e:
+            print(f"  ⚠️  Failed to resolve ALB DNS: {e}")
+            return
+            
+        # Determine ingress hostnames based on environment
+        if TERRAFORM_ENV == "management":
+            hostnames = ["argocd.local", "rancher.local"]
+        elif TERRAFORM_ENV == "dev":
+            hostnames = ["meo-stationery-dev.local"]
+        elif TERRAFORM_ENV == "prod":
+            hostnames = ["meo-stationery-prod.local", "rancher.local"]
+        else:
+            print(f"  ⚠️  Unknown environment: {TERRAFORM_ENV}")
+            return
+            
+        # Read current /etc/hosts
+        hosts_file = "/etc/hosts"
+        try:
+            with open(hosts_file, "r") as f:
+                hosts_content = f.read()
+        except PermissionError:
+            print(f"  ⚠️  Need sudo to read {hosts_file}")
+            return
+            
+        # Check and add entries
+        updated = False
+        new_entries = []
+        
+        for hostname in hostnames:
+            # Check if hostname already exists
+            if hostname in hosts_content:
+                # Check if it points to correct IP
+                import re
+                pattern = rf"^(\S+)\s+.*{re.escape(hostname)}"
+                match = re.search(pattern, hosts_content, re.MULTILINE)
+                if match and match.group(1) != alb_ip:
+                    print(f"  ⚠️  {hostname} exists but points to {match.group(1)}, should be {alb_ip}")
+                    print(f"     Manual update needed: sudo sed -i 's/{match.group(1)}.*{hostname}.*/{alb_ip} {hostname}/' {hosts_file}")
+                elif match:
+                    print(f"  ✓ {hostname} already points to {alb_ip}")
+                else:
+                    # Hostname exists but not in expected format
+                    print(f"  ⚠️  {hostname} exists in /etc/hosts but format unclear")
+            else:
+                # Add new entry
+                new_entries.append(f"{alb_ip} {hostname}")
+                updated = True
+                
+        if new_entries:
+            print(f"  Adding entries to {hosts_file}:")
+            for entry in new_entries:
+                print(f"    {entry}")
+                
+            try:
+                # Try to append directly
+                with open(hosts_file, "a") as f:
+                    f.write("\n# Added by deploy.py\n")
+                    for entry in new_entries:
+                        f.write(f"{entry}\n")
+                print(f"  ✓ Updated {hosts_file}")
+            except PermissionError:
+                print(f"  ⚠️  Need sudo to write to {hosts_file}. Run manually:")
+                print(f"     echo '# Added by deploy.py' | sudo tee -a {hosts_file}")
+                for entry in new_entries:
+                    print(f"     echo '{entry}' | sudo tee -a {hosts_file}")
+        else:
+            print("  ✓ /etc/hosts already up to date")
+            
+    except Exception as e:
+        print(f"  ⚠️  Failed to update /etc/hosts: {e}")
+        print("     You may need to manually add ALB entries to /etc/hosts")
+
+
 def start_rancher_portforward():
     """Starts port-forward for Rancher UI automatically with retry logic."""
     print("--- Step 9: Starting Rancher Port-Forward ---")
@@ -1361,21 +1453,35 @@ def _run_deploy_all():
         env["ARGOCD_PASSWORD"] = argocd_password
         print(f"  ✓ ArgoCD password: {argocd_password}")
         
-        # Add clusters directly via Management Master instead of tunnels
+        # Add clusters directly via Management Master via OpenVPN jump host
         print("  Adding dev/prod clusters to ArgoCD via Management Master...")
         mgmt_key = os.path.join(TERRAFORM_DIR, "environments", "management", "k8s-key.pem")
         
-        # SSH to Management Master and run ArgoCD commands directly
-        ssh_cmd = f"ssh -i {mgmt_key} -o StrictHostKeyChecking=no ubuntu@{master_ip}"
+        # Copy management SSH key to OpenVPN server first
+        run_command(f"scp -i {mgmt_key} -o StrictHostKeyChecking=no {mgmt_key} ubuntu@{openvpn_ip}:~/.ssh/k8s-key.pem", timeout=30)
+        run_command(f"ssh -i {mgmt_key} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'chmod 600 ~/.ssh/k8s-key.pem'", timeout=15)
+        
+        # SSH to Management Master via OpenVPN server (jump host) - single command
+        ssh_base = f"ssh -i {mgmt_key} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip}"
+        ssh_to_master = f"ssh -i ~/.ssh/k8s-key.pem -o StrictHostKeyChecking=no ubuntu@{master_ip}"
+        
+        def ssh_cmd(command):
+            # Escape double quotes for the inner SSH command (which wraps command in "")
+            inner_cmd = command.replace('"', '\\"')
+            # The inner command string: ssh ... "inner_cmd"
+            full_inner = f'{ssh_to_master} "{inner_cmd}"'
+            # Escape single quotes for the outer SSH command (which wraps inner_full in '')
+            outer_cmd = full_inner.replace("'", "'\\''")
+            return f"{ssh_base} '{outer_cmd}'"
         
         # Install ArgoCD CLI on Management Master if not exists
-        run_command(f"{ssh_cmd} 'which argocd || (curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && chmod +x /tmp/argocd && sudo mv /tmp/argocd /usr/local/bin/)'", timeout=120)
+        run_command(ssh_cmd('which argocd || (curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && chmod +x /tmp/argocd && sudo mv /tmp/argocd /usr/local/bin/)'), timeout=120)
         
         # Add /etc/hosts entry for argocd.local
-        run_command(f"{ssh_cmd} 'grep -q argocd.local /etc/hosts || echo \"127.0.0.1 argocd.local\" | sudo tee -a /etc/hosts'", timeout=30)
+        run_command(ssh_cmd('grep -q argocd.local /etc/hosts || echo "127.0.0.1 argocd.local" | sudo tee -a /etc/hosts'), timeout=30)
         
         # Login ArgoCD
-        run_command(f"{ssh_cmd} 'argocd login argocd.local --insecure --grpc-web --username admin --password \"{argocd_password}\"'", timeout=60)
+        run_command(ssh_cmd(f'argocd login argocd.local --insecure --grpc-web --username admin --password "{argocd_password}"'), timeout=60)
         
         # Get dev/prod master IPs and add clusters
         for env_name in ["dev", "prod"]:
@@ -1391,15 +1497,36 @@ def _run_deploy_all():
                 if env_master_ip:
                     print(f"  Adding {env_name} cluster ({env_master_ip}) to ArgoCD...")
                     
-                    # Create kubeconfig for the environment
-                    run_command(f"{ssh_cmd} 'ssh -i ~/.ssh/k8s-key-{env_name}.pem ubuntu@{env_master_ip} \"cat ~/.kube/config\" > ~/.kube/config-{env_name}'", timeout=60)
+                    # Copy SSH key for this environment to OpenVPN server, then to management master
+                    env_key_local = os.path.join(TERRAFORM_DIR, "environments", env_name, "k8s-key.pem")
+                    if os.path.exists(env_key_local):
+                        # Copy to OpenVPN server first
+                        run_command(f"scp -i {mgmt_key} -o StrictHostKeyChecking=no {env_key_local} ubuntu@{openvpn_ip}:~/k8s-key-{env_name}.pem", timeout=30)
+                        # Copy from OpenVPN server to management master
+                        run_command(f"ssh -i {mgmt_key} -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'scp -i ~/.ssh/k8s-key.pem -o StrictHostKeyChecking=no ~/k8s-key-{env_name}.pem ubuntu@{master_ip}:~/.ssh/k8s-key-{env_name}.pem'", timeout=30)
+                        run_command(ssh_cmd('chmod 600 ~/.ssh/k8s-key-{}.pem'.format(env_name)), timeout=15)
+                        print(f"  ✓ Copied SSH key for {env_name}")
+                    else:
+                        print(f"  ⚠ SSH key not found: {env_key_local}")
+                        continue
                     
-                    # Fix kubeconfig server URL and TLS
-                    run_command(f"{ssh_cmd} 'sed -i \"s/server: https:\\/\\/127.0.0.1:6443/server: https:\\/\\/{env_master_ip}:6443/\" ~/.kube/config-{env_name}'", timeout=30)
-                    run_command(f"{ssh_cmd} 'sed -i \"s/certificate-authority-data:.*/insecure-skip-tls-verify: true/\" ~/.kube/config-{env_name}'", timeout=30)
+                    # Create kubeconfig for the environment
+                    run_command(ssh_cmd(f'mkdir -p ~/.kube && ssh -i ~/.ssh/k8s-key-{env_name}.pem -o StrictHostKeyChecking=no ubuntu@{env_master_ip} "cat ~/.kube/config" > ~/.kube/config-{env_name}'), timeout=60)
+                    
+                    # Fix kubeconfig server URL and TLS: remove CA data, add insecure-skip-tls-verify inside cluster block (via sed)
+                    run_command(ssh_cmd(f"cp ~/.kube/config-{env_name} ~/.kube/config-{env_name}.bak"), timeout=15)
+                    # Use sed to: 1. Replace IP, 2. Remove CA line, 3. Add insecure-skip-tls-verify after server line
+                    # We use \\    to ensure 4 spaces indentation is preserved in the append
+                    sed_cmd = (
+                        f"sed -e 's/127.0.0.1/{env_master_ip}/g' "
+                        f"-e '/certificate-authority-data/d' "
+                        f"-e '/server: https/a \\    insecure-skip-tls-verify: true' "
+                        f"~/.kube/config-{env_name}.bak > ~/.kube/config-{env_name}"
+                    )
+                    run_command(ssh_cmd(sed_cmd), timeout=15)
                     
                     # Add cluster to ArgoCD
-                    run_command(f"{ssh_cmd} 'echo y | argocd cluster add default --name {env_name} --kubeconfig ~/.kube/config-{env_name}'", timeout=120)
+                    run_command(ssh_cmd(f'echo y | argocd cluster add default --name {env_name} --kubeconfig ~/.kube/config-{env_name}'), timeout=120)
                     
                     print(f"  ✓ {env_name} cluster added to ArgoCD")
             except Exception as e:
@@ -1408,10 +1535,34 @@ def _run_deploy_all():
         # Apply ArgoCD Applications and patch cluster URLs
         run_command("bash scripts/setup-argocd-management-apps.sh", cwd=_SCRIPT_DIR, env=env, timeout=120)
         
-        # Patch application cluster URLs to use correct IPs
+        # Patch application cluster URLs to use correct IPs (dynamic)
         print("  Patching ArgoCD application cluster URLs...")
-        patch_cmd = f"{ssh_cmd} 'kubectl patch application meo-station-backend-dev -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.1.101.190:6443\\\"}}}}}}\" && kubectl patch application meo-station-database-dev -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.1.101.190:6443\\\"}}}}}}\" && kubectl patch application meo-station-backend-prod -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.2.101.223:6443\\\"}}}}}}\" && kubectl patch application meo-station-database-prod -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.2.101.223:6443\\\"}}}}}}\"\'"
-        run_command(patch_cmd, timeout=60)
+        try:
+            # Get current master IPs from terraform outputs
+            dev_data = get_terraform_output_for_env("dev")
+            prod_data = get_terraform_output_for_env("prod")
+            
+            dev_master_ips = dev_data.get("master_private_ip", {}).get("value", [])
+            prod_master_ips = prod_data.get("master_private_ip", {}).get("value", [])
+            
+            dev_master_ip = dev_master_ips[0] if dev_master_ips else ""
+            prod_master_ip = prod_master_ips[0] if prod_master_ips else ""
+            
+            if dev_master_ip:
+                run_command(ssh_cmd(f'kubectl patch application meo-station-backend-dev -n argocd --type=merge -p="{{\\"spec\\":{{\\"destination\\":{{\\"server\\":\\"https://{dev_master_ip}:6443\\"}}}}}}"'), timeout=30)
+                run_command(ssh_cmd(f'kubectl patch application meo-station-database-dev -n argocd --type=merge -p="{{\\"spec\\":{{\\"destination\\":{{\\"server\\":\\"https://{dev_master_ip}:6443\\"}}}}}}"'), timeout=30)
+                print(f"  ✓ Patched dev applications to use {dev_master_ip}")
+                
+            if prod_master_ip:
+                run_command(ssh_cmd(f'kubectl patch application meo-station-backend-prod -n argocd --type=merge -p="{{\\"spec\\":{{\\"destination\\":{{\\"server\\":\\"https://{prod_master_ip}:6443\\"}}}}}}"'), timeout=30)
+                run_command(ssh_cmd(f'kubectl patch application meo-station-database-prod -n argocd --type=merge -p="{{\\"spec\\":{{\\"destination\\":{{\\"server\\":\\"https://{prod_master_ip}:6443\\"}}}}}}"'), timeout=30)
+                print(f"  ✓ Patched prod applications to use {prod_master_ip}")
+                
+        except Exception as e:
+            print(f"  ⚠ Failed to patch cluster URLs: {e}")
+            # Fallback to old hardcoded method
+            patch_cmd = f"{ssh_cmd} 'kubectl patch application meo-station-backend-dev -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.1.101.190:6443\\\"}}}}}}\" && kubectl patch application meo-station-database-dev -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.1.101.190:6443\\\"}}}}}}\" && kubectl patch application meo-station-backend-prod -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.2.101.223:6443\\\"}}}}}}\" && kubectl patch application meo-station-database-prod -n argocd --type=merge -p=\"{{\\\"spec\\\":{{\\\"destination\\\":{{\\\"server\\\":\\\"https://10.2.101.223:6443\\\"}}}}}}\"\'"
+            run_command(patch_cmd, timeout=60)
         
     else:
         print("  ⚠ Không lấy được ArgoCD password. Set ARGOCD_PASSWORD=<admin-pass> rồi chạy lại 2 script sau.")
@@ -1504,6 +1655,9 @@ def main():
     # VPN chạy nền: tạo systemd service (project này) để không cần giữ terminal
     _setup_openvpn_systemd_service()
 
+    # Tự động cập nhật /etc/hosts với ALB domains
+    _update_hosts_file()
+
     print("\n" + "=" * 60)
     print("XXX Deployment Complete! XXX")
     print("=" * 60)
@@ -1517,19 +1671,27 @@ def main():
     else:
         print(f"   SSH qua Management: ssh -i .../management/k8s-key.pem ubuntu@{openvpn_public_ip} rồi ssh -i .../%s/k8s-key.pem ubuntu@%s" % (TERRAFORM_ENV, master_private_ip))
         print(f"\n🔐 Jump host (Management OpenVPN): {openvpn_public_ip}")
+    
+    print(f"\n🌐 Web Access (ALB + /etc/hosts auto-updated):")
     if TERRAFORM_ENV == "management":
         if alb_dns:
-            print(f"\n🌐 ArgoCD UI (Ingress via ALB):\n   http://argocd.local")
-        print("\n   ArgoCD (port-forward nếu chưa có Ingress):\n   kubectl port-forward svc/argocd-server -n argocd 8080:443")
+            print(f"   ArgoCD UI: http://argocd.local")
+            print(f"   Rancher UI: https://rancher.local")
+        print("\n   ArgoCD (port-forward backup):\n   kubectl port-forward svc/argocd-server -n argocd 8080:443")
         print("\n   Cluster management chỉ chạy ArgoCD.")
         print("   Để deploy full (management + dev + prod + ArgoCD sync GitOps): chạy ./deploy.py (không tham số).")
         print("   Nếu chỉ deploy từng env tay: sau đó chạy ./deploy.py (không tham số) để add clusters + apps.")
     else:
         if alb_dns:
-            print(f"\n🌐 Rancher UI (Ingress via ALB):\n   https://{RANCHER_HOSTNAME}\n   admin / {RANCHER_BOOTSTRAP_PASSWORD}")
-            print(f"\n🌐 App (Ingress via ALB, env={TERRAFORM_ENV}):\n   https://{APP_INGRESS_HOST}")
-        print("\n🌐 Rancher UI (port-forward backup):\n   https://localhost:8443")
+            print(f"   Rancher UI: https://rancher.local")
+            print(f"   App ({TERRAFORM_ENV}): https://meo-stationery-{TERRAFORM_ENV}.local")
+        print(f"\n🌐 Rancher UI (port-forward backup):\n   https://localhost:8443")
         print("   ArgoCD chỉ chạy trên cluster management → http://argocd.local (sau khi deploy management).")
+    
+    print(f"\n🔧 Utilities:")
+    print(f"   Update /etc/hosts: ./scripts/update-hosts.sh {TERRAFORM_ENV}")
+    print(f"   Update all envs: ./scripts/update-hosts.sh all")
+    
     print("\n⚠️  TLS note: self-signed cert → browser warning is expected.")
     print("=" * 60)
 
