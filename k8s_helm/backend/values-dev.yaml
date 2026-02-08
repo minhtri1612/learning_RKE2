@@ -12,7 +12,7 @@ workload:
       memory: "512Mi"
       cpu: "500m"
 autoscaling:
-  enabled: false
+  enabled: true
   minReplicas: 4
   maxReplicas: 6
 ingress:
