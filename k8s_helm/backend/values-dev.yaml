@@ -13,5 +13,7 @@ workload:
       cpu: "500m"
 autoscaling:
   enabled: false
+  minReplicas: 4
+  maxReplicas: 6
 ingress:
   host: meo-stationery-dev.local
