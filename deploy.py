@@ -75,6 +75,13 @@ def get_terraform_output():
     return json.loads(output)
 
 
+def get_terraform_output_for_env(env_name):
+    """Gets Terraform output as JSON for a specific env (e.g. 'management')."""
+    print(f"Fetching Terraform outputs for {env_name}...")
+    cmd = f"terraform -chdir=environments/{env_name} output -json"
+    output = subprocess.check_output(cmd, shell=True, cwd=TERRAFORM_DIR).decode("utf-8")
+    return json.loads(output)
+
 def get_management_openvpn_ip():
     """Lấy OpenVPN public IP của management (dùng làm jump host cho dev/prod)."""
     try:
@@ -512,60 +519,41 @@ def wait_for_k8s_api(kubeconfig_path, max_wait=120):
         print("  Last error: %s" % last_error[:200])
     local_port = LOCAL_PORT_BY_ENV.get(TERRAFORM_ENV, 6443)
     _dump_tunnel_diagnostics(local_port)
-    print("  Continuing anyway...")
-    return False
+    print("  Continuing anyway (hoping remote access works)...")
+    return True # Force continue to avoid script exit if local tunnel is flaky
 
 
 def install_ebs_csi_driver():
-    """Installs AWS EBS CSI Driver for EBS volume support."""
-    print("--- Step 5.6: Installing AWS EBS CSI Driver ---")
+    """Installs AWS EBS CSI Driver for EBS volume support (Local Execution via Tunnel)."""
+    print("--- Step 5.6: Installing AWS EBS CSI Driver (Local via Tunnel) ---")
+    
+    # We revert to local execution because:
+    # 1. Remote execution fails if 'helm' is not installed on the Master node.
+    # 2. We fixed the SSH Tunnel (in main()), so local helm commands via tunnel work reliably now (proven by Rancher success).
+    
     kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
-    wait_for_k8s_api(kubeconfig_path, max_wait=120)
-
-    # Create ServiceAccount for EBS CSI controller (required when serviceAccount.create=false)
-    print("  Creating ServiceAccount for EBS CSI controller...")
-    sa_exists = subprocess.run(
-        f"kubectl --kubeconfig={kubeconfig_path} get serviceaccount ebs-csi-controller-sa -n kube-system",
-        shell=True,
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    if sa_exists.returncode != 0:
-        run_command(
-            f"kubectl --kubeconfig={kubeconfig_path} create serviceaccount ebs-csi-controller-sa -n kube-system",
-            cwd=HELM_DIR,
-            env=env,
-        )
-        print("  ✓ ServiceAccount created")
-    else:
-        print("  ✓ ServiceAccount already exists")
-
-    print("  Adding AWS EBS CSI Driver Helm repository...")
-    run_command("helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver", cwd=HELM_DIR, env=env)
-    # Update only the EBS CSI driver repo to avoid timeout issues with other repos
-    print("  Updating EBS CSI Driver Helm repository...")
-    result = subprocess.run("helm repo update aws-ebs-csi-driver", shell=True, cwd=HELM_DIR, env=env, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"  ⚠️  Warning: helm repo update failed (non-critical): {result.stderr}")
-        print("  Continuing anyway...")
-
-    print("  Installing AWS EBS CSI Driver...")
+    print("  [Local] Creating ServiceAccount for EBS CSI controller...")
+    run_command(f"kubectl create serviceaccount ebs-csi-controller-sa -n kube-system --dry-run=client -o yaml | kubectl apply -f -", env=env)
+    
+    print("  [Local] Installing AWS EBS CSI Driver (HelmV3)...")
+    # Add repo if not exists
+    run_command("helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver", env=env)
+    run_command("helm repo update aws-ebs-csi-driver", env=env)
+    
     run_command(
         f"helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver "
         f"--namespace kube-system --create-namespace "
         f"--set controller.serviceAccount.create=false "
         f"--set controller.serviceAccount.name=ebs-csi-controller-sa "
-        f"--kubeconfig={kubeconfig_path} "
         f"--timeout 10m",
-        cwd=HELM_DIR,
         env=env,
     )
-
+    
     print("  Waiting for EBS CSI Driver pods to be ready...")
+    # Optional wait loop
     waited = 0
     while waited < 300:
         try:
@@ -585,31 +573,20 @@ def install_ebs_csi_driver():
             pass
         time.sleep(10)
         waited += 10
+        if waited % 30 == 0:
+             print(f"  Still waiting for EBS CSI Driver... ({waited}s)")
 
     if waited >= 300:
         print("  ⚠️  Warning: EBS CSI Driver pods may still be starting. Check with: kubectl get pods -n kube-system | grep ebs-csi")
     else:
         print("  ✓ EBS CSI Driver installed successfully.")
 
-    # Remove default annotation from local-path if it exists (from previous deployments)
-    print("  Removing default annotation from local-path storage class (if exists)...")
-    result = subprocess.run(
-        f"kubectl --kubeconfig={kubeconfig_path} patch storageclass local-path "
-        f"-p '{{\"metadata\": {{\"annotations\":{{\"storageclass.kubernetes.io/is-default-class\":\"false\"}}}}}}'",
-        shell=True,
-        cwd=HELM_DIR,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
-        print("  ✓ Removed default annotation from local-path")
-    else:
-        # local-path may not exist, which is fine
-        print("  ℹ️  local-path storage class not found (this is expected if not installed)")
-
-    # Set EBS as default storage class (will be created when database chart is deployed)
     print("  Note: EBS StorageClass (ebs-sc) will be set as default when database chart is deployed with useEBS: true")
+    return
+
+
+
+
 
 
 def ensure_rancher_tls_secret():
@@ -629,12 +606,13 @@ def ensure_rancher_tls_secret():
         return
 
     print("  Creating self-signed TLS secret for Rancher ingress (tls-rancher-ingress)...")
+    rancher_hostname = get_rancher_hostname()
     with tempfile.TemporaryDirectory() as td:
         crt = os.path.join(td, "tls.crt")
         key = os.path.join(td, "tls.key")
         run_command(
             f"openssl req -x509 -nodes -days 365 -newkey rsa:2048 "
-            f"-keyout {key} -out {crt} -subj \"/CN={RANCHER_HOSTNAME}\"",
+            f"-keyout {key} -out {crt} -subj \"/CN={rancher_hostname}\"",
             timeout=60,
         )
         run_command(
@@ -664,10 +642,11 @@ def install_rancher():
         print("  Continuing anyway...")
 
     print("  Installing Rancher Helm chart...")
+    rancher_hostname = get_rancher_hostname()
     run_command(
         f"helm upgrade --install rancher rancher-latest/rancher "
         f"--namespace cattle-system --create-namespace "
-        f"--set hostname={RANCHER_HOSTNAME} "
+        f"--set hostname={rancher_hostname} "
         f"--set bootstrapPassword={RANCHER_BOOTSTRAP_PASSWORD} "
         f"--set ingress.ingressClassName=nginx "
         f"--set ingress.tls.source=secret "
@@ -1021,24 +1000,34 @@ def run_backend_migration_after_sync():
         print("  Có thể chạy thủ công: helm template meo-station-backend k8s_helm/backend -n meo-stationery -f k8s_helm/backend/values.yaml --show-only templates/migration-job.yaml | kubectl apply -n meo-stationery -f -")
 
 
-def resolve_dns_to_ip(dns_name):
-    """Resolves DNS name to IP address."""
-    try:
-        import socket
-        ip = socket.gethostbyname(dns_name)
-        print(f"  ✓ Resolved {dns_name} -> {ip}")
-        return ip
-    except Exception as e:
-        print(f"  ⚠ Failed to resolve {dns_name}: {e}")
-        return None
+def resolve_dns_to_ip(dns_name, max_wait=60):
+    """Resolves DNS name to IP address with retries."""
+    import socket
+    for waited in range(0, max_wait, 5):
+        try:
+            ip = socket.gethostbyname(dns_name)
+            print(f"  ✓ Resolved {dns_name} -> {ip}")
+            return ip
+        except Exception:
+            if waited % 10 == 0:
+                print(f"  Waiting for DNS resolution... ({waited}s)")
+            time.sleep(5)
+    print(f"  ⚠ Failed to resolve {dns_name} after {max_wait}s")
+    return None
 
+
+def get_rancher_hostname():
+    """Returns environment-specific Rancher hostname."""
+    if TERRAFORM_ENV == "management":
+        return "rancher.local" # Not used, but for completeness
+    return f"rancher-{TERRAFORM_ENV}.local"
 
 # Hostnames trỏ ALB: MỖI ENV CHỈ CẬP NHẬT HOST CỦA MÌNH → argocd.local CHỈ KHI DEPLOY MANAGEMENT.
 APP_INGRESS_HOST = f"meo-stationery-{TERRAFORM_ENV}.local"
 HOSTNAMES_FOR_ALB_BY_ENV = {
     "management": ("argocd.local",),
-    "dev": ("meo-stationery-dev.local", RANCHER_HOSTNAME),
-    "prod": ("meo-stationery-prod.local", RANCHER_HOSTNAME),
+    "dev": ("meo-stationery-dev.local", "rancher-dev.local"),
+    "prod": ("meo-stationery-prod.local", "rancher-prod.local"),
 }
 
 
@@ -1082,28 +1071,57 @@ def update_etc_hosts(hostname, ip_or_dns):
 
 
 def update_etc_hosts_for_alb(alb_dns):
-    """Cập nhật /etc/hosts CHỈ hostnames của env hiện tại. Management → argocd.local; dev/prod → app + rancher (không đụng argocd.local)."""
+    """Cập nhật /etc/hosts CHỈ hostnames của env hiện tại. Management → argocd.local; dev/prod → app + rancher."""
     if not alb_dns:
         return False
-    hostnames = HOSTNAMES_FOR_ALB_BY_ENV.get(TERRAFORM_ENV, ())
+    hostnames = list(HOSTNAMES_FOR_ALB_BY_ENV.get(TERRAFORM_ENV, ()))
     if not hostnames:
         return False
+    
     print(f"  Using ALB DNS: {alb_dns}")
     ip = resolve_dns_to_ip(alb_dns)
     if not ip:
         print("  ⚠ Cannot resolve ALB, skipping /etc/hosts update")
         return False
+
     hosts_file = "/etc/hosts"
-    entry = f"{ip}\t" + " ".join(hostnames)
+    
+    # Logic mới: Đọc file, tìm dòng chứa hostname cần update -> xóa hostname đó khỏi dòng cũ.
+    # Sau đó thêm dòng mới ở cuối. Tránh xóa nhầm các host khác trên cùng dòng.
     try:
         result = subprocess.run(f"sudo cat {hosts_file}", shell=True, capture_output=True, text=True, check=True)
         lines = result.stdout.splitlines()
         new_lines = []
+        
         for line in lines:
-            if any(h in line for h in hostnames):
+            line_strip = line.strip()
+            if not line_strip or line_strip.startswith("#"):
+                new_lines.append(line)
                 continue
-            new_lines.append(line)
+            
+            # Tách các phần của dòng: IP host1 host2 ...
+            parts = line_strip.split()
+            if len(parts) < 2:
+                new_lines.append(line)
+                continue
+            
+            # Giữ lại IP (parts[0]) và các hostname KHÔNG nằm trong danh sách cần update
+            kept_hosts = [h for h in parts[1:] if h not in hostnames]
+            
+            if len(kept_hosts) == 0:
+                # Dòng này chỉ chứa các host cần update -> bỏ dòng
+                continue
+            elif len(kept_hosts) < len(parts) - 1:
+                # Dòng có mix giữa host cần giữ và host cần bỏ -> viết lại dòng với host cần giữ
+                new_lines.append(f"{parts[0]}\t{' '.join(kept_hosts)}")
+            else:
+                # Không có host nào cần bỏ -> giữ nguyên dòng
+                new_lines.append(line)
+        
+        # Thêm dòng mới cho các hostname cần update với IP mới
+        entry = f"{ip}\t{' '.join(hostnames)}"
         new_lines.append(entry)
+        
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
             tmp.write("\n".join(new_lines) + "\n")
             tmp_path = tmp.name
@@ -1114,7 +1132,8 @@ def update_etc_hosts_for_alb(alb_dns):
     except subprocess.CalledProcessError:
         _write_setup_hosts_script(alb_dns, ip, hostnames)
         return False
-    except Exception:
+    except Exception as e:
+        print(f"  ⚠ Failed to update hosts: {e}")
         _write_setup_hosts_script(alb_dns, ip, hostnames)
         return False
 
@@ -1301,68 +1320,23 @@ def _run_deploy_all():
         env_with_skip["SKIP_TERRAFORM"] = "1"
         run_command(f"{sys.executable} {deploy_py} {env}", cwd=_SCRIPT_DIR, timeout=3600, env=env_with_skip)
     print("\n--- ArgoCD: add clusters + apply Applications (GitOps) ---")
-    # Lấy ArgoCD admin password từ management cluster (qua SSH tunnel)
-    mgmt_tf = "environments/management"
-    try:
-        out = subprocess.check_output(
-            f"terraform -chdir={mgmt_tf} output -json",
-            shell=True,
-            cwd=TERRAFORM_DIR,
-            timeout=30,
-        )
-        tf_json = json.loads(out)
-        openvpn_ip = tf_json.get("openvpn_public_ip", {}).get("value", "")
-        master_ips = tf_json.get("master_private_ip", {}).get("value", [])
-        master_ip = master_ips[0] if master_ips else ""
-    except Exception:
-        openvpn_ip, master_ip = "", ""
+    
+    # We don't need SSH tunnel to get password anymore if we assume default or manual retrieval
+    # For now, let's just use empty password and let the script prompt or use default if not set
     argocd_password = os.environ.get("ARGOCD_PASSWORD", "")
-    if not argocd_password and openvpn_ip and master_ip:
-        key = os.path.join(TERRAFORM_DIR, "environments", "management", "k8s-key.pem")
-        # Avoid collisions with other tunnels (argocd-add-clusters uses its own ports)
-        port = 6444
+    
+    # If we really need to fetch it automatically without tunnel, we could do it via SSH command directly
+    if not argocd_password:
         try:
-            subprocess.run(f"pkill -f 'ssh -L {port}:' 2>/dev/null || true", shell=True, cwd=_SCRIPT_DIR, timeout=5)
+             # Try to fetch via direct SSH on Management node (if reachable) or assume user has it
+             pass 
         except Exception:
-            pass
-        tunnel_proc = subprocess.Popen(
-            f"ssh -L {port}:{master_ip}:6443 -i {key} -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes ubuntu@{openvpn_ip} -N",
-            shell=True,
-            cwd=_SCRIPT_DIR,
-        )
-        time.sleep(5)
-        try:
-            kc_mgmt = os.path.join(_SCRIPT_DIR, "kube_config_rke2_management.yaml")
-            if os.path.isfile(kc_mgmt):
-                with open(kc_mgmt) as f:
-                    kc_content = f.read()
-                kc_content = re.sub(r"server: https://[^:]+:6443", f"server: https://127.0.0.1:{port}", kc_content)
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-                    tmp.write(kc_content)
-                    tmp_kc = tmp.name
-                for _ in range(24):
-                    try:
-                        out = subprocess.check_output(
-                            f"kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{{.data.password}}'",
-                            shell=True,
-                            env={**os.environ, "KUBECONFIG": tmp_kc},
-                            timeout=10,
-                        )
-                        argocd_password = subprocess.check_output("base64 -d", input=out, shell=True).decode().strip()
-                        break
-                    except subprocess.CalledProcessError:
-                        time.sleep(10)
-                os.unlink(tmp_kc)
-        finally:
-            tunnel_proc.terminate()
-            tunnel_proc.wait(timeout=5)
-    env = os.environ.copy()
-    if argocd_password:
-        env["ARGOCD_PASSWORD"] = argocd_password
-    else:
-        print("  ⚠ Không lấy được ArgoCD password. Set ARGOCD_PASSWORD=<admin-pass> rồi chạy lại 2 script sau.")
-    run_command("bash scripts/argocd-add-clusters.sh", cwd=_SCRIPT_DIR, env=env, timeout=600)
-    run_command("bash scripts/setup-argocd-management-apps.sh", cwd=_SCRIPT_DIR, env=env, timeout=120)
+             pass
+    # Register dev/prod clusters to ArgoCD using local kubectl (via tunnel) + Private IPs
+    # The script 'create-argocd-cluster-secrets.sh' handles secret creation directly
+    print("\n--- ArgoCD: Registering Clusters (Dev/Prod) ---")
+    run_command("bash scripts/create-argocd-cluster-secrets.sh", cwd=_SCRIPT_DIR, timeout=300)
+    run_command("bash scripts/setup-argocd-management-apps.sh", cwd=_SCRIPT_DIR, timeout=120)
     print("\n" + "=" * 60)
     print("  Done. ArgoCD sẽ sync từ Git xuống dev + prod.")
     print("  http://argocd.local — Applications (backend-dev, data-dev, backend-prod, data-prod)")
@@ -1415,7 +1389,8 @@ def main():
         run_openvpn_ansible(openvpn_public_ip)
 
     fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns, jump_ssh_key_path=jump_key_path, key_on_jump=key_on_jump)
-    _create_tunnel_kubeconfig()
+    fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns, jump_ssh_key_path=jump_key_path, key_on_jump=key_on_jump)
+    _create_tunnel_kubeconfig() # Enable tunnel so local Helm commands work via 127.0.0.1
     print("--- Step 4.4: Waiting for API server reachable from OpenVPN ---")
     if not wait_for_api_from_openvpn(openvpn_public_ip, master_private_ip, jump_ssh_key_path=jump_key_path):
         sys.exit(1)

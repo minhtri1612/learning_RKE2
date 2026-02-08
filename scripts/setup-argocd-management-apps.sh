@@ -6,20 +6,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TERRAFORM_DIR="$ROOT_DIR/terraform"
 MGMT_DIR="$ROOT_DIR/argocd/environments/management"
-KUBECONFIG_MGMT="$ROOT_DIR/kube_config_rke2_management.yaml"
+# Use tunnel kubeconfig for local execution (connects via SSH tunnel to 127.0.0.1:6446)
+KUBECONFIG_MGMT="$ROOT_DIR/.kube_config_rke2_management_tunnel.yaml"
 
 cd "$ROOT_DIR"
 
-# 1. Lấy cluster API URL từ terraform output (mỗi env)
-get_cluster_url() {
+# 1. Lấy cluster private IP từ terraform output (mỗi env)
+# Sử dụng private IP thay vì NLB URL để match với cluster secrets
+get_cluster_private_url() {
   local env="$1"
-  (cd "$TERRAFORM_DIR" && terraform -chdir="environments/$env" output -raw cluster_api_url 2>/dev/null) || true
+  local private_ip=$(cd "$TERRAFORM_DIR" && terraform -chdir="environments/$env" output -json 2>/dev/null | jq -r '.master_private_ip.value[0] // empty')
+  if [[ -n "$private_ip" ]]; then
+    echo "https://${private_ip}:6443"
+  fi
 }
-PROD_URL="$(get_cluster_url prod)"
-DEV_URL="$(get_cluster_url dev)"
+PROD_URL="$(get_cluster_private_url prod)"
+DEV_URL="$(get_cluster_private_url dev)"
 
 if [[ -z "$PROD_URL" && -z "$DEV_URL" ]]; then
-  echo "Lỗi: Không lấy được cluster_api_url từ terraform. Chạy terraform apply cho ít nhất một env (dev/prod)."
+  echo "Lỗi: Không lấy được master_private_ip từ terraform. Chạy terraform apply cho ít nhất một env (dev/prod)."
   exit 1
 fi
 
@@ -29,6 +34,7 @@ trap "rm -rf '$TMP_DIR'" EXIT
 for f in "$MGMT_DIR"/*.yaml; do
   [ -f "$f" ] || continue
   name="$(basename "$f")"
+  # Use | as delimiter instead of / to avoid conflicts with URLs
   sed -e "s|__CLUSTER_SERVER_PROD__|${PROD_URL:-__CLUSTER_SERVER_PROD__}|g" \
       -e "s|__CLUSTER_SERVER_DEV__|${DEV_URL:-__CLUSTER_SERVER_DEV__}|g" \
       "$f" > "$TMP_DIR/$name"
