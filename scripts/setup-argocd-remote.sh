@@ -2,7 +2,7 @@
 # Execute ArgoCD setup scripts on management cluster (simpler than local tunneling issues)
 set -e
 
-MGMT_IP="13.238.133.49"  # Management OpenVPN IP
+MGMT_IP="3.104.160.223"  # Management OpenVPN IP
 KEY="/home/minhtri/Downloads/practice_RKE2/terraform/environments/management/k8s-key.pem"
 REPO_DIR="/home/minhtri/Downloads/practice_RKE2"
 
