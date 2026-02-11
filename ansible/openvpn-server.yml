@@ -9,7 +9,8 @@
     vpn_mask: "255.255.255.0"
     vpc_cidr: "10.0.0.0"
     vpc_mask: "255.255.0.0"
-    openvpn_public_ip: "{{ openvpn_public_ip | default('') }}"
+    # openvpn_public_ip: defined via extra vars or inventory
+
     # Đường dẫn tuyệt đối đến easyrsa trên Debian 12
     easyrsa_bin: "/usr/share/easy-rsa/easyrsa"
 
@@ -113,6 +114,7 @@
 
     - name: Generate client certificates
       shell: |
+        export EASYRSA_REQ_CN="{{ item.name }}"
         {{ easyrsa_bin }} --batch --pki-dir=/etc/openvpn/easy-rsa/pki gen-req {{ item.name }} nopass
         {{ easyrsa_bin }} --batch --pki-dir=/etc/openvpn/easy-rsa/pki sign-req client {{ item.name }}
       args:
@@ -179,6 +181,19 @@
         iptables -t nat -C POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null || \
         iptables -t nat -A POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE
       when: vpn_nat | default(false) | bool
+
+    - name: Setup IPTables - Security Rules for Roles
+      ansible.builtin.shell: |
+        # 1. Admin (sep_tong - 10.8.0.51): Allow ALL
+        iptables -C FORWARD -s 10.8.0.51 -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -s 10.8.0.51 -j ACCEPT
+        
+        # 2. Dev (minhtri - 10.8.0.50):
+        # Allow to Dev Network
+        iptables -C FORWARD -s 10.8.0.50 -d {{ network_ranges.dev }} -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -s 10.8.0.50 -d {{ network_ranges.dev }} -j ACCEPT
+        
+        # BLOCK to Prod Network (Log & Drop)
+        iptables -C FORWARD -s 10.8.0.50 -d {{ network_ranges.prod }} -j DROP 2>/dev/null || iptables -I FORWARD 3 -s 10.8.0.50 -d {{ network_ranges.prod }} -j DROP
+      when: network_ranges is defined
 
     - name: Save iptables
       shell: iptables-save > /etc/iptables/rules.v4
