@@ -674,7 +674,7 @@ def install_argocd():
         print(f"  ⚠️  Warning: helm repo update failed (non-critical): {result.stderr}")
         print("  Continuing anyway...")
 
-    argocd_values_path = os.path.abspath("./argocd/values-nodeselector.yaml")
+    argocd_values_path = os.path.abspath("./argocd/bootstrap/argocd-install.yaml")
     run_command(
         f"helm upgrade --install argocd argo/argo-cd "
         f"--namespace argocd --create-namespace "
@@ -684,6 +684,28 @@ def install_argocd():
         env=env,
     )
     print("  ✓ ArgoCD installed. Pods may still be starting.")
+
+
+def apply_argocd_projects_and_rbac():
+    """Apply ArgoCD Projects and RBAC configuration."""
+    print("--- Applying ArgoCD Projects and RBAC ---")
+    kubeconfig_path = _kubeconfig_for_deploy()
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig_path
+    
+    projects_dir = os.path.join(_SCRIPT_DIR, "argocd", "projects")
+    rbac_dir = os.path.join(_SCRIPT_DIR, "argocd", "rbac")
+    
+    if os.path.isdir(projects_dir):
+        run_command(f"kubectl apply -f {projects_dir}/", cwd=_SCRIPT_DIR, env=env, timeout=30)
+        print("  ✓ ArgoCD Projects applied")
+    
+    if os.path.isdir(rbac_dir):
+        run_command(f"kubectl apply -f {rbac_dir}/", cwd=_SCRIPT_DIR, env=env, timeout=30)
+        print("  ✓ ArgoCD RBAC applied")
+    
+    print("  ℹ️  RBAC active: dev role → dev only, prod role → dev + prod")
+    print("  ℹ️  Assign users: see argocd/SETUP-RBAC.md")
 
 
 def wait_for_argocd_ready():
@@ -1494,6 +1516,7 @@ def main():
         # Cluster management: CHỈ cài ArgoCD. ArgoCD này quản lý deploy sang dev/prod (không cài ArgoCD trên prod/dev).
         install_argocd()
         wait_for_argocd_ready()
+        apply_argocd_projects_and_rbac()
         # Sau khi có argocd/environments/management/ (Application target dev/prod), có thể gọi deploy_argocd_applications() ở đây.
     else:
         # Dev/Staging/Prod: KHÔNG cài ArgoCD. Chỉ Rancher, ESO, secrets. Apps deploy qua ArgoCD trên management (add cluster + chạy setup-argocd-management-apps.sh).

@@ -1,0 +1,63 @@
+# Root Application - App of Apps (OPTION 1 - Full GitOps)
+# 
+# LƯU Ý: File này chỉ hoạt động nếu bạn đã hardcode cluster URLs trong overlays/dev/values.yaml và overlays/prod/values.yaml
+# Nếu dùng placeholder __CLUSTER_SERVER_DEV__, phải dùng script setup-argocd-management-apps.sh
+#
+# Để dùng file này:
+# 1. Sửa overlays/dev/values.yaml và overlays/prod/values.yaml - thay __CLUSTER_SERVER_DEV__ bằng URL thực
+# 2. kubectl apply -f argocd/bootstrap/root-app.yaml
+#
+# HOẶC: Tiếp tục dùng script (recommended cho flexibility):
+# ./scripts/setup-argocd-management-apps.sh
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/minhtri1612/practice_RKE2.git
+    targetRevision: main
+    path: argocd/applications/base
+    helm:
+      valueFiles:
+        - ../overlays/dev/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/minhtri1612/practice_RKE2.git
+    targetRevision: main
+    path: argocd/applications/base
+    helm:
+      valueFiles:
+        - ../overlays/prod/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

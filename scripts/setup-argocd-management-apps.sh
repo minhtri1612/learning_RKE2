@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Tạo ArgoCD Applications trên cluster management để deploy app xuống dev/prod.
-# Refactored: Sử dụng Helm Chart "App of Apps" (argocd/applications) thay vì raw YAML.
+# Updated: Sử dụng cấu trúc base + overlays
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TERRAFORM_DIR="$ROOT_DIR/terraform"
-CHART_DIR="$ROOT_DIR/argocd/applications"
+CHART_DIR="$ROOT_DIR/argocd/applications/base"
+OVERLAYS_DIR="$ROOT_DIR/argocd/applications/overlays"
 
 # Use tunnel kubeconfig for local execution
 KUBECONFIG_MGMT="$ROOT_DIR/.kube_config_rke2_management_tunnel.yaml"
@@ -39,13 +40,12 @@ echo "  - Prod: ${PROD_URL:-Not found (terraform output missing)}"
 apply_apps() {
     local env="$1"
     local url="$2"
-    local values_file="$CHART_DIR/values-${env}.yaml"
+    local values_file="$OVERLAYS_DIR/${env}/values.yaml"
     local placeholder="__CLUSTER_SERVER_${env^^}__" # e.g. __CLUSTER_SERVER_DEV__
 
     if [[ -n "$url" ]]; then
         echo "--- Deploying $env Applications (server: $url) ---"
-        # Helm template -> Replace Placeholder -> Kubectl Apply
-        # Note: We use 'sed' because passing URL via --set might have issues with special chars or just easy placeholder replacement
+        # Helm template with base + overlay values -> Replace Placeholder -> Kubectl Apply
         helm template applications "$CHART_DIR" \
             -f "$CHART_DIR/values.yaml" \
             -f "$values_file" | \

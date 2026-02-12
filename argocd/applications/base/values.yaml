@@ -14,14 +14,4 @@ defaults:
     - Replace=true
 
 # Applications to deploy
-# apps:
-#   backend:
-#     enabled: true
-#     path: k8s_helm/backend
-#     namespace: meo-stationery
-#     ignoreDifferences: [] 
-#     destination:
-#       server: https://kubernetes.default.svc
-#     helm:
-#       valueFiles:
-#         - values.yaml
+# Override in overlays/dev/values.yaml or overlays/prod/values.yaml

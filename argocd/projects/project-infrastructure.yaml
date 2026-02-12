@@ -1,0 +1,25 @@
+# ArgoCD AppProject for Infrastructure
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: infrastructure
+  namespace: argocd
+spec:
+  description: Infrastructure components (ArgoCD, External Secrets, etc.)
+  
+  sourceRepos:
+    - 'https://github.com/minhtri1612/practice_RKE2.git'
+  
+  destinations:
+    - namespace: 'argocd'
+      server: '*'
+    - namespace: 'external-secrets'
+      server: '*'
+  
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

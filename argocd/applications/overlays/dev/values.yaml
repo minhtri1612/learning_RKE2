@@ -1,15 +1,16 @@
-env: prod
+env: dev
 
 defaults:
-  targetRevision: HEAD # Override default 'main' for Prod if needed (as per original file)
+  targetRevision: dev    # Dev sync từ branch dev
 
 apps:
   backend:
     enabled: true
+    project: dev    # Thuộc project dev
     path: k8s_helm/backend
     namespace: meo-stationery
     destination:
-      server: __CLUSTER_SERVER_PROD__
+      server: __CLUSTER_SERVER_DEV__
     ignoreDifferences:
       - group: apps
         kind: Deployment
@@ -18,10 +19,11 @@ apps:
 
   database:
     enabled: true
+    project: dev    # Thuộc project dev
     path: k8s_helm/database
     namespace: database
     destination:
-      server: __CLUSTER_SERVER_PROD__
+      server: __CLUSTER_SERVER_DEV__
     ignoreDifferences:
       - group: apps
         kind: StatefulSet

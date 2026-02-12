@@ -1,0 +1,38 @@
+# ArgoCD RBAC ConfigMap
+# Định nghĩa policies cho phân quyền
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  # Default policy: role:readonly
+  policy.default: role:readonly
+  
+  # CSV format: p, subject, resource, action, object, effect
+  policy.csv: |
+    # Admin role - full access
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, *, allow
+    p, role:admin, repositories, *, *, allow
+    p, role:admin, projects, *, *, allow
+    p, role:admin, accounts, *, *, allow
+    
+    # Dev role - can manage dev project only
+    p, role:dev, applications, *, dev/*, allow
+    p, role:dev, applications, get, */*, allow
+    p, role:dev, projects, get, *, allow
+    
+    # Prod role - can manage prod AND dev (prod team có quyền cao hơn)
+    p, role:prod, applications, *, prod/*, allow
+    p, role:prod, applications, *, dev/*, allow
+    p, role:prod, applications, get, */*, allow
+    p, role:prod, projects, get, *, allow
+    
+    # Map local users to roles
+    g, dev-user, role:dev
+    g, prod-user, role:prod
+    
+    # Map SSO users to roles (if using SSO - uncomment and adjust)
+    # g, minhtri@example.com, role:dev
+    # g, sep_tong@example.com, role:admin

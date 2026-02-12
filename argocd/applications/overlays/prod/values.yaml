@@ -1,12 +1,16 @@
-env: dev
+env: prod
+
+defaults:
+  targetRevision: main   # Prod sync từ branch main (protected)
 
 apps:
   backend:
     enabled: true
+    project: prod    # Thuộc project prod
     path: k8s_helm/backend
     namespace: meo-stationery
     destination:
-      server: __CLUSTER_SERVER_DEV__
+      server: __CLUSTER_SERVER_PROD__
     ignoreDifferences:
       - group: apps
         kind: Deployment
@@ -15,10 +19,11 @@ apps:
 
   database:
     enabled: true
+    project: prod    # Thuộc project prod
     path: k8s_helm/database
     namespace: database
     destination:
-      server: __CLUSTER_SERVER_DEV__
+      server: __CLUSTER_SERVER_PROD__
     ignoreDifferences:
       - group: apps
         kind: StatefulSet
