@@ -1,0 +1,9 @@
+env: dev
+
+projectName: meo-stationery
+awsSecretKey: meo-stationery/dev/app-credentials-v2
+
+backend:
+  refreshInterval: 5m   # shorter so secret updates (e.g. after tf apply) propagate quickly
+database:
+  refreshInterval: 1h

@@ -1,0 +1,30 @@
+env: prod
+
+defaults:
+  targetRevision: HEAD # Override default 'main' for Prod if needed (as per original file)
+
+apps:
+  backend:
+    enabled: true
+    path: k8s_helm/backend
+    namespace: meo-stationery
+    destination:
+      server: __CLUSTER_SERVER_PROD__
+    ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+        - /spec/replicas
+
+  database:
+    enabled: true
+    path: k8s_helm/database
+    namespace: database
+    destination:
+      server: __CLUSTER_SERVER_PROD__
+    ignoreDifferences:
+      - group: apps
+        kind: StatefulSet
+        jsonPointers:
+        - /spec/volumeClaimTemplates
+        - /spec/serviceName

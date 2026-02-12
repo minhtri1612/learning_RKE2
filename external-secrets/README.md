@@ -21,16 +21,34 @@ kubectl delete secret aws-secrets-credentials -n external-secrets
 
 ## 3. Áp dụng SecretStore + ExternalSecret theo env
 
-Sửa `environments/<env>/*.yaml` cho đúng AWS region và tên secret. Rồi:
+**deploy.py** tự động apply qua Helm chart khi chạy `./deploy.py dev` hoặc `./deploy.py prod`.
 
+Apply thủ công:
 ```bash
-kubectl apply -f external-secrets/secretstore.yaml
-kubectl apply -f external-secrets/environments/dev/
+helm template external-secrets external-secrets/applications \
+  -f external-secrets/applications/values.yaml \
+  -f external-secrets/applications/values-dev.yaml | kubectl apply -f -
 ```
 
 Sau khi ESO tạo xong K8s Secret, deploy ArgoCD apps (backend + database) với values có `existingSecret.name` đã set.
 
-## 4. Troubleshooting: postgres pod "secret postgres not found"
+## 4. Cấu trúc (giống argocd/applications)
+
+```
+external-secrets/
+├── applications/
+│   ├── Chart.yaml
+│   ├── values.yaml          # defaults
+│   ├── values-dev.yaml
+│   ├── values-prod.yaml
+│   └── templates/
+│       ├── secretstore.yaml
+│       ├── backend-external-secret.yaml
+│       └── database-external-secret.yaml
+└── README.md
+```
+
+## 5. Troubleshooting: postgres pod "secret postgres not found"
 
 Secret `postgres` do ESO tạo khi sync ExternalSecret. Nếu không có:
 

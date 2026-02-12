@@ -1,0 +1,9 @@
+env: prod
+
+projectName: meo-stationery
+awsSecretKey: meo-stationery/prod/app-credentials
+
+backend:
+  refreshInterval: 1h
+database:
+  refreshInterval: 1h

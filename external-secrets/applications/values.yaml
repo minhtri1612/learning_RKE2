@@ -1,0 +1,15 @@
+# Default values for external-secrets.
+# Override in values-<env>.yaml
+
+projectName: meo-stationery
+region: ap-southeast-2
+secretStoreName: aws-secrets-manager
+
+# AWS secret key (full path in Secrets Manager, e.g. meo-stationery/dev/app-credentials-v2)
+awsSecretKey: ""
+
+# Refresh intervals
+backend:
+  refreshInterval: 1h
+database:
+  refreshInterval: 1h

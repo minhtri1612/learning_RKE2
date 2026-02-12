@@ -881,7 +881,7 @@ def apply_external_secrets_manifests():
     # Luôn chờ CRD sẵn sàng trước khi apply (kể cả khi ESO "already installed" từ lần chạy trước)
     if not _wait_for_external_secrets_crd(env):
         print("  ⚠ ClusterSecretStore CRD not ready after 2 min. Skipping SecretStore/ExternalSecret apply.")
-        print("     Chạy lại sau: kubectl apply -f external-secrets/secretstore.yaml")
+        print("     Chạy lại sau: helm template external-secrets external-secrets/applications -f external-secrets/applications/values-<env>.yaml | kubectl apply -f -")
         return
 
     # Webhook phải có endpoint thì apply ClusterSecretStore mới qua validation (no endpoints available)
@@ -905,13 +905,11 @@ def apply_external_secrets_manifests():
     else:
         print("  ⚠ Webhook may not be ready; apply may fail with 'no endpoints available'.")
 
-    ext_dir = os.path.join(_SCRIPT_DIR, "external-secrets")
-    store_path = os.path.join(ext_dir, "secretstore.yaml")
-    env_dir = os.path.join(ext_dir, "environments", TERRAFORM_ENV)
-    if not os.path.isfile(store_path):
-        print(f"  ⚠ {store_path} not found, skipping.")
+    chart_dir = os.path.join(_SCRIPT_DIR, "external-secrets", "applications")
+    values_file = os.path.join(chart_dir, f"values-{TERRAFORM_ENV}.yaml")
+    if not os.path.isfile(values_file):
+        print(f"  ⚠ {values_file} not found, skipping.")
         return
-    run_command(f"kubectl apply -f {store_path}", cwd=_SCRIPT_DIR, env=env, timeout=15)
     # ExternalSecret cần namespace tồn tại trước (backend → meo-stationery, database → database)
     for ns in ("meo-stationery", "database"):
         subprocess.run(
@@ -922,10 +920,12 @@ def apply_external_secrets_manifests():
             timeout=10,
             capture_output=True,
         )
-    if os.path.isdir(env_dir):
-        for f in sorted(os.listdir(env_dir)):
-            if f.endswith(".yaml"):
-                run_command(f"kubectl apply -f {os.path.join(env_dir, f)}", cwd=_SCRIPT_DIR, env=env, timeout=15)
+    run_command(
+        f"helm template external-secrets {chart_dir} -f {os.path.join(chart_dir, 'values.yaml')} -f {values_file} | kubectl apply -f -",
+        cwd=_SCRIPT_DIR,
+        env=env,
+        timeout=30,
+    )
     print("  ✓ External Secrets manifests applied for env:", TERRAFORM_ENV)
 
 

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: external-secrets
+description: Helm chart for External Secrets (AWS Secrets Manager → K8s Secret)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
