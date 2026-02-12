@@ -13,7 +13,7 @@ workload:
       cpu: "500m"
 autoscaling:
   enabled: true
-  minReplicas: 9
+  minReplicas: 11
   maxReplicas: 12
   targetCPUUtilizationPercentage: 80
 ingress:
