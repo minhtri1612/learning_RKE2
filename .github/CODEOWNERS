@@ -1,0 +1,12 @@
+# CODEOWNERS file
+# Chỉ admin có thể approve changes vào production code
+
+# All files - require admin approval
+* @minhtri1612
+
+# Production values files - require admin approval
+k8s_helm/*/values-prod.yaml @minhtri1612
+k8s_helm/*/values.yaml @minhtri1612
+
+# Dev files - dev có thể tự approve (optional)
+# k8s_helm/*/values-dev.yaml @minhtri1612 @Tritran1612
