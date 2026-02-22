@@ -51,8 +51,8 @@ spec:
         jsonPointers:
         - /status
         - /metadata/annotations
-        - /spec/minReplicas
-        - /spec/metrics
+        - /metadata/labels
+        - /spec
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -107,5 +107,5 @@ spec:
         jsonPointers:
         - /status
         - /metadata/annotations
-        - /spec/minReplicas
-        - /spec/metrics
+        - /metadata/labels
+        - /spec
