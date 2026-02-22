@@ -8,7 +8,7 @@ spec:
   description: Infrastructure components (ArgoCD, External Secrets, etc.)
   
   sourceRepos:
-    - 'https://github.com/minhtri1612/practice_RKE2.git'
+    - 'https://github.com/minhtri1612/learning_RKE2.git'
   
   destinations:
     - namespace: 'argocd'
