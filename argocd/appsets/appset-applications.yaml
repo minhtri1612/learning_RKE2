@@ -85,9 +85,9 @@ spec:
         name: prod
         namespace: '{{namespace}}'
       syncPolicy:
-        automated:
-          prune: false
-          selfHeal: true
+        # automated:
+        #   prune: false
+        #   selfHeal: true
         syncOptions:
         - CreateNamespace=true
         - RespectIgnoreDifferences=true
