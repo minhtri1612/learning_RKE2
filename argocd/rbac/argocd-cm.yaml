@@ -15,6 +15,7 @@ data:
   # Local user accounts (apiKey/login capabilities)
   accounts.dev-user: apiKey, login
   accounts.prod-user: apiKey, login
+  accounts.minhtri: apiKey, login
   
   # SSO Configuration (Optional - uncomment and configure if needed)
   # dex.config: |
