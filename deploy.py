@@ -952,8 +952,8 @@ def apply_external_secrets_manifests():
 
 
 def deploy_argocd_applications():
-    """Deploys ArgoCD Application manifests for GitOps."""
-    print("--- Step 7.6: Deploying ArgoCD Applications ---")
+    """Deploys ArgoCD Bootstrap (Root App → ApplicationSets) for GitOps."""
+    print("--- Step 7.6: Deploying ArgoCD Bootstrap (ApplicationSets) ---")
     kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
@@ -962,15 +962,30 @@ def deploy_argocd_applications():
     print("  Waiting additional 10 seconds for ArgoCD components...")
     time.sleep(10)
 
-    argocd_env_dir = os.path.join(_SCRIPT_DIR, "argocd", "environments", TERRAFORM_ENV)
-    if not os.path.isdir(argocd_env_dir):
-        print(f"  Error: argocd/environments/{TERRAFORM_ENV}/ not found.")
+    # Apply Projects & RBAC first
+    projects_dir = os.path.join(_SCRIPT_DIR, "argocd", "projects")
+    rbac_dir = os.path.join(_SCRIPT_DIR, "argocd", "rbac")
+    
+    if os.path.isdir(projects_dir):
+        run_command(f"kubectl apply -f {projects_dir}/", cwd=_SCRIPT_DIR, env=env, timeout=30)
+        print("  ✓ ArgoCD Projects applied")
+    
+    if os.path.isdir(rbac_dir):
+        run_command(f"kubectl apply -f {rbac_dir}/", cwd=_SCRIPT_DIR, env=env, timeout=30)
+        print("  ✓ ArgoCD RBAC applied")
+    
+    # Apply Root App (ApplicationSets pattern)
+    bootstrap_dir = os.path.join(_SCRIPT_DIR, "argocd", "bootstrap")
+    root_app = os.path.join(bootstrap_dir, "root-app.yaml")
+    if not os.path.isfile(root_app):
+        print(f"  Error: {root_app} not found.")
         sys.exit(1)
-    run_command("kubectl apply -f be-application.yaml", cwd=argocd_env_dir, env=env)
-    run_command("kubectl apply -f data-application.yaml", cwd=argocd_env_dir, env=env)
-    print("  ✓ ArgoCD Applications deployed (argocd/environments/{}/).".format(TERRAFORM_ENV))
+    
+    run_command(f"kubectl apply -f {root_app}", cwd=_SCRIPT_DIR, env=env, timeout=30)
+    print("  ✓ ArgoCD Bootstrap deployed (Root App → ApplicationSets)")
     print("  📝 GitOps Repo: https://github.com/minhtri1612/learning_RKE2.git")
-    print("  📌 Để apply từ master: clone repo có argocd/environments/, rồi ./scripts/apply-argocd-apps.sh {}".format(TERRAFORM_ENV))
+    print("  📌 ApplicationSets sẽ tự động generate Applications cho dev + prod")
+    print("  📌 Check: kubectl get applicationsets -n argocd")
     run_backend_migration_after_sync()
 
 
@@ -1447,13 +1462,26 @@ def _run_deploy_all():
         except Exception:
             pass
     # Register dev/prod clusters to ArgoCD using local kubectl (via tunnel) + Private IPs
-    # The script 'create-argocd-cluster-secrets.sh' handles secret creation directly
     print("\n--- ArgoCD: Registering Clusters (Dev/Prod) ---")
     run_command("bash scripts/create-argocd-cluster-secrets.sh", cwd=_SCRIPT_DIR, timeout=300)
-    run_command("bash scripts/setup-argocd-management-apps.sh", cwd=_SCRIPT_DIR, timeout=120)
+    
+    # Apply Bootstrap (Root App → ApplicationSets)
+    print("\n--- ArgoCD: Deploying Bootstrap (ApplicationSets) ---")
+    bootstrap_script = os.path.join(_SCRIPT_DIR, "scripts", "deploy-argocd-bootstrap.sh")
+    if os.path.isfile(bootstrap_script):
+        run_command(f"bash {bootstrap_script}", cwd=_SCRIPT_DIR, timeout=120)
+    else:
+        # Fallback: apply directly
+        kc_mgmt = os.path.join(_SCRIPT_DIR, ".kube_config_rke2_management_tunnel.yaml")
+        env_apply = os.environ.copy()
+        env_apply["KUBECONFIG"] = kc_mgmt
+        run_command("kubectl apply -f argocd/projects/", cwd=_SCRIPT_DIR, env=env_apply, timeout=30)
+        run_command("kubectl apply -f argocd/rbac/", cwd=_SCRIPT_DIR, env=env_apply, timeout=30)
+        run_command("kubectl apply -f argocd/bootstrap/root-app.yaml", cwd=_SCRIPT_DIR, env=env_apply, timeout=30)
+    
     print("\n" + "=" * 60)
-    print("  Done. ArgoCD sẽ sync từ Git xuống dev + prod.")
-    print("  http://argocd.local — Applications (backend-dev, data-dev, backend-prod, data-prod)")
+    print("  Done. ArgoCD ApplicationSets sẽ tự động generate và sync apps từ Git.")
+    print("  http://argocd.local — ApplicationSets → Applications (4 apps: backend/database × dev/prod)")
     print("=" * 60)
 
 
@@ -1517,9 +1545,9 @@ def main():
         install_argocd()
         wait_for_argocd_ready()
         apply_argocd_projects_and_rbac()
-        # Sau khi có argocd/environments/management/ (Application target dev/prod), có thể gọi deploy_argocd_applications() ở đây.
+        # Bootstrap (Root App → ApplicationSets) được apply trong _run_deploy_all() sau khi register clusters
     else:
-        # Dev/Staging/Prod: KHÔNG cài ArgoCD. Chỉ Rancher, ESO, secrets. Apps deploy qua ArgoCD trên management (add cluster + chạy setup-argocd-management-apps.sh).
+        # Dev/Staging/Prod: KHÔNG cài ArgoCD. Chỉ Rancher, ESO, secrets. Apps deploy qua ArgoCD trên management.
         install_rancher()
         install_external_secrets_operator()
         ensure_aws_secrets_credentials()

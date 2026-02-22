@@ -1,15 +1,24 @@
-# Bootstrap ArgoCD
+# ArgoCD Bootstrap
 
-## Files
+Bootstrap ArgoCD using ApplicationSets pattern for enterprise-scale deployments.
 
-- **argocd-install.yaml** - Helm values để cài ArgoCD
-- **root-app.yaml** - Root Application (App of Apps) cho GitOps tự động
+## Architecture
 
----
+```
+Bootstrap (one-time setup)
+    ↓
+Root ApplicationSet App
+    ↓
+ApplicationSets (auto-generate Applications)
+    ↓
+Applications (backend-dev, backend-prod, database-dev, database-prod, etc.)
+    ↓
+Kubernetes Resources
+```
 
-## Setup
+## Initial Setup
 
-### 1. Cài ArgoCD
+### 1. Install ArgoCD (one-time)
 
 ```bash
 helm repo add argo https://argoproj.github.io/argo-helm
@@ -20,77 +29,151 @@ helm install argocd argo/argo-cd \
   -n argocd --create-namespace
 ```
 
-Đợi ArgoCD ready:
+### 2. Apply ArgoCD Projects
+
 ```bash
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
+kubectl apply -f argocd/projects/
 ```
 
----
+Projects created:
+- `dev` - Development environment
+- `staging` - Staging environment (future)
+- `prod` - Production environment
+- `infrastructure` - Infrastructure apps (ESO, monitoring, etc.)
 
-### 2. Option A: Script-based (Recommended - linh hoạt với placeholder)
+### 3. Apply RBAC Configuration
 
-Tiếp tục dùng script như hiện tại:
 ```bash
-./scripts/setup-argocd-management-apps.sh
+kubectl apply -f argocd/rbac/
 ```
 
-**Ưu điểm:**
-- Linh hoạt: script tự lấy cluster URL từ Terraform
-- Placeholder `__CLUSTER_SERVER_DEV__` được replace tự động
+### 4. Bootstrap Root App (GitOps starts here)
 
-**Nhược điểm:**
-- Phải chạy script mỗi lần thay đổi applications
-
----
-
-### 2. Option B: GitOps với root-app (Tự động sync)
-
-**Bước 1:** Hardcode cluster URLs trong overlays
-
-Sửa `argocd/applications/overlays/dev/values.yaml`:
-```yaml
-apps:
-  backend:
-    destination:
-      server: https://10.1.101.10:6443  # thay bằng dev cluster IP
-```
-
-Tương tự cho `overlays/prod/values.yaml`.
-
-**Bước 2:** Apply root app
 ```bash
 kubectl apply -f argocd/bootstrap/root-app.yaml
 ```
 
-**Ưu điểm:**
-- GitOps thuần: push Git → ArgoCD tự sync
-- Không cần chạy script
+This creates:
+- `root-appsets` - Syncs ApplicationSets from Git
+- `argocd-notifications` - Syncs notification config
 
-**Nhược điểm:**
-- Cluster URL phải hardcode trong Git
-- Ít linh hoạt khi cluster thay đổi
+### 5. Verify ApplicationSets Created
 
----
+```bash
+kubectl get applicationset -n argocd
+```
 
-## Chọn approach nào?
+Expected output:
+```
+NAME              AGE
+applications      1m
+infrastructure    1m
+```
 
-| Scenario | Recommendation |
-|----------|----------------|
-| Solo dev, cluster URL thay đổi thường xuyên | **Script-based** (Option A) |
-| Team, cluster ổn định, muốn full GitOps | **GitOps** (Option B) |
-| Testing, learning | **Script-based** (đơn giản hơn) |
+### 6. Verify Applications Auto-Generated
 
----
+```bash
+kubectl get applications -n argocd
+```
 
-## Migration từ approach cũ
+Expected output:
+```
+NAME                          SYNC STATUS   HEALTH STATUS
+meo-station-backend-dev       Synced        Healthy
+meo-station-backend-prod      Synced        Healthy
+meo-station-database-dev      Synced        Healthy
+meo-station-database-prod     Synced        Healthy
+```
 
-Nếu đang dùng script với cấu trúc applications/ cũ:
-1. Cấu trúc đã được migrate sang base + overlays
-2. Script đã được update tự động
-3. Chạy script như cũ: `./scripts/setup-argocd-management-apps.sh`
+## Adding New Services
 
-Nếu muốn thử GitOps:
-1. Hardcode URLs trong overlays/
-2. Apply root-app.yaml
-3. Test sync
-4. Nếu OK → commit, push Git → ArgoCD sẽ sync tự động
+### Add to ApplicationSet
+
+Edit `argocd/appsets/appset-applications.yaml`:
+
+```yaml
+generators:
+- list:
+    elements:
+    - app: backend
+      path: k8s_helm/backend
+      namespace: meo-stationery
+    - app: database
+      path: k8s_helm/database
+      namespace: database
+    - app: new-service          # ADD THIS
+      path: k8s_helm/new-service
+      namespace: meo-stationery
+```
+
+Git commit + push → ArgoCD auto-generates Applications for all envs!
+
+## Adding New Environment
+
+Edit `argocd/appsets/appset-applications.yaml`:
+
+```yaml
+- list:
+    elements:
+    - env: dev
+      project: dev
+      server: https://10.1.101.198:6443
+      branch: dev
+    - env: staging              # ADD THIS
+      project: staging
+      server: https://10.3.101.10:6443
+      branch: main
+    - env: prod
+      project: prod
+      server: https://10.2.101.11:6443
+      branch: main
+```
+
+Git commit + push → All apps auto-deployed to new environment!
+
+## Notifications Setup
+
+See `argocd/notifications/README.md` for Slack integration.
+
+## Troubleshooting
+
+### ApplicationSets not creating Applications
+
+```bash
+kubectl describe applicationset applications -n argocd
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-applicationset-controller
+```
+
+### Applications stuck OutOfSync
+
+```bash
+argocd app get <app-name> --grpc-web
+argocd app sync <app-name> --grpc-web
+```
+
+### Root app not syncing
+
+```bash
+kubectl describe application root-appsets -n argocd
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller
+```
+
+## Migration from Old Structure
+
+If migrating from Helm+Kustomize overlays:
+
+1. ✅ Apply ApplicationSets (parallel with old structure)
+2. ✅ Verify new Applications match old specs
+3. ⚠️ Delete old Applications: `kubectl delete -f argocd/applications/overlays/`
+4. ✅ Keep ApplicationSets - apps recreate instantly
+5. ✅ Update documentation
+
+## Rollback
+
+```bash
+# Delete ApplicationSets
+kubectl delete applicationset applications infrastructure -n argocd
+
+# Restore old structure
+./scripts/setup-argocd-management-apps.sh
+```

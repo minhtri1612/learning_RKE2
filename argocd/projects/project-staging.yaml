@@ -1,0 +1,28 @@
+# ArgoCD AppProject for Staging
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: staging
+  namespace: argocd
+spec:
+  description: Staging environment applications (pre-production testing)
+  
+  sourceRepos:
+    - 'https://github.com/minhtri1612/learning_RKE2.git'
+    - 'https://github.com/minhtri1612/practice_RKE2.git'
+  
+  destinations:
+    - namespace: 'meo-stationery'
+      server: '*'
+    - namespace: 'database'
+      server: '*'
+    - namespace: 'external-secrets'
+      server: '*'
+  
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

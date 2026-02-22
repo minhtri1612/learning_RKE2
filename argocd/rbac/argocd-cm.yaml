@@ -32,3 +32,14 @@ data:
   # repositories: |
   #   - url: https://github.com/minhtri1612/learning_RKE2.git
   #   - url: https://github.com/minhtri1612/practice_RKE2.git
+  
+  # Global ignoreDifferences for all resources
+  # Ignore fields that are managed by K8s controllers (HPA, StatefulSet controller, etc.)
+  resource.customizations.ignoreDifferences.apps_Deployment: |
+    jsonPointers:
+    - /spec/replicas
+  
+  resource.customizations.ignoreDifferences.apps_StatefulSet: |
+    jsonPointers:
+    - /spec/volumeClaimTemplates
+    - /spec/serviceName

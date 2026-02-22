@@ -1,31 +1,32 @@
-# Root Application - App of Apps (OPTION 1 - Full GitOps)
+# Root Application - App of Apps (ApplicationSets Pattern)
 # 
-# LƯU Ý: File này chỉ hoạt động nếu bạn đã hardcode cluster URLs trong overlays/dev/values.yaml và overlays/prod/values.yaml
-# Nếu dùng placeholder __CLUSTER_SERVER_DEV__, phải dùng script setup-argocd-management-apps.sh
+# This root app syncs ApplicationSets which auto-generate Applications for all environments.
 #
-# Để dùng file này:
-# 1. Sửa overlays/dev/values.yaml và overlays/prod/values.yaml - thay __CLUSTER_SERVER_DEV__ bằng URL thực
-# 2. kubectl apply -f argocd/bootstrap/root-app.yaml
+# Setup:
+# 1. Apply projects: kubectl apply -f argocd/projects/
+# 2. Apply RBAC: kubectl apply -f argocd/rbac/
+# 3. Apply root app: kubectl apply -f argocd/bootstrap/root-app.yaml
 #
-# HOẶC: Tiếp tục dùng script (recommended cho flexibility):
-# ./scripts/setup-argocd-management-apps.sh
+# The ApplicationSets will auto-generate:
+# - meo-station-backend-dev/prod
+# - meo-station-database-dev/prod
+# - infra-external-secrets-dev/prod (future)
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-app-dev
+  name: root-appsets
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: infrastructure
   source:
     repoURL: https://github.com/minhtri1612/practice_RKE2.git
     targetRevision: main
-    path: argocd/applications/base
-    helm:
-      valueFiles:
-        - ../overlays/dev/values.yaml
+    path: argocd/appsets
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -36,22 +37,20 @@ spec:
     syncOptions:
       - CreateNamespace=true
 ---
+# Optional: Sync notifications config
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-app-prod
+  name: argocd-notifications
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: infrastructure
   source:
     repoURL: https://github.com/minhtri1612/practice_RKE2.git
     targetRevision: main
-    path: argocd/applications/base
-    helm:
-      valueFiles:
-        - ../overlays/prod/values.yaml
+    path: argocd/notifications
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -59,5 +58,3 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
