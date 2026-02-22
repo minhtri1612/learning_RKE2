@@ -22,7 +22,7 @@ metadata:
 spec:
   project: infrastructure
   source:
-    repoURL: https://github.com/minhtri1612/practice_RKE2.git
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: main
     path: argocd/appsets
     directory:
@@ -46,7 +46,7 @@ metadata:
 spec:
   project: infrastructure
   source:
-    repoURL: https://github.com/minhtri1612/practice_RKE2.git
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: main
     path: argocd/notifications
     directory:
