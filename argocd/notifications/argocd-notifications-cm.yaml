@@ -7,7 +7,22 @@ data:
   # Slack service configuration
   service.slack: |
     token: $slack-token
-  
+
+  # Default triggers for all applications
+  defaultTriggers: |
+    - on-deployed
+    - on-health-degraded
+    - on-sync-failed
+
+  # Default subscriptions - send to #new-channel for all apps
+  subscriptions: |
+    - recipients:
+        - slack:new-channel
+      triggers:
+        - on-deployed
+        - on-health-degraded
+        - on-sync-failed
+
   # Triggers - when to send notifications
   trigger.on-deployed: |
     - when: app.status.operationState.phase in ['Succeeded']
