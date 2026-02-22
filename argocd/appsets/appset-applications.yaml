@@ -1,0 +1,107 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: applications-dev
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - app: backend
+        path: k8s_helm/backend
+        namespace: meo-stationery
+      - app: database
+        path: k8s_helm/database
+        namespace: database
+  template:
+    metadata:
+      name: 'meo-station-{{app}}-dev'
+      namespace: argocd
+    spec:
+      project: dev
+      source:
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: dev
+        path: '{{path}}'
+        helm:
+          valueFiles:
+          - values.yaml
+          - values-dev.yaml
+      destination:
+        name: dev
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - RespectIgnoreDifferences=true
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+        - /spec/replicas
+      - group: apps
+        kind: StatefulSet
+        jsonPointers:
+        - /spec/replicas
+      - group: autoscaling
+        kind: HorizontalPodAutoscaler
+        jsonPointers:
+        - /status
+        - /metadata/annotations
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: applications-prod
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - app: backend
+        path: k8s_helm/backend
+        namespace: meo-stationery
+      - app: database
+        path: k8s_helm/database
+        namespace: database
+  template:
+    metadata:
+      name: 'meo-station-{{app}}-prod'
+      namespace: argocd
+    spec:
+      project: prod
+      source:
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+        path: '{{path}}'
+        helm:
+          valueFiles:
+          - values.yaml
+          - values-prod.yaml
+      destination:
+        name: prod
+        namespace: '{{namespace}}'
+      syncPolicy:
+        # automated:
+        #   prune: false
+        #   selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - RespectIgnoreDifferences=true
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+        - /spec/replicas
+      - group: apps
+        kind: StatefulSet
+        jsonPointers:
+        - /spec/replicas
+      - group: autoscaling
+        kind: HorizontalPodAutoscaler
+        jsonPointers:
+        - /status
+        - /metadata/annotations

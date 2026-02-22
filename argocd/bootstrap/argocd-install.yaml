@@ -1,11 +1,8 @@
+# ArgoCD Installation Values
+# Used for: helm install argocd argo/argo-cd -f bootstrap/argocd-install.yaml -n argocd --create-namespace
+
 global:
   domain: argocd.local
-
-# Node selectors removed - ArgoCD will schedule on any available node
-# If you want to schedule on specific nodes, label them and uncomment:
-# controller:
-#   nodeSelector:
-#     role: web
 
 server:
   ingress:
@@ -19,8 +16,6 @@ server:
       - path: /
         pathType: Prefix
 
-# Repo-server: tăng probe timeout để tránh crashloop do health check bị cancel
-# (Error serving health check request ... context canceled -> pod bị kill)
 repoServer:
   readinessProbe:
     initialDelaySeconds: 30

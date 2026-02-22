@@ -1,0 +1,60 @@
+# Root Application - App of Apps (ApplicationSets Pattern)
+# 
+# This root app syncs ApplicationSets which auto-generate Applications for all environments.
+#
+# Setup:
+# 1. Apply projects: kubectl apply -f argocd/projects/
+# 2. Apply RBAC: kubectl apply -f argocd/rbac/
+# 3. Apply root app: kubectl apply -f argocd/bootstrap/root-app.yaml
+#
+# The ApplicationSets will auto-generate:
+# - meo-station-backend-dev/prod
+# - meo-station-database-dev/prod
+# - infra-external-secrets-dev/prod (future)
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-appsets
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: main
+    path: argocd/appsets
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Optional: Sync notifications config
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-notifications
+  namespace: argocd
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: main
+    path: argocd/notifications
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
