@@ -40,8 +40,8 @@ KUBECONFIG_TUNNEL_FILE = None
 
 
 def _kubeconfig_for_deploy():
-    """Path kubeconfig dùng trong deploy (tunnel nếu đã tạo, không thì file chính)."""
-    return os.path.abspath(KUBECONFIG_TUNNEL_FILE or KUBECONFIG_FILE)
+    """Path kubeconfig dùng trong deploy (luôn dùng file chính với IP nội bộ)."""
+    return os.path.abspath(KUBECONFIG_FILE)
 
 
 # App / UI settings
@@ -349,17 +349,8 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns, jump_ssh_key_path=N
 
 
 def _create_tunnel_kubeconfig():
-    """Tạo file kubeconfig tạm 127.0.0.1:<port> để deploy dùng tunnel (port riêng mỗi env)."""
-    global KUBECONFIG_TUNNEL_FILE
-    local_port = LOCAL_PORT_BY_ENV.get(TERRAFORM_ENV, 6443)
-    with open(KUBECONFIG_FILE, "r") as f:
-        config = f.read()
-    config_tunnel = re.sub(r'server:\s*https://[^\s\n]+', f'server: https://127.0.0.1:{local_port}', config)
-    path = os.path.join(_SCRIPT_DIR, f".kube_config_rke2_{TERRAFORM_ENV}_tunnel.yaml")
-    with open(path, "w") as f:
-        f.write(config_tunnel)
-    os.chmod(path, 0o600)
-    KUBECONFIG_TUNNEL_FILE = path
+    """No-op: Chúng ta không dùng tunnel nữa, chỉ dùng IP nội bộ qua VPN."""
+    return
 
 
 def wait_for_api_from_openvpn(openvpn_ip, master_private_ip, max_wait=600, jump_ssh_key_path=None):
@@ -435,48 +426,9 @@ def _dump_tunnel_diagnostics(local_port=6443):
 
 
 def start_openvpn_port_forward(openvpn_ip, master_private_ip, local_port=None, remote_port=6443, jump_ssh_key_path=None):
-    """SSH tunnel: local:port -> OpenVPN server connects to master:6443 (một bước, ổn định hơn ProxyCommand)."""
-    if local_port is None:
-        local_port = LOCAL_PORT_BY_ENV.get(TERRAFORM_ENV, 6443)
-    print(f"--- Step 4.5: Starting SSH Port Forward (local:{local_port} -> OpenVPN -> master:{remote_port}) ---")
-    ssh_key_path = jump_ssh_key_path or os.path.abspath(os.path.join(TERRAFORM_ENV_DIR, SSH_KEY_FILE_NAME))
-    log_file = _tunnel_log_path()
-
-    try:
-        subprocess.run("pkill -f 'ssh.*%s:.*%s' 2>/dev/null || true" % (local_port, remote_port), shell=True)
-        time.sleep(1)
-    except Exception:
-        pass
-
-    cmd = (
-        f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "
-        f"-o ConnectTimeout=30 -o ServerAliveInterval=30 "
-        f"-N -L 127.0.0.1:{local_port}:{master_private_ip}:{remote_port} ubuntu@{openvpn_ip}"
-    )
-    with open(log_file, "w") as f:
-        proc = subprocess.Popen(cmd, shell=True, stdout=f, stderr=subprocess.STDOUT)
-
-    time.sleep(5)
-    if proc.poll() is not None:
-        print("  ✗ Port-forward process exited. Log:")
-        _dump_tunnel_diagnostics(local_port)
-        return None
-    try:
-        r = subprocess.run(
-            "curl -k -s -o /dev/null -w '%%{http_code}' --connect-timeout 8 https://127.0.0.1:%s/readyz" % local_port,
-            shell=True,
-            capture_output=True,
-            timeout=12,
-        )
-        out = (r.stdout or b"").decode().strip()
-        if r.returncode == 0 and out == "200":
-            print("  ✓ Port-forward OK, API reachable via 127.0.0.1:%s (PID %s)" % (local_port, proc.pid))
-        else:
-            print("  ⚠ Tunnel up but /readyz returned: %s. Log: %s" % (out or "timeout/error", log_file))
-    except Exception as e:
-        print("  ⚠ Tunnel verify failed: %s. Log: %s" % (e, log_file))
-    print("  Logs: %s" % log_file)
-    return proc
+    """No-op: SSH Tunnel bị vô hiệu hóa để bảo mật. Hãy dùng OpenVPN."""
+    print("  ℹ️  SSH Tunnel is disabled. Ensure you are connected to OpenVPN.")
+    return None
 
 
 def wait_for_nlb_health_checks():
@@ -1368,21 +1320,6 @@ def _update_hosts_file():
 
 
 def start_rancher_portforward():
-    """Starts port-forward for Rancher UI automatically with retry logic."""
-    print("--- Step 9: Starting Rancher Port-Forward ---")
-    kubeconfig_path = _kubeconfig_for_deploy()
-    env = os.environ.copy()
-    env["KUBECONFIG"] = kubeconfig_path
-
-    wait_for_rancher_ready()
-
-    try:
-        subprocess.check_call("pkill -f 'kubectl port-forward.*svc/rancher'", shell=True, stderr=subprocess.DEVNULL)
-        time.sleep(2)
-    except Exception:
-        pass
-
-    log_file = "/tmp/rancher-pf.log"
     wrapper_script = f"""#!/bin/bash
 while true; do
   kubectl port-forward -n cattle-system svc/rancher 8443:443 >> {log_file} 2>&1
@@ -1532,11 +1469,11 @@ def main():
 
     fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns, jump_ssh_key_path=jump_key_path, key_on_jump=key_on_jump)
     fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns, jump_ssh_key_path=jump_key_path, key_on_jump=key_on_jump)
-    _create_tunnel_kubeconfig() # Enable tunnel so local Helm commands work via 127.0.0.1
+    # _create_tunnel_kubeconfig() # REMOVED: No more tunnels
     print("--- Step 4.4: Waiting for API server reachable from OpenVPN ---")
     if not wait_for_api_from_openvpn(openvpn_public_ip, master_private_ip, jump_ssh_key_path=jump_key_path):
         sys.exit(1)
-    start_openvpn_port_forward(openvpn_public_ip, master_private_ip, jump_ssh_key_path=jump_key_path)
+    # start_openvpn_port_forward(openvpn_public_ip, master_private_ip, jump_ssh_key_path=jump_key_path) # REMOVED: No more tunnels
     wait_for_nlb_health_checks()
     install_ebs_csi_driver()
 
