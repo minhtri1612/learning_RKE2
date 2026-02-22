@@ -15,9 +15,9 @@ spec:
       - list:
           elements:
           - env: dev
-            server: https://10.1.101.198:6443
+            clusterName: dev
           - env: prod
-            server: https://10.2.101.11:6443
+            clusterName: prod
   template:
     metadata:
       name: 'infra-{{app}}-{{env}}'
@@ -33,7 +33,7 @@ spec:
           - values.yaml
           - values-{{env}}.yaml
       destination:
-        server: '{{server}}'
+        name: '{{clusterName}}'
         namespace: '{{namespace}}'
       syncPolicy:
         automated:

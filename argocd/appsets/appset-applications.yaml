@@ -28,7 +28,7 @@ spec:
           - values.yaml
           - values-dev.yaml
       destination:
-        server: https://10.1.101.69:6443
+        name: dev
         namespace: '{{namespace}}'
       syncPolicy:
         automated:
@@ -67,7 +67,7 @@ spec:
           - values.yaml
           - values-prod.yaml
       destination:
-        server: https://10.2.101.14:6443
+        name: prod
         namespace: '{{namespace}}'
       syncPolicy:
         automated:
