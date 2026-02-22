@@ -45,6 +45,11 @@ spec:
         kind: StatefulSet
         jsonPointers:
         - /spec/replicas
+      - group: autoscaling
+        kind: HorizontalPodAutoscaler
+        jsonPointers:
+        - /status
+        - /metadata/annotations
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -93,3 +98,8 @@ spec:
         kind: StatefulSet
         jsonPointers:
         - /spec/replicas
+      - group: autoscaling
+        kind: HorizontalPodAutoscaler
+        jsonPointers:
+        - /status
+        - /metadata/annotations
