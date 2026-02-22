@@ -1,54 +1,77 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: applications
+  name: applications-dev
   namespace: argocd
 spec:
   generators:
-  - matrix:
-      generators:
-      # Generator 1: List of apps
-      - list:
-          elements:
-          - app: backend
-            path: k8s_helm/backend
-            namespace: meo-stationery
-          - app: database
-            path: k8s_helm/database
-            namespace: database
-      # Generator 2: List of environments
-      - list:
-          elements:
-          - env: dev
-            project: dev
-            server: https://10.1.101.198:6443
-            branch: dev
-            prune: "true"
-          - env: prod
-            project: prod
-            server: https://10.2.101.11:6443
-            branch: main
-            prune: "false"
+  - list:
+      elements:
+      - app: backend
+        path: k8s_helm/backend
+        namespace: meo-stationery
+      - app: database
+        path: k8s_helm/database
+        namespace: database
   template:
     metadata:
-      name: 'meo-station-{{app}}-{{env}}'
+      name: 'meo-station-{{app}}-dev'
       namespace: argocd
     spec:
-      project: '{{project}}'
+      project: dev
       source:
         repoURL: https://github.com/minhtri1612/learning_RKE2.git
-        targetRevision: '{{branch}}'
+        targetRevision: dev
         path: '{{path}}'
         helm:
           valueFiles:
           - values.yaml
-          - values-{{env}}.yaml
+          - values-dev.yaml
       destination:
-        server: '{{server}}'
+        server: https://10.1.101.198:6443
         namespace: '{{namespace}}'
       syncPolicy:
         automated:
-          prune: '{{prune}}'
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: applications-prod
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - app: backend
+        path: k8s_helm/backend
+        namespace: meo-stationery
+      - app: database
+        path: k8s_helm/database
+        namespace: database
+  template:
+    metadata:
+      name: 'meo-station-{{app}}-prod'
+      namespace: argocd
+    spec:
+      project: prod
+      source:
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+        path: '{{path}}'
+        helm:
+          valueFiles:
+          - values.yaml
+          - values-prod.yaml
+      destination:
+        server: https://10.2.101.11:6443
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: false
           selfHeal: true
         syncOptions:
         - CreateNamespace=true
