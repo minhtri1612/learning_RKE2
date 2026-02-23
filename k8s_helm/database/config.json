@@ -1,4 +1,5 @@
 {
     "namespace": "database",
-    "syncWave": "1"
+    "syncWave": "1",
+    "version": "main"
 }

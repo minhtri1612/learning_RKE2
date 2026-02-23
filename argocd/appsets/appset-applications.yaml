@@ -20,7 +20,7 @@ spec:
       project: dev
       source:
         repoURL: https://github.com/minhtri1612/learning_RKE2.git
-        targetRevision: dev
+        targetRevision: '{{version}}'
         path: '{{path.dirname}}'
         helm:
           valueFiles:
@@ -73,7 +73,7 @@ spec:
       project: prod
       source:
         repoURL: https://github.com/minhtri1612/learning_RKE2.git
-        targetRevision: main
+        targetRevision: '{{version}}'
         path: '{{path.dirname}}'
         helm:
           valueFiles:
