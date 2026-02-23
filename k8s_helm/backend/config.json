@@ -1,3 +1,4 @@
 {
-    "namespace": "meo-stationery"
+    "namespace": "meo-stationery",
+    "syncWave": "5"
 }
