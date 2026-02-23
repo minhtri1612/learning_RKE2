@@ -50,6 +50,14 @@ spec:
         jsonPointers:
         - /status
         - /metadata/annotations
+      - group: ""
+        kind: Secret
+        jsonPointers:
+        - /data
+      - group: ""
+        kind: Service
+        jsonPointers:
+        - /metadata/annotations
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
