@@ -9,19 +9,19 @@ resource "aws_vpc" "main" {
 }
 
 resource "aws_subnet" "public" {
-  count                       = length(var.public_subnet_cidrs)
-  vpc_id                      = aws_vpc.main.id
-  cidr_block                  = var.public_subnet_cidrs[count.index]
-  availability_zone           = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch     = true
-  tags                        = { Name = "${var.name_prefix}-public-${count.index + 1}-${var.environment}" }
+  count                   = length(var.public_subnet_cidrs)
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = var.public_subnet_cidrs[count.index]
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  map_public_ip_on_launch = true
+  tags                    = { Name = "${var.name_prefix}-public-${count.index + 1}-${var.environment}" }
 }
 
 resource "aws_subnet" "private" {
   count             = length(var.private_subnet_cidrs)
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.private_subnet_cidrs[count.index]
-  availability_zone  = data.aws_availability_zones.available.names[count.index]
+  availability_zone = data.aws_availability_zones.available.names[count.index]
   tags              = { Name = "${var.name_prefix}-private-${count.index + 1}-${var.environment}" }
 }
 
@@ -48,6 +48,12 @@ resource "aws_route_table" "private" {
     nat_gateway_id = aws_nat_gateway.main.id
   }
   tags = { Name = "${var.name_prefix}-private-rt-${var.environment}" }
+
+  # ignore_changes: networking terraform adds VPC peering routes to this table.
+  # Without this, "terraform apply" on dev/prod would remove those routes.
+  lifecycle {
+    ignore_changes = [route]
+  }
 }
 
 resource "aws_route_table" "public" {
@@ -174,7 +180,7 @@ resource "aws_security_group" "k8s_common" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  tags   = { Name = "${var.name_prefix}-common-sg-${var.environment}" }
+  tags = { Name = "${var.name_prefix}-common-sg-${var.environment}" }
 }
 
 resource "aws_security_group" "web_alb" {
@@ -200,7 +206,7 @@ resource "aws_security_group" "web_alb" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  tags   = { Name = "${var.name_prefix}-web-alb-sg-${var.environment}" }
+  tags = { Name = "${var.name_prefix}-web-alb-sg-${var.environment}" }
 }
 
 resource "aws_security_group" "k8s_master" {
@@ -261,14 +267,14 @@ resource "aws_security_group" "k8s_master" {
     to_port         = 443
     protocol        = "tcp"
     security_groups = [aws_security_group.web_alb.id]
-  } 
+  }
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  tags   = { Name = "${var.name_prefix}-master-sg-${var.environment}" }
+  tags = { Name = "${var.name_prefix}-master-sg-${var.environment}" }
 }
 
 resource "aws_security_group" "k8s_worker" {
@@ -305,5 +311,5 @@ resource "aws_security_group" "k8s_worker" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  tags   = { Name = "${var.name_prefix}-worker-sg-${var.environment}" }
+  tags = { Name = "${var.name_prefix}-worker-sg-${var.environment}" }
 }
