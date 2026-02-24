@@ -8,7 +8,7 @@ metadata:
 type: Opaque
 stringData:
   name: prod
-  server: https://10.2.101.84:6443
+  server: https://10.2.101.42:6443
   config: |
     {
       "tlsClientConfig": {

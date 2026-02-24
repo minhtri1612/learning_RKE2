@@ -18,12 +18,11 @@ spec:
       labels:
         {{- include "backend.selectorLabels" . | nindent 8 }}
     spec:
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
       restartPolicy: Never
-      # Add tolerations to allow scheduling even with disk pressure (migration is critical)
-      tolerations:
-      - key: node.kubernetes.io/disk-pressure
-        operator: Exists
-        effect: NoSchedule
       containers:
         - name: db-migration
           image: {{ .Values.workload.image }}

@@ -191,7 +191,7 @@ def install_argocd():
     # Delete kubectl-managed ConfigMaps to avoid field-manager conflict on upgrade
     _transfer_helm_ownership(env)
 
-    argocd_values_path = os.path.abspath(os.path.join(_SCRIPT_DIR, "argocd/bootstrap/argocd-install.yaml"))
+    argocd_values_path = os.path.abspath(os.path.join(_SCRIPT_DIR, "argocd/bootstrap/01-argocd-install.yaml"))
     run_command(
         f"helm upgrade --install argocd argo/argo-cd "
         f"--namespace argocd --create-namespace "
@@ -429,7 +429,7 @@ def deploy_argocd_applications():
         run_command(f"kubectl apply -f {projects_dir}/", env=env, timeout=30)
     if os.path.isdir(rbac_dir):
         run_command(f"kubectl apply -f {rbac_dir}/", env=env, timeout=30)
-    root_app = os.path.join(_SCRIPT_DIR, "argocd", "bootstrap", "root-app.yaml")
+    root_app = os.path.join(_SCRIPT_DIR, "argocd", "bootstrap", "02-root-app.yaml")
     if not os.path.isfile(root_app):
         print(f"  ✗ {root_app} not found.")
         sys.exit(1)
@@ -507,6 +507,37 @@ def update_etc_hosts_for_alb(alb_dns):
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
+def auto_register_cluster_and_sync_git(env):
+    """Tự động đăng ký cluster với ArgoCD và push manifest lên Git."""
+    print(f"\n--- Step 6: Auto-registering {env} cluster & Syncing Git ---")
+    
+    # 1. Chạy script đăng ký cluster (script này đã được update để sửa cả file YAML)
+    script_path = os.path.join(_SCRIPT_DIR, "scripts", "create-argocd-cluster-secrets.sh")
+    if os.path.isfile(script_path):
+        run_command(f"bash {script_path} {env}")
+    else:
+        print(f"  ⚠ Không tìm thấy {script_path}, bỏ qua bước đăng ký.")
+        return
+
+    # 2. Git commit & push các thay đổi trong thư mục argocd/clusters
+    print(f"  Syncing cluster manifests to Git...")
+    cluster_yaml = os.path.join(_SCRIPT_DIR, "argocd", "clusters", f"cluster-{env}.yaml")
+    if os.path.isfile(cluster_yaml):
+        try:
+            # Kiểm tra xem có thay đổi không trước khi commit
+            res = subprocess.run("git status --porcelain argocd/clusters/", shell=True, capture_output=True, text=True)
+            if res.stdout.strip():
+                run_command(f"git add {cluster_yaml}")
+                # Dùng || true để tránh crash nếu không có gì thay đổi thực sự (dù status báo có)
+                subprocess.run(f'git commit -m "chore: auto-update {env} cluster ip"', shell=True)
+                run_command("git push")
+                print(f"  ✓ Successfully pushed {env} cluster manifest to Git.")
+            else:
+                print("  ✓ Manifest is already up to date in Git.")
+        except Exception as e:
+            print(f"  ⚠ Lỗi khi Git Sync: {e}")
+            print("  Hãy tự thực hiện 'git push' để ArgoCD nhận IP mới.")
+
 def main():
     print("\n" + "=" * 60)
     print(f"  CONFIGURE — Phase 2 (VPN Required) — env: {TERRAFORM_ENV}")
@@ -534,6 +565,8 @@ def main():
         install_external_secrets_operator()
         ensure_aws_secrets_credentials()
         apply_external_secrets_manifests()
+        # Tự động đăng ký cluster với ArgoCD (Management) và Sync Git
+        auto_register_cluster_and_sync_git(TERRAFORM_ENV)
 
     print("\n--- Updating /etc/hosts for Ingress access ---")
     alb_dns = tf_out.get("web_alb_dns_name", {}).get("value", "")

@@ -58,12 +58,26 @@ create_cluster_secret() {
     kubectl apply -f -
   
   echo "  ✓ Cluster secret created for $env"
+
+  # Also update the manifest file in Git to prevent OutOfSync
+  local manifest_file="$ROOT_DIR/argocd/clusters/cluster-${env}.yaml"
+  if [[ -f "$manifest_file" ]]; then
+    # Use yq to update the server field in the manifest
+    yq eval ".stringData.server = \"${server}\"" -i "$manifest_file"
+    echo "  ✓ Updated manifest file: argocd/clusters/cluster-${env}.yaml"
+  fi
 }
 
 echo "Creating ArgoCD cluster secrets..."
 echo ""
 
-for env in dev prod; do
+# If an argument is provided, only process that environment
+ENVS_TO_PROCESS="dev prod"
+if [[ -n "$1" ]]; then
+  ENVS_TO_PROCESS="$1"
+fi
+
+for env in $ENVS_TO_PROCESS; do
   create_cluster_secret "$env"
   echo ""
 done
