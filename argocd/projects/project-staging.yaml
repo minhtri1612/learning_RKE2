@@ -6,9 +6,11 @@ metadata:
 spec:
   description: Staging Environment Project
   sourceRepos:
-  - '*'
+  - 'https://github.com/minhtri1612/learning_RKE2.git'
   destinations:
-  - namespace: '*'
+  - namespace: 'meo-stationery'
+    server: '*'
+  - namespace: 'database'
     server: '*'
   clusterResourceWhitelist:
   - group: '*'

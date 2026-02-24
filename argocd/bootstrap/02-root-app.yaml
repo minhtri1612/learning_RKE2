@@ -5,7 +5,7 @@
 # Setup:
 # 1. Apply projects: kubectl apply -f argocd/projects/
 # 2. Apply RBAC: kubectl apply -f argocd/rbac/
-# 3. Apply root app: kubectl apply -f argocd/bootstrap/root-app.yaml
+# 3. Apply root app: kubectl apply -f argocd/bootstrap/02-root-app.yaml
 #
 # The ApplicationSets will auto-generate:
 # - meo-station-backend-dev/prod
@@ -17,6 +17,8 @@ kind: Application
 metadata:
   name: argocd-projects
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: infrastructure
   source:
@@ -38,6 +40,8 @@ kind: Application
 metadata:
   name: argocd-clusters
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: infrastructure
   source:
@@ -59,6 +63,8 @@ kind: Application
 metadata:
   name: argocd-repositories
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: infrastructure
   source:
@@ -80,6 +86,8 @@ kind: Application
 metadata:
   name: argocd-config
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: infrastructure
   source:
@@ -101,6 +109,8 @@ kind: Application
 metadata:
   name: root-appsets
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -124,6 +134,8 @@ kind: Application
 metadata:
   name: argocd-notifications
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   project: infrastructure
   source:
@@ -145,6 +157,8 @@ kind: Application
 metadata:
   name: argocd-image-updater
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   project: infrastructure
   source:
