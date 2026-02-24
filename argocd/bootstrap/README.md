@@ -15,7 +15,7 @@ Once the Root Application is applied, it will automatically synchronize all othe
 ## 📁 Directory Roles
 
 - `bootstrap/`: Sequential manifests for cluster initialization.
-- `projects/`: Multi-tenant isolation (dev, staging, prod, infrastructure).
+- `projects/`: Multi-tenant isolation (dev, prod, infrastructure).
 - `appsets/`: Templates for automated application discovery across all clusters.
 - `clusters/`: Registration secrets for external clusters (Dev/Prod).
 - `repositories/`: Git repository credentials and SSH known-hosts.
