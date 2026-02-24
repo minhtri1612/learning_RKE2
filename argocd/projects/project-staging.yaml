@@ -1,10 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: infrastructure
+  name: staging
   namespace: argocd
 spec:
-  description: Infrastructure Project (Ingress, Cert-Manager, Monitoring)
+  description: Staging Environment Project
   sourceRepos:
   - '*'
   destinations:
