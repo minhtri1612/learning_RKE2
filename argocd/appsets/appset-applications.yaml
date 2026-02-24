@@ -21,7 +21,7 @@ spec:
       source:
         repoURL: https://github.com/minhtri1612/learning_RKE2.git
         targetRevision: '{{version}}'
-        path: '{{path.dirname}}'
+        path: '{{helmPath}}'
         helm:
           valueFiles:
           - values.yaml
@@ -82,7 +82,7 @@ spec:
       source:
         repoURL: https://github.com/minhtri1612/learning_RKE2.git
         targetRevision: '{{version}}'
-        path: '{{path.dirname}}'
+        path: '{{helmPath}}'
         helm:
           valueFiles:
           - values.yaml
