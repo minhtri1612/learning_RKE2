@@ -5,24 +5,23 @@ metadata:
   namespace: argocd
 spec:
   generators:
-  - list:
-      elements:
-      - app: backend
-        path: k8s_helm/backend
-        namespace: meo-stationery
-      - app: database
-        path: k8s_helm/database
-        namespace: database
+  - git:
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      revision: dev
+      files:
+      - path: "k8s_helm/*/config.json"
   template:
     metadata:
-      name: 'meo-station-{{app}}-dev'
+      name: 'meo-station-{{path.basename}}-dev'
       namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{syncWave}}'
     spec:
       project: dev
       source:
         repoURL: https://github.com/minhtri1612/learning_RKE2.git
-        targetRevision: dev
-        path: '{{path}}'
+        targetRevision: '{{version}}'
+        path: '{{helmPath}}'
         helm:
           valueFiles:
           - values.yaml
@@ -51,6 +50,14 @@ spec:
         jsonPointers:
         - /status
         - /metadata/annotations
+      - group: ""
+        kind: Secret
+        jsonPointers:
+        - /data
+      - group: ""
+        kind: Service
+        jsonPointers:
+        - /metadata/annotations
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -59,24 +66,23 @@ metadata:
   namespace: argocd
 spec:
   generators:
-  - list:
-      elements:
-      - app: backend
-        path: k8s_helm/backend
-        namespace: meo-stationery
-      - app: database
-        path: k8s_helm/database
-        namespace: database
+  - git:
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      revision: main
+      files:
+      - path: "k8s_helm/*/config.json"
   template:
     metadata:
-      name: 'meo-station-{{app}}-prod'
+      name: 'meo-station-{{path.basename}}-prod'
       namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{syncWave}}'
     spec:
       project: prod
       source:
         repoURL: https://github.com/minhtri1612/learning_RKE2.git
-        targetRevision: main
-        path: '{{path}}'
+        targetRevision: '{{version}}'
+        path: '{{helmPath}}'
         helm:
           valueFiles:
           - values.yaml

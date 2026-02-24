@@ -1,5 +1,6 @@
 {
     "namespace": "database",
     "syncWave": "1",
-    "version": "main"
+    "version": "main",
+    "helmPath": "k8s_helm/database"
 }
