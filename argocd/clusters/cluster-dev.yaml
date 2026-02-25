@@ -8,7 +8,7 @@ metadata:
 type: Opaque
 stringData:
   name: dev
-  server: https://10.1.101.210:6443
+  server: https://10.1.101.152:6443
   config: |
     {
       "tlsClientConfig": {
