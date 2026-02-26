@@ -14,12 +14,16 @@ spec:
       - git:
           repoURL: https://github.com/minhtri1612/learning_RKE2.git
           revision: main
+          # Đổi tên tham số path của generator thành env.path để tránh đụng với definitions
+          pathParamPrefix: env
           files:
           - path: "argocd/apps/config/*.yaml"
       # App generic: mỗi file trong definitions/ = 1 app (name, path, namespace, syncWave)
       - git:
           repoURL: https://github.com/minhtri1612/learning_RKE2.git
           revision: main
+          # Đổi tên tham số path của generator thành app.path để tránh đụng với config
+          pathParamPrefix: app
           files:
           - path: "argocd/apps/definitions/*.yaml"
   template:
