@@ -75,3 +75,11 @@ ansible/group_vars/vpn_server.yml
 
 # Prisma (if you need it, remove this line)
 /prisma/
+
+all_secrets.yaml
+
+cluster_secrets.yaml
+
+vpn_log.txt
+
+management_state.json
