@@ -11,12 +11,17 @@
 
 ## Setup
 
-### 1. Create Slack token secret
+### 1. Create Slack token secret (không đưa vào Git)
+
+Secret **không** nằm trong repo để tránh lộ token và tránh GitOps sync ghi đè. Tạo **một lần** bằng tay (VPN bật, dùng kubeconfig management):
 
 ```bash
-kubectl create secret generic argocd-notifications-secret \
+kubectl --kubeconfig=kube_config_rke2_management.yaml \
+  create secret generic argocd-notifications-secret \
   -n argocd \
-  --from-literal=slack-token=xoxb-YOUR-SLACK-BOT-TOKEN
+  --from-literal=slack-token=xoxb-YOUR-SLACK-BOT-TOKEN \
+  --dry-run=client -o yaml | \
+  kubectl --kubeconfig=kube_config_rke2_management.yaml apply -f -
 ```
 
 ### 2. Apply notifications ConfigMap

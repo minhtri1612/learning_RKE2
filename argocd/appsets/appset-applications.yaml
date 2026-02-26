@@ -34,6 +34,10 @@ spec:
       annotations:
         # syncWave lấy từ app definition (database=1, backend=5)
         argocd.argoproj.io/sync-wave: '{{syncWave}}'
+        # Slack notifications – gửi vào #new-channel khi deploy/sync failed/degraded
+        notifications.argoproj.io/subscribe.on-deployed.slack: new-channel
+        notifications.argoproj.io/subscribe.on-sync-failed.slack: new-channel
+        notifications.argoproj.io/subscribe.on-health-degraded.slack: new-channel
     spec:
       # project per env (dev/prod) lấy từ config
       project: '{{project}}'
