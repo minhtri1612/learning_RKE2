@@ -59,12 +59,26 @@ create_cluster_secret() {
   
   echo "  ✓ Cluster secret created for $env"
 
-  # Also update the manifest file in Git to prevent OutOfSync
+  # Also update the manifest file in Git so ArgoCD syncs correct credentials
   local manifest_file="$ROOT_DIR/argocd/clusters/cluster-${env}.yaml"
   if [[ -f "$manifest_file" ]]; then
-    # Use yq to update the server field in the manifest
     yq eval ".stringData.server = \"${server}\"" -i "$manifest_file"
-    echo "  ✓ Updated manifest file: argocd/clusters/cluster-${env}.yaml"
+    # Write config JSON using Python to avoid yq quoting issues with JSON values
+    python3 - "$manifest_file" "$client_cert" "$client_key" <<'PYEOF'
+import sys, json, re
+manifest_path, cert, key = sys.argv[1], sys.argv[2], sys.argv[3]
+config = json.dumps({"tlsClientConfig": {"insecure": True, "certData": cert, "keyData": key}})
+with open(manifest_path, 'r') as f:
+    content = f.read()
+# Replace entire config value (single-line or leftover multi-line) to avoid broken YAML
+if 'config:' in content:
+    content = re.sub(r"(\s+config:).*", f"\\1 '{config}'\n", content, count=1, flags=re.DOTALL)
+else:
+    content = content.rstrip('\n') + f"\n  config: '{config}'\n"
+with open(manifest_path, 'w') as f:
+    f.write(content)
+PYEOF
+    echo "  ✓ Updated manifest file (with creds): argocd/clusters/cluster-${env}.yaml"
   fi
 }
 

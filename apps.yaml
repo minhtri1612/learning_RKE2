@@ -1,0 +1,1814 @@
+apiVersion: v1
+items:
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "0"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"argoproj.io/v1alpha1","kind":"Application","metadata":{"annotations":{"argocd.argoproj.io/sync-wave":"0"},"name":"argocd-clusters","namespace":"argocd"},"spec":{"destination":{"namespace":"argocd","server":"https://kubernetes.default.svc"},"project":"infrastructure","source":{"directory":{"recurse":true},"path":"argocd/clusters","repoURL":"https://github.com/minhtri1612/learning_RKE2.git","targetRevision":"main"},"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}
+    creationTimestamp: "2026-02-24T17:36:09Z"
+    generation: 26
+    name: argocd-clusters
+    namespace: argocd
+    resourceVersion: "13489"
+    uid: e21c7ded-7546-458f-a0ad-1f136794f109
+  spec:
+    destination:
+      namespace: argocd
+      server: https://kubernetes.default.svc
+    project: infrastructure
+    source:
+      directory:
+        jsonnet: {}
+        recurse: true
+      path: argocd/clusters
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+  status:
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:13Z"
+      status: Healthy
+    history:
+    - deployStartedAt: "2026-02-24T17:36:13Z"
+      deployedAt: "2026-02-24T17:36:14Z"
+      id: 0
+      initiatedBy:
+        automated: true
+      revision: 838076ae6244c65f9d4668306f182027873584f8
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/clusters
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    - deployStartedAt: "2026-02-24T17:59:12Z"
+      deployedAt: "2026-02-24T17:59:13Z"
+      id: 1
+      initiatedBy:
+        automated: true
+      revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/clusters
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    operationState:
+      finishedAt: "2026-02-24T17:59:13Z"
+      message: successfully synced (all tasks run)
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          prune: true
+          revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+          source:
+            directory:
+              jsonnet: {}
+              recurse: true
+            path: argocd/clusters
+            repoURL: https://github.com/minhtri1612/learning_RKE2.git
+            targetRevision: main
+      phase: Succeeded
+      startedAt: "2026-02-24T17:59:12Z"
+      syncResult:
+        resources:
+        - group: ""
+          hookPhase: Running
+          kind: Secret
+          message: secret/cluster-dev configured
+          name: cluster-dev
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        - group: ""
+          hookPhase: Running
+          kind: Secret
+          message: secret/cluster-prod configured
+          name: cluster-prod
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/clusters
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+    reconciledAt: "2026-02-24T18:03:09Z"
+    resourceHealthSource: appTree
+    resources:
+    - kind: Secret
+      name: cluster-dev
+      namespace: argocd
+      status: Synced
+      version: v1
+    - kind: Secret
+      name: cluster-prod
+      namespace: argocd
+      status: Synced
+      version: v1
+    sourceHydrator: {}
+    sourceType: Directory
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: argocd
+          server: https://kubernetes.default.svc
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/clusters
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+      status: Synced
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "0"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"argoproj.io/v1alpha1","kind":"Application","metadata":{"annotations":{"argocd.argoproj.io/sync-wave":"0"},"name":"argocd-config","namespace":"argocd"},"spec":{"destination":{"namespace":"argocd","server":"https://kubernetes.default.svc"},"project":"infrastructure","source":{"directory":{"recurse":true},"path":"argocd/config","repoURL":"https://github.com/minhtri1612/learning_RKE2.git","targetRevision":"main"},"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}
+    creationTimestamp: "2026-02-24T17:36:10Z"
+    generation: 14
+    name: argocd-config
+    namespace: argocd
+    resourceVersion: "12757"
+    uid: 588f860b-ee45-4634-b7d5-5fb026b9cf5b
+  spec:
+    destination:
+      namespace: argocd
+      server: https://kubernetes.default.svc
+    project: infrastructure
+    source:
+      directory:
+        jsonnet: {}
+        recurse: true
+      path: argocd/config
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+  status:
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:13Z"
+      status: Healthy
+    history:
+    - deployStartedAt: "2026-02-24T17:36:13Z"
+      deployedAt: "2026-02-24T17:36:16Z"
+      id: 0
+      initiatedBy:
+        automated: true
+      revision: 838076ae6244c65f9d4668306f182027873584f8
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/config
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    operationState:
+      finishedAt: "2026-02-24T17:36:16Z"
+      message: successfully synced (all tasks run)
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          prune: true
+          revision: 838076ae6244c65f9d4668306f182027873584f8
+          source:
+            directory:
+              jsonnet: {}
+              recurse: true
+            path: argocd/config
+            repoURL: https://github.com/minhtri1612/learning_RKE2.git
+            targetRevision: main
+      phase: Succeeded
+      startedAt: "2026-02-24T17:36:13Z"
+      syncResult:
+        resources:
+        - group: ""
+          hookPhase: Running
+          kind: ConfigMap
+          message: 'configmap/argocd-cmd-params-cm configured. Warning: resource configmaps/argocd-cmd-params-cm
+            is missing the kubectl.kubernetes.io/last-applied-configuration annotation
+            which is required by  apply.  apply should only be used on resources created
+            declaratively by either  create --save-config or  apply. The missing annotation
+            will be patched automatically.'
+          name: argocd-cmd-params-cm
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        revision: 838076ae6244c65f9d4668306f182027873584f8
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/config
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+    reconciledAt: "2026-02-24T18:00:13Z"
+    resourceHealthSource: appTree
+    resources:
+    - kind: ConfigMap
+      name: argocd-cmd-params-cm
+      namespace: argocd
+      status: Synced
+      version: v1
+    sourceHydrator: {}
+    sourceType: Directory
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: argocd
+          server: https://kubernetes.default.svc
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/config
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+      status: Synced
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "1"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"argoproj.io/v1alpha1","kind":"Application","metadata":{"annotations":{"argocd.argoproj.io/sync-wave":"1"},"name":"argocd-image-updater","namespace":"argocd"},"spec":{"destination":{"namespace":"argocd","server":"https://kubernetes.default.svc"},"project":"infrastructure","source":{"directory":{"recurse":true},"path":"argocd/image-updater","repoURL":"https://github.com/minhtri1612/learning_RKE2.git","targetRevision":"main"},"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}
+    creationTimestamp: "2026-02-24T17:36:11Z"
+    generation: 113
+    name: argocd-image-updater
+    namespace: argocd
+    resourceVersion: "14054"
+    uid: 0874d2cb-d6aa-4ad6-9081-c170eac7f9c8
+  spec:
+    destination:
+      namespace: argocd
+      server: https://kubernetes.default.svc
+    project: infrastructure
+    source:
+      directory:
+        jsonnet: {}
+        recurse: true
+      path: argocd/image-updater
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+  status:
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:16Z"
+      status: Healthy
+    history:
+    - deployStartedAt: "2026-02-24T17:36:13Z"
+      deployedAt: "2026-02-24T17:36:15Z"
+      id: 0
+      initiatedBy:
+        automated: true
+      revision: 838076ae6244c65f9d4668306f182027873584f8
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/image-updater
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    - deployStartedAt: "2026-02-24T18:00:02Z"
+      deployedAt: "2026-02-24T18:00:03Z"
+      id: 1
+      initiatedBy:
+        automated: true
+      revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/image-updater
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    - deployStartedAt: "2026-02-24T18:05:23Z"
+      deployedAt: "2026-02-24T18:05:24Z"
+      id: 2
+      initiatedBy:
+        automated: true
+      revision: e6a629cd1388d99787f17550a7612709083d1a7a
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/image-updater
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    operationState:
+      finishedAt: "2026-02-24T18:05:24Z"
+      message: successfully synced (all tasks run)
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          prune: true
+          revision: e6a629cd1388d99787f17550a7612709083d1a7a
+          source:
+            directory:
+              jsonnet: {}
+              recurse: true
+            path: argocd/image-updater
+            repoURL: https://github.com/minhtri1612/learning_RKE2.git
+            targetRevision: main
+      phase: Succeeded
+      startedAt: "2026-02-24T18:05:23Z"
+      syncResult:
+        resources:
+        - group: ""
+          hookPhase: Running
+          kind: Secret
+          message: secret/argocd-image-updater-secret configured
+          name: argocd-image-updater-secret
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        - group: ""
+          hookPhase: Running
+          kind: ConfigMap
+          message: configmap/argocd-image-updater-config configured
+          name: argocd-image-updater-config
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        revision: e6a629cd1388d99787f17550a7612709083d1a7a
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/image-updater
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+    reconciledAt: "2026-02-24T18:05:24Z"
+    resourceHealthSource: appTree
+    resources:
+    - kind: ConfigMap
+      name: argocd-image-updater-config
+      namespace: argocd
+      status: Synced
+      version: v1
+    - kind: Secret
+      name: argocd-image-updater-secret
+      namespace: argocd
+      status: Synced
+      version: v1
+    sourceHydrator: {}
+    sourceType: Directory
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: argocd
+          server: https://kubernetes.default.svc
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/image-updater
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: e6a629cd1388d99787f17550a7612709083d1a7a
+      status: Synced
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: root-appsets:argoproj.io/Application:argocd/argocd-image-updater-controller
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"argoproj.io/v1alpha1","kind":"Application","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"root-appsets:argoproj.io/Application:argocd/argocd-image-updater-controller"},"name":"argocd-image-updater-controller","namespace":"argocd"},"spec":{"destination":{"namespace":"argocd","server":"https://kubernetes.default.svc"},"project":"infrastructure","source":{"chart":"argocd-image-updater","helm":{"values":"config:\n  registries:\n    - name: Docker Hub\n      prefix: docker.io\n      api_url: https://index.docker.io/v1\n"},"repoURL":"https://argoproj.github.io/argo-helm","targetRevision":"0.9.1"},"syncPolicy":{"automated":{"prune":true,"selfHeal":true},"syncOptions":["CreateNamespace=true"]}}}
+    creationTimestamp: "2026-02-24T17:36:16Z"
+    generation: 108
+    name: argocd-image-updater-controller
+    namespace: argocd
+    resourceVersion: "14052"
+    uid: f2412e7d-f9e0-47b7-a322-63c59d03b283
+  spec:
+    destination:
+      namespace: argocd
+      server: https://kubernetes.default.svc
+    project: infrastructure
+    source:
+      chart: argocd-image-updater
+      helm:
+        values: |
+          config:
+            registries:
+              - name: Docker Hub
+                prefix: docker.io
+                api_url: https://index.docker.io/v1
+      repoURL: https://argoproj.github.io/argo-helm
+      targetRevision: 0.9.1
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
+  status:
+    conditions:
+    - lastTransitionTime: "2026-02-24T18:05:24Z"
+      message: ConfigMap/argocd-image-updater-config is part of applications argocd/argocd-image-updater-controller
+        and argocd-image-updater
+      type: SharedResourceWarning
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:37:02Z"
+      status: Healthy
+    history:
+    - deployStartedAt: "2026-02-24T17:36:19Z"
+      deployedAt: "2026-02-24T17:36:20Z"
+      id: 0
+      initiatedBy:
+        automated: true
+      revision: 0.9.1
+      source:
+        chart: argocd-image-updater
+        helm:
+          values: |
+            config:
+              registries:
+                - name: Docker Hub
+                  prefix: docker.io
+                  api_url: https://index.docker.io/v1
+        repoURL: https://argoproj.github.io/argo-helm
+        targetRevision: 0.9.1
+    operationState:
+      finishedAt: "2026-02-24T18:05:23Z"
+      message: successfully synced (all tasks run)
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          autoHealAttemptsCount: 11
+          prune: true
+          resources:
+          - kind: ConfigMap
+            name: argocd-image-updater-config
+          revision: 0.9.1
+          source:
+            chart: argocd-image-updater
+            helm:
+              values: |
+                config:
+                  registries:
+                    - name: Docker Hub
+                      prefix: docker.io
+                      api_url: https://index.docker.io/v1
+            repoURL: https://argoproj.github.io/argo-helm
+            targetRevision: 0.9.1
+          syncOptions:
+          - CreateNamespace=true
+      phase: Succeeded
+      startedAt: "2026-02-24T18:05:23Z"
+      syncResult:
+        resources:
+        - group: ""
+          hookPhase: Running
+          kind: ConfigMap
+          message: configmap/argocd-image-updater-config configured
+          name: argocd-image-updater-config
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        revision: 0.9.1
+        source:
+          chart: argocd-image-updater
+          helm:
+            values: |
+              config:
+                registries:
+                  - name: Docker Hub
+                    prefix: docker.io
+                    api_url: https://index.docker.io/v1
+          repoURL: https://argoproj.github.io/argo-helm
+          targetRevision: 0.9.1
+    reconciledAt: "2026-02-24T18:05:23Z"
+    resourceHealthSource: appTree
+    resources:
+    - kind: ConfigMap
+      name: argocd-image-updater-config
+      namespace: argocd
+      status: OutOfSync
+      version: v1
+    - kind: ConfigMap
+      name: argocd-image-updater-ssh-config
+      namespace: argocd
+      status: Synced
+      version: v1
+    - kind: ServiceAccount
+      name: argocd-image-updater-controller
+      namespace: argocd
+      status: Synced
+      version: v1
+    - group: apps
+      kind: Deployment
+      name: argocd-image-updater-controller
+      namespace: argocd
+      status: Synced
+      version: v1
+    - group: rbac.authorization.k8s.io
+      kind: Role
+      name: argocd-image-updater-controller
+      namespace: argocd
+      status: Synced
+      version: v1
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+      name: argocd-image-updater-controller
+      namespace: argocd
+      status: Synced
+      version: v1
+    sourceHydrator: {}
+    sourceType: Helm
+    summary:
+      images:
+      - quay.io/argoprojlabs/argocd-image-updater:v0.12.2
+    sync:
+      comparedTo:
+        destination:
+          namespace: argocd
+          server: https://kubernetes.default.svc
+        source:
+          chart: argocd-image-updater
+          helm:
+            values: |
+              config:
+                registries:
+                  - name: Docker Hub
+                    prefix: docker.io
+                    api_url: https://index.docker.io/v1
+          repoURL: https://argoproj.github.io/argo-helm
+          targetRevision: 0.9.1
+      revision: 0.9.1
+      status: OutOfSync
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "1"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"argoproj.io/v1alpha1","kind":"Application","metadata":{"annotations":{"argocd.argoproj.io/sync-wave":"1"},"name":"argocd-notifications","namespace":"argocd"},"spec":{"destination":{"namespace":"argocd","server":"https://kubernetes.default.svc"},"project":"infrastructure","source":{"directory":{"recurse":true},"path":"argocd/notifications","repoURL":"https://github.com/minhtri1612/learning_RKE2.git","targetRevision":"main"},"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}
+    creationTimestamp: "2026-02-24T17:36:11Z"
+    generation: 15
+    name: argocd-notifications
+    namespace: argocd
+    resourceVersion: "12677"
+    uid: 3c4248f8-5815-4a0c-98f1-3e42bd682f2b
+  spec:
+    destination:
+      namespace: argocd
+      server: https://kubernetes.default.svc
+    project: infrastructure
+    source:
+      directory:
+        jsonnet: {}
+        recurse: true
+      path: argocd/notifications
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+  status:
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:13Z"
+      status: Healthy
+    history:
+    - deployStartedAt: "2026-02-24T17:36:13Z"
+      deployedAt: "2026-02-24T17:36:16Z"
+      id: 0
+      initiatedBy:
+        automated: true
+      revision: 838076ae6244c65f9d4668306f182027873584f8
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/notifications
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    operationState:
+      finishedAt: "2026-02-24T17:36:16Z"
+      message: successfully synced (all tasks run)
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          prune: true
+          revision: 838076ae6244c65f9d4668306f182027873584f8
+          source:
+            directory:
+              jsonnet: {}
+              recurse: true
+            path: argocd/notifications
+            repoURL: https://github.com/minhtri1612/learning_RKE2.git
+            targetRevision: main
+      phase: Succeeded
+      startedAt: "2026-02-24T17:36:13Z"
+      syncResult:
+        resources:
+        - group: ""
+          hookPhase: Running
+          kind: Secret
+          message: 'secret/argocd-notifications-secret configured. Warning: resource
+            secrets/argocd-notifications-secret is missing the kubectl.kubernetes.io/last-applied-configuration
+            annotation which is required by  apply.  apply should only be used on
+            resources created declaratively by either  create --save-config or  apply.
+            The missing annotation will be patched automatically.'
+          name: argocd-notifications-secret
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        - group: ""
+          hookPhase: Running
+          kind: ConfigMap
+          message: 'configmap/argocd-notifications-cm configured. Warning: resource
+            configmaps/argocd-notifications-cm is missing the kubectl.kubernetes.io/last-applied-configuration
+            annotation which is required by  apply.  apply should only be used on
+            resources created declaratively by either  create --save-config or  apply.
+            The missing annotation will be patched automatically.'
+          name: argocd-notifications-cm
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        revision: 838076ae6244c65f9d4668306f182027873584f8
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/notifications
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+    reconciledAt: "2026-02-24T17:59:57Z"
+    resourceHealthSource: appTree
+    resources:
+    - kind: ConfigMap
+      name: argocd-notifications-cm
+      namespace: argocd
+      status: Synced
+      version: v1
+    - kind: Secret
+      name: argocd-notifications-secret
+      namespace: argocd
+      status: Synced
+      version: v1
+    sourceHydrator: {}
+    sourceType: Directory
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: argocd
+          server: https://kubernetes.default.svc
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/notifications
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+      status: Synced
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "0"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"argoproj.io/v1alpha1","kind":"Application","metadata":{"annotations":{"argocd.argoproj.io/sync-wave":"0"},"name":"argocd-projects","namespace":"argocd"},"spec":{"destination":{"namespace":"argocd","server":"https://kubernetes.default.svc"},"project":"infrastructure","source":{"directory":{"recurse":true},"path":"argocd/projects","repoURL":"https://github.com/minhtri1612/learning_RKE2.git","targetRevision":"main"},"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}
+    creationTimestamp: "2026-02-24T17:36:09Z"
+    generation: 14
+    name: argocd-projects
+    namespace: argocd
+    resourceVersion: "13330"
+    uid: b9436e48-0188-4936-8736-e1ffb9055136
+  spec:
+    destination:
+      namespace: argocd
+      server: https://kubernetes.default.svc
+    project: infrastructure
+    source:
+      directory:
+        jsonnet: {}
+        recurse: true
+      path: argocd/projects
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+  status:
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:12Z"
+      status: Healthy
+    history:
+    - deployStartedAt: "2026-02-24T17:36:13Z"
+      deployedAt: "2026-02-24T17:36:15Z"
+      id: 0
+      initiatedBy:
+        automated: true
+      revision: 838076ae6244c65f9d4668306f182027873584f8
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/projects
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    operationState:
+      finishedAt: "2026-02-24T17:36:15Z"
+      message: successfully synced (all tasks run)
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          prune: true
+          revision: 838076ae6244c65f9d4668306f182027873584f8
+          source:
+            directory:
+              jsonnet: {}
+              recurse: true
+            path: argocd/projects
+            repoURL: https://github.com/minhtri1612/learning_RKE2.git
+            targetRevision: main
+      phase: Succeeded
+      startedAt: "2026-02-24T17:36:13Z"
+      syncResult:
+        resources:
+        - group: argoproj.io
+          hookPhase: Running
+          kind: AppProject
+          message: appproject.argoproj.io/prod configured
+          name: prod
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1alpha1
+        - group: argoproj.io
+          hookPhase: Running
+          kind: AppProject
+          message: appproject.argoproj.io/infrastructure configured
+          name: infrastructure
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1alpha1
+        - group: argoproj.io
+          hookPhase: Running
+          kind: AppProject
+          message: appproject.argoproj.io/dev configured
+          name: dev
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1alpha1
+        revision: 838076ae6244c65f9d4668306f182027873584f8
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/projects
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+    reconciledAt: "2026-02-24T18:02:29Z"
+    resourceHealthSource: appTree
+    resources:
+    - group: argoproj.io
+      kind: AppProject
+      name: dev
+      namespace: argocd
+      status: Synced
+      version: v1alpha1
+    - group: argoproj.io
+      kind: AppProject
+      name: infrastructure
+      namespace: argocd
+      status: Synced
+      version: v1alpha1
+    - group: argoproj.io
+      kind: AppProject
+      name: prod
+      namespace: argocd
+      status: Synced
+      version: v1alpha1
+    sourceHydrator: {}
+    sourceType: Directory
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: argocd
+          server: https://kubernetes.default.svc
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/projects
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+      status: Synced
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "0"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"argoproj.io/v1alpha1","kind":"Application","metadata":{"annotations":{"argocd.argoproj.io/sync-wave":"0"},"name":"argocd-repositories","namespace":"argocd"},"spec":{"destination":{"namespace":"argocd","server":"https://kubernetes.default.svc"},"project":"infrastructure","source":{"directory":{"recurse":true},"path":"argocd/repositories","repoURL":"https://github.com/minhtri1612/learning_RKE2.git","targetRevision":"main"},"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}
+    creationTimestamp: "2026-02-24T17:36:10Z"
+    generation: 17
+    name: argocd-repositories
+    namespace: argocd
+    resourceVersion: "13540"
+    uid: 00876a27-6fa2-4fcd-b264-e649abd5c204
+  spec:
+    destination:
+      namespace: argocd
+      server: https://kubernetes.default.svc
+    project: infrastructure
+    source:
+      directory:
+        jsonnet: {}
+        recurse: true
+      path: argocd/repositories
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+  status:
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:13Z"
+      status: Healthy
+    history:
+    - deployStartedAt: "2026-02-24T17:36:13Z"
+      deployedAt: "2026-02-24T17:36:16Z"
+      id: 0
+      initiatedBy:
+        automated: true
+      revision: 838076ae6244c65f9d4668306f182027873584f8
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/repositories
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    operationState:
+      finishedAt: "2026-02-24T17:36:16Z"
+      message: successfully synced (all tasks run)
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          prune: true
+          revision: 838076ae6244c65f9d4668306f182027873584f8
+          source:
+            directory:
+              jsonnet: {}
+              recurse: true
+            path: argocd/repositories
+            repoURL: https://github.com/minhtri1612/learning_RKE2.git
+            targetRevision: main
+      phase: Succeeded
+      startedAt: "2026-02-24T17:36:13Z"
+      syncResult:
+        resources:
+        - group: ""
+          hookPhase: Running
+          kind: Secret
+          message: secret/repo-learning-rke2 created
+          name: repo-learning-rke2
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        - group: ""
+          hookPhase: Running
+          kind: ConfigMap
+          message: 'configmap/argocd-ssh-known-hosts-cm configured. Warning: resource
+            configmaps/argocd-ssh-known-hosts-cm is missing the kubectl.kubernetes.io/last-applied-configuration
+            annotation which is required by  apply.  apply should only be used on
+            resources created declaratively by either  create --save-config or  apply.
+            The missing annotation will be patched automatically.'
+          name: argocd-ssh-known-hosts-cm
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1
+        revision: 838076ae6244c65f9d4668306f182027873584f8
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/repositories
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+    reconciledAt: "2026-02-24T18:03:20Z"
+    resourceHealthSource: appTree
+    resources:
+    - kind: ConfigMap
+      name: argocd-ssh-known-hosts-cm
+      namespace: argocd
+      status: Synced
+      version: v1
+    - kind: Secret
+      name: repo-learning-rke2
+      namespace: argocd
+      status: Synced
+      version: v1
+    sourceHydrator: {}
+    sourceType: Directory
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: argocd
+          server: https://kubernetes.default.svc
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/repositories
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: e6a629cd1388d99787f17550a7612709083d1a7a
+      status: Synced
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    creationTimestamp: "2026-02-24T17:36:17Z"
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    generation: 33
+    name: dev-ingress-nginx
+    namespace: argocd
+    ownerReferences:
+    - apiVersion: argoproj.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ApplicationSet
+      name: infrastructure-apps
+      uid: 6ca0ad6f-0271-43a4-acf3-f09356e06666
+    resourceVersion: "14057"
+    uid: a71a6230-45d5-422f-8a9f-115b1c532059
+  spec:
+    destination:
+      namespace: ingress-nginx
+      server: https://10.1.101.210:6443
+    project: infrastructure
+    source:
+      chart: ingress-nginx
+      helm:
+        values: |
+          controller:
+            service:
+              type: LoadBalancer
+      repoURL: https://kubernetes.github.io/ingress-nginx
+      targetRevision: 4.8.3
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
+  status:
+    conditions:
+    - lastTransitionTime: "2026-02-24T18:02:19Z"
+      message: 'Failed to load live state: failed to get cluster info for "https://10.1.101.210:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: the server has asked for the client to provide credentials'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:05:24Z"
+      message: 'Failed to load target state: failed to get cluster version for cluster
+        "https://10.1.101.210:6443": failed to get cluster info for "https://10.1.101.210:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: the server has asked for the client to provide credentials'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:05:24Z"
+      message: 'error synchronizing cache state : failed to get server version: failed
+        to get server version: the server has asked for the client to provide credentials'
+      type: UnknownError
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T18:02:19Z"
+      status: Healthy
+    operationState:
+      finishedAt: "2026-02-24T18:02:19Z"
+      message: 'ComparisonError: Failed to load live state: failed to get cluster
+        info for "https://10.1.101.210:6443": error synchronizing cache state : failed
+        to get server version: failed to get server version: the server has asked
+        for the client to provide credentials;ComparisonError: Failed to load target
+        state: failed to get cluster version for cluster "https://10.1.101.210:6443":
+        failed to get cluster info for "https://10.1.101.210:6443": error synchronizing
+        cache state : failed to get server version: failed to get server version:
+        the server has asked for the client to provide credentials (retried 5 times).'
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          prune: true
+          revision: 4.8.3
+          source:
+            chart: ingress-nginx
+            helm:
+              values: |
+                controller:
+                  service:
+                    type: LoadBalancer
+            repoURL: https://kubernetes.github.io/ingress-nginx
+            targetRevision: 4.8.3
+          syncOptions:
+          - CreateNamespace=true
+      phase: Error
+      retryCount: 5
+      startedAt: "2026-02-24T17:55:41Z"
+      syncResult:
+        revision: 4.8.3
+        source:
+          chart: ingress-nginx
+          helm:
+            values: |
+              controller:
+                service:
+                  type: LoadBalancer
+          repoURL: https://kubernetes.github.io/ingress-nginx
+          targetRevision: 4.8.3
+    reconciledAt: "2026-02-24T18:05:24Z"
+    resourceHealthSource: appTree
+    sourceHydrator: {}
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: ingress-nginx
+          server: https://10.1.101.210:6443
+        source:
+          chart: ingress-nginx
+          helm:
+            values: |
+              controller:
+                service:
+                  type: LoadBalancer
+          repoURL: https://kubernetes.github.io/ingress-nginx
+          targetRevision: 4.8.3
+      revision: 4.8.3
+      status: Unknown
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "5"
+    creationTimestamp: "2026-02-24T17:36:17Z"
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    generation: 13
+    name: meo-station-backend-dev
+    namespace: argocd
+    ownerReferences:
+    - apiVersion: argoproj.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ApplicationSet
+      name: applications-dev
+      uid: 9de4c981-de16-4efc-a759-423fc2388eaf
+    resourceVersion: "13512"
+    uid: 34db2aa3-0fc4-49d2-abc2-ec7226000690
+  spec:
+    destination:
+      name: dev
+      namespace: meo-stationery
+    ignoreDifferences:
+    - group: apps
+      jsonPointers:
+      - /spec/replicas
+      kind: Deployment
+    - group: apps
+      jsonPointers:
+      - /spec/replicas
+      kind: StatefulSet
+    - group: autoscaling
+      jsonPointers:
+      - /status
+      - /metadata/annotations
+      kind: HorizontalPodAutoscaler
+    - jsonPointers:
+      - /data
+      kind: Secret
+    - jsonPointers:
+      - /metadata/annotations
+      kind: Service
+    project: dev
+    source:
+      helm:
+        valueFiles:
+        - values.yaml
+        - values-dev.yaml
+      path: k8s_helm/backend
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+  status:
+    conditions:
+    - lastTransitionTime: "2026-02-24T17:59:26Z"
+      message: 'Failed to load live state: failed to get cluster info for "https://10.1.101.210:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: the server has asked for the client to provide credentials'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:03:14Z"
+      message: 'Failed to load target state: failed to get cluster version for cluster
+        "https://10.1.101.210:6443": failed to get cluster info for "https://10.1.101.210:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: the server has asked for the client to provide credentials'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:03:14Z"
+      message: 'error synchronizing cache state : failed to get server version: failed
+        to get server version: the server has asked for the client to provide credentials'
+      type: UnknownError
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:47Z"
+      status: Healthy
+    reconciledAt: "2026-02-24T18:03:14Z"
+    resourceHealthSource: appTree
+    sourceHydrator: {}
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          name: dev
+          namespace: meo-stationery
+        ignoreDifferences:
+        - group: apps
+          jsonPointers:
+          - /spec/replicas
+          kind: Deployment
+        - group: apps
+          jsonPointers:
+          - /spec/replicas
+          kind: StatefulSet
+        - group: autoscaling
+          jsonPointers:
+          - /status
+          - /metadata/annotations
+          kind: HorizontalPodAutoscaler
+        - jsonPointers:
+          - /data
+          kind: Secret
+        - jsonPointers:
+          - /metadata/annotations
+          kind: Service
+        source:
+          helm:
+            valueFiles:
+            - values.yaml
+            - values-dev.yaml
+          path: k8s_helm/backend
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: main
+      status: Unknown
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "5"
+    creationTimestamp: "2026-02-24T17:36:17Z"
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    generation: 9
+    name: meo-station-backend-prod
+    namespace: argocd
+    ownerReferences:
+    - apiVersion: argoproj.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ApplicationSet
+      name: applications-prod
+      uid: 0937a59f-5e6b-4253-8620-96c4f73d7cb3
+    resourceVersion: "12860"
+    uid: a02cca90-1e7f-4f23-8ba4-314419aa6011
+  spec:
+    destination:
+      name: prod
+      namespace: meo-stationery
+    ignoreDifferences:
+    - group: apps
+      jsonPointers:
+      - /spec/replicas
+      kind: Deployment
+    - group: apps
+      jsonPointers:
+      - /spec/replicas
+      kind: StatefulSet
+    - group: autoscaling
+      jsonPointers:
+      - /status
+      - /metadata/annotations
+      kind: HorizontalPodAutoscaler
+    project: prod
+    source:
+      helm:
+        valueFiles:
+        - values.yaml
+        - values-prod.yaml
+      path: k8s_helm/backend
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+  status:
+    conditions:
+    - lastTransitionTime: "2026-02-24T17:36:17Z"
+      message: 'Failed to load live state: failed to get cluster info for "https://10.2.101.84:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: Get "https://10.2.101.84:6443/version?timeout=32s": dial
+        tcp 10.2.101.84:6443: i/o timeout'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:00:01Z"
+      message: 'Failed to load target state: failed to get cluster version for cluster
+        "https://10.2.101.84:6443": failed to get cluster info for "https://10.2.101.84:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: Get "https://10.2.101.84:6443/version?timeout=32s": dial
+        tcp 10.2.101.84:6443: i/o timeout'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:00:01Z"
+      message: 'error synchronizing cache state : failed to get server version: failed
+        to get server version: Get "https://10.2.101.84:6443/version?timeout=32s":
+        dial tcp 10.2.101.84:6443: i/o timeout'
+      type: UnknownError
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:47Z"
+      status: Healthy
+    reconciledAt: "2026-02-24T18:00:01Z"
+    resourceHealthSource: appTree
+    sourceHydrator: {}
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          name: prod
+          namespace: meo-stationery
+        ignoreDifferences:
+        - group: apps
+          jsonPointers:
+          - /spec/replicas
+          kind: Deployment
+        - group: apps
+          jsonPointers:
+          - /spec/replicas
+          kind: StatefulSet
+        - group: autoscaling
+          jsonPointers:
+          - /status
+          - /metadata/annotations
+          kind: HorizontalPodAutoscaler
+        source:
+          helm:
+            valueFiles:
+            - values.yaml
+            - values-prod.yaml
+          path: k8s_helm/backend
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: main
+      status: Unknown
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "1"
+    creationTimestamp: "2026-02-24T17:36:17Z"
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    generation: 11
+    name: meo-station-database-dev
+    namespace: argocd
+    ownerReferences:
+    - apiVersion: argoproj.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ApplicationSet
+      name: applications-dev
+      uid: 9de4c981-de16-4efc-a759-423fc2388eaf
+    resourceVersion: "12665"
+    uid: ef846e99-c180-4977-9164-e36000d36731
+  spec:
+    destination:
+      name: dev
+      namespace: database
+    ignoreDifferences:
+    - group: apps
+      jsonPointers:
+      - /spec/replicas
+      kind: Deployment
+    - group: apps
+      jsonPointers:
+      - /spec/replicas
+      kind: StatefulSet
+    - group: autoscaling
+      jsonPointers:
+      - /status
+      - /metadata/annotations
+      kind: HorizontalPodAutoscaler
+    - jsonPointers:
+      - /data
+      kind: Secret
+    - jsonPointers:
+      - /metadata/annotations
+      kind: Service
+    project: dev
+    source:
+      helm:
+        valueFiles:
+        - values.yaml
+        - values-dev.yaml
+      path: k8s_helm/database
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+  status:
+    conditions:
+    - lastTransitionTime: "2026-02-24T17:59:55Z"
+      message: 'Failed to load live state: failed to get cluster info for "https://10.1.101.210:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: the server has asked for the client to provide credentials'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T17:59:55Z"
+      message: 'Failed to load target state: failed to get cluster version for cluster
+        "https://10.1.101.210:6443": failed to get cluster info for "https://10.1.101.210:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: the server has asked for the client to provide credentials'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T17:59:55Z"
+      message: 'error synchronizing cache state : failed to get server version: failed
+        to get server version: the server has asked for the client to provide credentials'
+      type: UnknownError
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:47Z"
+      status: Healthy
+    reconciledAt: "2026-02-24T17:59:55Z"
+    resourceHealthSource: appTree
+    sourceHydrator: {}
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          name: dev
+          namespace: database
+        ignoreDifferences:
+        - group: apps
+          jsonPointers:
+          - /spec/replicas
+          kind: Deployment
+        - group: apps
+          jsonPointers:
+          - /spec/replicas
+          kind: StatefulSet
+        - group: autoscaling
+          jsonPointers:
+          - /status
+          - /metadata/annotations
+          kind: HorizontalPodAutoscaler
+        - jsonPointers:
+          - /data
+          kind: Secret
+        - jsonPointers:
+          - /metadata/annotations
+          kind: Service
+        source:
+          helm:
+            valueFiles:
+            - values.yaml
+            - values-dev.yaml
+          path: k8s_helm/database
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: main
+      status: Unknown
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "1"
+    creationTimestamp: "2026-02-24T17:36:17Z"
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    generation: 11
+    name: meo-station-database-prod
+    namespace: argocd
+    ownerReferences:
+    - apiVersion: argoproj.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ApplicationSet
+      name: applications-prod
+      uid: 0937a59f-5e6b-4253-8620-96c4f73d7cb3
+    resourceVersion: "12858"
+    uid: 6faaf920-d353-4b8c-8765-14e99a00b6d4
+  spec:
+    destination:
+      name: prod
+      namespace: database
+    ignoreDifferences:
+    - group: apps
+      jsonPointers:
+      - /spec/replicas
+      kind: Deployment
+    - group: apps
+      jsonPointers:
+      - /spec/replicas
+      kind: StatefulSet
+    - group: autoscaling
+      jsonPointers:
+      - /status
+      - /metadata/annotations
+      kind: HorizontalPodAutoscaler
+    project: prod
+    source:
+      helm:
+        valueFiles:
+        - values.yaml
+        - values-prod.yaml
+      path: k8s_helm/database
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+  status:
+    conditions:
+    - lastTransitionTime: "2026-02-24T17:36:17Z"
+      message: 'Failed to load live state: failed to get cluster info for "https://10.2.101.84:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: Get "https://10.2.101.84:6443/version?timeout=32s": dial
+        tcp 10.2.101.84:6443: i/o timeout'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:00:13Z"
+      message: 'Failed to load target state: failed to get cluster version for cluster
+        "https://10.2.101.84:6443": failed to get cluster info for "https://10.2.101.84:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: Get "https://10.2.101.84:6443/version?timeout=32s": dial
+        tcp 10.2.101.84:6443: i/o timeout'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:00:13Z"
+      message: 'error synchronizing cache state : failed to get server version: failed
+        to get server version: Get "https://10.2.101.84:6443/version?timeout=32s":
+        dial tcp 10.2.101.84:6443: i/o timeout'
+      type: UnknownError
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:47Z"
+      status: Healthy
+    reconciledAt: "2026-02-24T18:00:13Z"
+    resourceHealthSource: appTree
+    sourceHydrator: {}
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          name: prod
+          namespace: database
+        ignoreDifferences:
+        - group: apps
+          jsonPointers:
+          - /spec/replicas
+          kind: Deployment
+        - group: apps
+          jsonPointers:
+          - /spec/replicas
+          kind: StatefulSet
+        - group: autoscaling
+          jsonPointers:
+          - /status
+          - /metadata/annotations
+          kind: HorizontalPodAutoscaler
+        source:
+          helm:
+            valueFiles:
+            - values.yaml
+            - values-prod.yaml
+          path: k8s_helm/database
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: main
+      status: Unknown
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    creationTimestamp: "2026-02-24T17:36:17Z"
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    generation: 11
+    name: prod-ingress-nginx
+    namespace: argocd
+    ownerReferences:
+    - apiVersion: argoproj.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ApplicationSet
+      name: infrastructure-apps
+      uid: 6ca0ad6f-0271-43a4-acf3-f09356e06666
+    resourceVersion: "12861"
+    uid: 5dba1bd1-b02d-41a3-a69a-446037fcb021
+  spec:
+    destination:
+      namespace: ingress-nginx
+      server: https://10.2.101.84:6443
+    project: infrastructure
+    source:
+      chart: ingress-nginx
+      helm:
+        values: |
+          controller:
+            service:
+              type: LoadBalancer
+      repoURL: https://kubernetes.github.io/ingress-nginx
+      targetRevision: 4.8.3
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+      - CreateNamespace=true
+  status:
+    conditions:
+    - lastTransitionTime: "2026-02-24T17:36:17Z"
+      message: 'Failed to load live state: failed to get cluster info for "https://10.2.101.84:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: Get "https://10.2.101.84:6443/version?timeout=32s": dial
+        tcp 10.2.101.84:6443: i/o timeout'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:00:03Z"
+      message: 'Failed to load target state: failed to get cluster version for cluster
+        "https://10.2.101.84:6443": failed to get cluster info for "https://10.2.101.84:6443":
+        error synchronizing cache state : failed to get server version: failed to
+        get server version: Get "https://10.2.101.84:6443/version?timeout=32s": dial
+        tcp 10.2.101.84:6443: i/o timeout'
+      type: ComparisonError
+    - lastTransitionTime: "2026-02-24T18:00:03Z"
+      message: 'error synchronizing cache state : failed to get server version: failed
+        to get server version: Get "https://10.2.101.84:6443/version?timeout=32s":
+        dial tcp 10.2.101.84:6443: i/o timeout'
+      type: UnknownError
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:47Z"
+      status: Healthy
+    reconciledAt: "2026-02-24T18:00:03Z"
+    resourceHealthSource: appTree
+    sourceHydrator: {}
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: ingress-nginx
+          server: https://10.2.101.84:6443
+        source:
+          chart: ingress-nginx
+          helm:
+            values: |
+              controller:
+                service:
+                  type: LoadBalancer
+          repoURL: https://kubernetes.github.io/ingress-nginx
+          targetRevision: 4.8.3
+      revision: 4.8.3
+      status: Unknown
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "1"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"argoproj.io/v1alpha1","kind":"Application","metadata":{"annotations":{"argocd.argoproj.io/sync-wave":"1"},"finalizers":["resources-finalizer.argocd.argoproj.io"],"name":"root-appsets","namespace":"argocd"},"spec":{"destination":{"namespace":"argocd","server":"https://kubernetes.default.svc"},"project":"infrastructure","source":{"directory":{"recurse":true},"path":"argocd/appsets","repoURL":"https://github.com/minhtri1612/learning_RKE2.git","targetRevision":"main"},"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}
+    creationTimestamp: "2026-02-24T17:36:11Z"
+    finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    generation: 16
+    name: root-appsets
+    namespace: argocd
+    resourceVersion: "13433"
+    uid: 2a16d821-01fc-436f-95e7-4f48e7d1fb0d
+  spec:
+    destination:
+      namespace: argocd
+      server: https://kubernetes.default.svc
+    project: infrastructure
+    source:
+      directory:
+        jsonnet: {}
+        recurse: true
+      path: argocd/appsets
+      repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+  status:
+    controllerNamespace: argocd
+    health:
+      lastTransitionTime: "2026-02-24T17:36:17Z"
+      status: Healthy
+    history:
+    - deployStartedAt: "2026-02-24T17:36:13Z"
+      deployedAt: "2026-02-24T17:36:17Z"
+      id: 0
+      initiatedBy:
+        automated: true
+      revision: 838076ae6244c65f9d4668306f182027873584f8
+      source:
+        directory:
+          jsonnet: {}
+          recurse: true
+        path: argocd/appsets
+        repoURL: https://github.com/minhtri1612/learning_RKE2.git
+        targetRevision: main
+    operationState:
+      finishedAt: "2026-02-24T17:36:17Z"
+      message: successfully synced (all tasks run)
+      operation:
+        initiatedBy:
+          automated: true
+        retry:
+          limit: 5
+        sync:
+          prune: true
+          revision: 838076ae6244c65f9d4668306f182027873584f8
+          source:
+            directory:
+              jsonnet: {}
+              recurse: true
+            path: argocd/appsets
+            repoURL: https://github.com/minhtri1612/learning_RKE2.git
+            targetRevision: main
+      phase: Succeeded
+      startedAt: "2026-02-24T17:36:13Z"
+      syncResult:
+        resources:
+        - group: argoproj.io
+          hookPhase: Running
+          kind: ApplicationSet
+          message: applicationset.argoproj.io/applications-prod created
+          name: applications-prod
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1alpha1
+        - group: argoproj.io
+          hookPhase: Running
+          kind: ApplicationSet
+          message: applicationset.argoproj.io/applications-dev created
+          name: applications-dev
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1alpha1
+        - group: argoproj.io
+          hookPhase: Running
+          kind: Application
+          message: application.argoproj.io/argocd-image-updater-controller created
+          name: argocd-image-updater-controller
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1alpha1
+        - group: argoproj.io
+          hookPhase: Running
+          kind: ApplicationSet
+          message: applicationset.argoproj.io/infrastructure-apps created
+          name: infrastructure-apps
+          namespace: argocd
+          status: Synced
+          syncPhase: Sync
+          version: v1alpha1
+        revision: 838076ae6244c65f9d4668306f182027873584f8
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/appsets
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+    reconciledAt: "2026-02-24T18:02:55Z"
+    resourceHealthSource: appTree
+    resources:
+    - group: argoproj.io
+      kind: Application
+      name: argocd-image-updater-controller
+      namespace: argocd
+      status: Synced
+      version: v1alpha1
+    - group: argoproj.io
+      kind: ApplicationSet
+      name: applications-dev
+      namespace: argocd
+      status: Synced
+      version: v1alpha1
+    - group: argoproj.io
+      kind: ApplicationSet
+      name: applications-prod
+      namespace: argocd
+      status: Synced
+      version: v1alpha1
+    - group: argoproj.io
+      kind: ApplicationSet
+      name: infrastructure-apps
+      namespace: argocd
+      status: Synced
+      version: v1alpha1
+    sourceHydrator: {}
+    sourceType: Directory
+    summary: {}
+    sync:
+      comparedTo:
+        destination:
+          namespace: argocd
+          server: https://kubernetes.default.svc
+        source:
+          directory:
+            jsonnet: {}
+            recurse: true
+          path: argocd/appsets
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          targetRevision: main
+      revision: be237c8a205acfb90f1af5c3c2f2069548978e96
+      status: Synced
+kind: List
+metadata:
+  resourceVersion: ""

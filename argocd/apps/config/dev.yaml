@@ -1,0 +1,6 @@
+# Config theo môi trường: dev
+env: dev
+project: dev
+clusterName: dev
+valueFileSuffix: dev
+targetRevision: main

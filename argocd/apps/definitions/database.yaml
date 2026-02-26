@@ -1,0 +1,4 @@
+name: database
+path: k8s_helm/database
+namespace: database
+syncWave: "1"

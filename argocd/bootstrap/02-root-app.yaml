@@ -7,10 +7,8 @@
 # 2. Apply RBAC: kubectl apply -f argocd/rbac/
 # 3. Apply root app: kubectl apply -f argocd/bootstrap/02-root-app.yaml
 #
-# The ApplicationSets will auto-generate:
-# - meo-station-backend-dev/prod
-# - meo-station-database-dev/prod
-# - infra-external-secrets-dev/prod (future)
+# ApplicationSet "applications" (trong appsets): đọc argocd/apps/definitions/* + list env (dev, prod) → sinh app × env.
+# ApplicationSet "infrastructure-apps": ingress-nginx, etc.
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application

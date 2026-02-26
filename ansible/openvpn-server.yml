@@ -77,12 +77,14 @@
           port 1194
           proto udp
           dev tun
+          topology subnet
           ca ca.crt
           cert server.crt
           key server.key
           dh dh.pem
           tls-auth ta.key 0
           server {{ vpn_network }} {{ vpn_mask }}
+          push "route-gateway 10.8.0.1"
           {% for r in vpn_target %}
           push "route {{ r.cidr }} {{ r.mask }}"
           {% endfor %}
@@ -92,6 +94,34 @@
           {% for d in vpn_policy.push_dns | default([]) %}
           push "dhcp-option DNS {{ d }}"
           {% endfor %}
+          cipher {{ vpn_policy.cipher }}
+          auth {{ vpn_policy.auth }}
+          keepalive {{ vpn_policy.keepalive }}
+          persist-key
+          persist-tun
+          verb {{ vpn_policy.verb | default('3') }}
+
+    - name: Generate server-tcp.conf (TCP 443 fallback, dev tun1)
+      copy:
+        dest: /etc/openvpn/server/server-tcp.conf
+        content: |
+          port 443
+          proto tcp-server
+          dev tun1
+          topology subnet
+          ca ca.crt
+          cert server.crt
+          key server.key
+          dh dh.pem
+          tls-auth ta.key 0
+          server 10.8.1.0 255.255.255.0
+          push "route-gateway 10.8.1.1"
+          {% for r in vpn_target %}
+          push "route {{ r.cidr }} {{ r.mask }}"
+          {% endfor %}
+          {% if vpn_policy.redirect_gateway | default(false) %}
+          push "redirect-gateway def1"
+          {% endif %}
           client-config-dir ccd
           cipher {{ vpn_policy.cipher }}
           auth {{ vpn_policy.auth }}
@@ -163,6 +193,45 @@
       loop: "{{ vpn_users }}"
       when: openvpn_public_ip | length > 0
 
+    - name: Build .ovpn TCP fallback (port 443) for team
+      ansible.builtin.shell: |
+        set -e
+        F="/home/ubuntu/{{ item.name }}-tcp.ovpn"
+        {
+          echo "client"
+          echo "dev tun"
+          echo "proto tcp-client"
+          echo "remote {{ openvpn_public_ip }} 443"
+          echo "resolv-retry infinite"
+          echo "nobind"
+          echo "persist-key"
+          echo "persist-tun"
+          echo "remote-cert-tls server"
+          echo "cipher {{ vpn_policy.cipher }}"
+          echo "auth {{ vpn_policy.auth }}"
+          echo "key-direction 1"
+          echo "verb {{ vpn_policy.verb | default('3') }}"
+          {% if vpn_policy.redirect_gateway | default(false) %}
+          echo "redirect-gateway def1"
+          {% endif %}
+          echo "<ca>"
+          cat /etc/openvpn/server/ca.crt
+          echo "</ca>"
+          echo "<cert>"
+          cat /etc/openvpn/easy-rsa/pki/issued/{{ item.name }}.crt
+          echo "</cert>"
+          echo "<key>"
+          cat /etc/openvpn/easy-rsa/pki/private/{{ item.name }}.key
+          echo "</key>"
+          echo "<tls-auth>"
+          cat /etc/openvpn/server/ta.key
+          echo "</tls-auth>"
+        } > "$F"
+        chown ubuntu:ubuntu "$F"
+        chmod 600 "$F"
+      loop: "{{ vpn_users }}"
+      when: openvpn_public_ip | length > 0
+
     - name: Setup IPTables - allow FORWARD from VPN (client -> VPC)
       ansible.builtin.shell: |
         iptables -C FORWARD -s {{ vpn_network }}/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -s {{ vpn_network }}/24 -j ACCEPT
@@ -170,6 +239,17 @@
     - name: Setup IPTables - allow FORWARD to VPN (reply VPC -> client)
       ansible.builtin.shell: |
         iptables -C FORWARD -d {{ vpn_network }}/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -d {{ vpn_network }}/24 -j ACCEPT
+
+    - name: Setup IPTables - allow FORWARD for TCP VPN subnet 10.8.1.0/24
+      ansible.builtin.shell: |
+        iptables -C FORWARD -s 10.8.1.0/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -s 10.8.1.0/24 -j ACCEPT
+        iptables -C FORWARD -d 10.8.1.0/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -d 10.8.1.0/24 -j ACCEPT
+
+    - name: Setup IPTables - MASQUERADE for TCP VPN clients (10.8.1.0/24)
+      ansible.builtin.shell: |
+        iptables -t nat -C POSTROUTING -s 10.8.1.0/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null || \
+        iptables -t nat -A POSTROUTING -s 10.8.1.0/24 -o {{ vpn_physical_interface }} -j MASQUERADE
+      when: vpn_nat | default(false) | bool
 
     - name: Remove MASQUERADE when vpn_nat is false (keep client source IP for SG 10.8.0.0/24)
       ansible.builtin.shell: |
@@ -204,10 +284,25 @@
         state: restarted
         enabled: yes
 
+    - name: Restart OpenVPN TCP (port 443)
+      systemd:
+        name: openvpn-server@server-tcp
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
+
     # Tải .ovpn về máy chạy Ansible (cùng kết nối SSH, tránh SCP timeout khi IP đổi)
     - name: Fetch .ovpn files to project root (control node)
       ansible.builtin.fetch:
         src: "/home/ubuntu/{{ item.name }}.ovpn"
+        dest: "{{ playbook_dir }}/../"
+        flat: yes
+      loop: "{{ vpn_users }}"
+      when: openvpn_public_ip | length > 0
+
+    - name: Fetch .ovpn TCP files to project root
+      ansible.builtin.fetch:
+        src: "/home/ubuntu/{{ item.name }}-tcp.ovpn"
         dest: "{{ playbook_dir }}/../"
         flat: yes
       loop: "{{ vpn_users }}"

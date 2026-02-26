@@ -84,6 +84,10 @@ def _kubeconfig_for_deploy():
 
 def check_vpn_connectivity():
     """Kiểm tra VPN có đang bật không bằng cách thử kết nối đến private IP."""
+    if os.environ.get("SKIP_VPN_CHECK") == "1":
+        print("  ⏭ SKIP_VPN_CHECK=1 — bỏ qua kiểm tra VPN.")
+        return True
+
     kubeconfig_path = _kubeconfig_for_deploy()
     if not os.path.isfile(kubeconfig_path):
         print(f"  ✗ Không tìm thấy kubeconfig: {kubeconfig_path}")
@@ -91,10 +95,16 @@ def check_vpn_connectivity():
         sys.exit(1)
 
     print("  Checking VPN connectivity (kubectl get nodes)...")
-    res = subprocess.run(
-        f"kubectl --kubeconfig={kubeconfig_path} get nodes --request-timeout=10s",
-        shell=True, capture_output=True, timeout=15,
-    )
+    try:
+        res = subprocess.run(
+            f"kubectl --kubeconfig={kubeconfig_path} get nodes --request-timeout=15s",
+            shell=True, capture_output=True, timeout=35,
+        )
+    except subprocess.TimeoutExpired:
+        print("  ✗ Timeout — không kết nối được API (VPN chưa bật / route sai / API chậm).")
+        print("\n  ⚠️  Bật VPN (vd. sudo openvpn --config sep_tong.ovpn) rồi chạy lại.")
+        print("     Hoặc bỏ qua kiểm tra: SKIP_VPN_CHECK=1 ./configure.py", TERRAFORM_ENV)
+        sys.exit(1)
     if res.returncode == 0:
         print("  ✓ VPN OK — Kubernetes API is reachable.")
         return True
@@ -102,9 +112,8 @@ def check_vpn_connectivity():
         err = (res.stderr or b"").decode(errors="ignore").strip()
         print("  ✗ Không thể kết nối đến Kubernetes API.")
         print(f"     Lỗi: {err[:200]}")
-        print("\n  ⚠️  Hãy bật VPN trước:")
-        print("     sudo openvpn --config minhtri.ovpn")
-        print(f"\n  Sau đó chạy lại: ./configure.py {TERRAFORM_ENV}")
+        print("\n  ⚠️  Bật VPN (vd. sudo openvpn --config sep_tong.ovpn) rồi chạy lại.")
+        print("     Hoặc bỏ qua kiểm tra: SKIP_VPN_CHECK=1 ./configure.py", TERRAFORM_ENV)
         sys.exit(1)
 
 
@@ -165,16 +174,12 @@ def _transfer_helm_ownership(env, namespace="argocd"):
     """Delete kubectl-managed ConfigMaps before Helm upgrade so Helm can recreate them.
     Fixes: 'conflict with kubectl-client-side-apply' on argocd-rbac-cm / argocd-cm.
     These ConfigMaps are re-applied by apply_argocd_projects_and_rbac() afterwards."""
-    for cm in ["argocd-rbac-cm", "argocd-cm"]:
+    for cm in ["argocd-rbac-cm", "argocd-cm", "argocd-ssh-known-hosts-cm"]:
         res = subprocess.run(
-            f"kubectl get configmap {cm} -n {namespace} 2>/dev/null",
+            f"kubectl delete configmap {cm} -n {namespace} --ignore-not-found",
             shell=True, env=env, capture_output=True,
         )
         if res.returncode == 0:
-            subprocess.run(
-                f"kubectl delete configmap {cm} -n {namespace} 2>/dev/null",
-                shell=True, env=env, capture_output=True,
-            )
             print(f"  ✓ Removed {cm} (Helm will recreate cleanly)")
 
 
@@ -266,7 +271,8 @@ def ensure_rancher_tls_secret():
         key = os.path.join(td, "tls.key")
         run_command(
             f"openssl req -x509 -nodes -days 365 -newkey rsa:2048 "
-            f"-keyout {key} -out {crt} -subj \"/CN={rancher_hostname}\"",
+            f"-keyout {key} -out {crt} -subj \"/CN={rancher_hostname}\" "
+            f'-addext "subjectAltName=DNS:{rancher_hostname}"',
             timeout=60,
         )
         run_command(
@@ -538,6 +544,35 @@ def auto_register_cluster_and_sync_git(env):
             print(f"  ⚠ Lỗi khi Git Sync: {e}")
             print("  Hãy tự thực hiện 'git push' để ArgoCD nhận IP mới.")
 
+
+def fix_ingress_nginx_webhook(env):
+    """Xóa validating webhook ingress-nginx trên cluster env để Ingress apply được (tránh lỗi cert)."""
+    script = os.path.join(_SCRIPT_DIR, "scripts", "fix-ingress-nginx-webhook.sh")
+    if not os.path.isfile(script):
+        return
+    print(f"\n--- Step 6b: Fix ingress-nginx webhook on {env} (để Ingress apply được) ---")
+    r = subprocess.run(["bash", script, env], cwd=_SCRIPT_DIR, capture_output=True, text=True, timeout=30)
+    if r.stdout:
+        print(r.stdout.strip())
+    if r.returncode != 0 and r.stderr:
+        print(f"  ⚠ {r.stderr.strip()[:200]}")
+
+
+def trigger_argocd_app_sync(app_names, mgmt_kubeconfig):
+    """Gọi refresh/sync cho các app ArgoCD (nếu có argocd CLI hoặc kubectl)."""
+    env = os.environ.copy()
+    env["KUBECONFIG"] = mgmt_kubeconfig
+    for name in app_names:
+        # argocd app sync <name> (nếu cài)
+        r = subprocess.run(
+            ["argocd", "app", "sync", name, "--async"],
+            cwd=_SCRIPT_DIR, env=env, capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode == 0:
+            print(f"  ✓ ArgoCD sync triggered: {name}")
+        # else bỏ qua (argocd CLI có thể chưa cài)
+
+
 def main():
     print("\n" + "=" * 60)
     print(f"  CONFIGURE — Phase 2 (VPN Required) — env: {TERRAFORM_ENV}")
@@ -567,6 +602,13 @@ def main():
         apply_external_secrets_manifests()
         # Tự động đăng ký cluster với ArgoCD (Management) và Sync Git
         auto_register_cluster_and_sync_git(TERRAFORM_ENV)
+        # Xóa webhook ingress-nginx để Ingress apply được (dynamic, không bước tay)
+        fix_ingress_nginx_webhook(TERRAFORM_ENV)
+        if TERRAFORM_ENV == "prod":
+            fix_ingress_nginx_webhook("dev")  # một lần chạy configure prod sửa luôn dev
+            mgmt_kube = os.path.join(_SCRIPT_DIR, "kube_config_rke2_management.yaml")
+            if os.path.isfile(mgmt_kube):
+                trigger_argocd_app_sync(["meo-station-backend-dev", "meo-station-backend-prod"], mgmt_kube)
 
     print("\n--- Updating /etc/hosts for Ingress access ---")
     alb_dns = tf_out.get("web_alb_dns_name", {}).get("value", "")

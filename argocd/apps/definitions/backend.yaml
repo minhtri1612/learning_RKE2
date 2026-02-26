@@ -1,0 +1,5 @@
+# Generic app definition — config per env (dev/prod) nằm trong ApplicationSet (list generator)
+name: backend
+path: k8s_helm/backend
+namespace: meo-stationery
+syncWave: "5"

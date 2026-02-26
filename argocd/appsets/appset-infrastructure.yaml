@@ -22,7 +22,8 @@ spec:
           values: |
             controller:
               service:
-                type: LoadBalancer
+                type: NodePort
+            # LoadBalancer trên RKE2 thường Pending → ArgoCD chờ "healthy" mãi → sync kẹt. NodePort có endpoints ngay khi pods Ready.
       destination:
         server: '{{server}}'
         namespace: ingress-nginx

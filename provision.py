@@ -312,6 +312,73 @@ def wait_for_api_from_openvpn(openvpn_ip, master_private_ip, max_wait=600, jump_
     return False
 
 
+def update_argocd_cluster_manifest_from_kubeconfig():
+    """
+    Cập nhật argocd/clusters/cluster-<env>.yaml từ kubeconfig vừa tạo.
+    Không hardcode IP — mỗi lần provision xong là file đúng IP mới.
+    """
+    if TERRAFORM_ENV not in ("dev", "prod"):
+        return
+    manifest_path = os.path.join(_SCRIPT_DIR, "argocd", "clusters", f"cluster-{TERRAFORM_ENV}.yaml")
+    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
+    if not os.path.isfile(manifest_path) or not os.path.isfile(kubeconfig_path):
+        return
+    try:
+        import yaml
+    except ImportError:
+        script = os.path.join(_SCRIPT_DIR, "scripts", "update-argocd-cluster-manifest-from-kubeconfig.sh")
+        if os.path.isfile(script):
+            res = subprocess.run(["bash", script, TERRAFORM_ENV], cwd=_SCRIPT_DIR, capture_output=True, text=True, timeout=30)
+            if res.returncode == 0:
+                print(f"  ✓ ArgoCD manifest updated (script): argocd/clusters/cluster-{TERRAFORM_ENV}.yaml")
+            else:
+                print(f"  ⚠ Update manifest thất bại. Chạy tay: ./scripts/update-argocd-cluster-manifest-from-kubeconfig.sh {TERRAFORM_ENV}")
+        return
+    with open(kubeconfig_path) as f:
+        data = yaml.safe_load(f)
+    server = (data.get("clusters") or [{}])[0].get("cluster", {}).get("server")
+    users = data.get("users") or [{}]
+    user = users[0].get("user", {})
+    client_cert = user.get("client-certificate-data") or ""
+    client_key = user.get("client-key-data") or ""
+    if not server:
+        print("  ⚠ Không đọc được server từ kubeconfig, bỏ qua cập nhật manifest.")
+        return
+    import json
+    config_json = json.dumps({"tlsClientConfig": {"insecure": True, "certData": client_cert, "keyData": client_key}})
+    with open(manifest_path) as f:
+        content = f.read()
+    content = re.sub(r"(\s+server:\s*)(\S+)", rf"\g<1>{server}", content, count=1)
+    # Replace entire config value (single-line or leftover multi-line) to avoid broken YAML
+    content = re.sub(r"(\n  config:).*", f"\\1 '{config_json}'\n", content, count=1, flags=re.DOTALL)
+    with open(manifest_path, "w") as f:
+        f.write(content)
+    print(f"  ✓ ArgoCD manifest updated (server={server}) → argocd/clusters/cluster-{TERRAFORM_ENV}.yaml")
+
+
+def _apply_argocd_cluster_secret_on_management():
+    """
+    Apply secret cluster lên management từ kubeconfig hiện tại (IP mới, dynamic).
+    Chạy khi có kube_config_rke2_management.yaml (sau configure.py management).
+    """
+    mgmt_kube = os.path.join(_SCRIPT_DIR, "kube_config_rke2_management.yaml")
+    script = os.path.join(_SCRIPT_DIR, "scripts", "create-argocd-cluster-secrets.sh")
+    if not os.path.isfile(mgmt_kube):
+        print("  ⏭ Management kubeconfig chưa có → bỏ qua apply secret (sẽ chạy khi configure.py dev/prod).")
+        return
+    if not os.path.isfile(script):
+        return
+    env = os.environ.copy()
+    env["KUBECONFIG"] = os.path.abspath(mgmt_kube)
+    print("--- Step 4b: Apply ArgoCD cluster secret on management (IP từ kubeconfig) ---")
+    res = subprocess.run(["bash", script, TERRAFORM_ENV], cwd=_SCRIPT_DIR, env=env, capture_output=True, text=True, timeout=60)
+    if res.returncode == 0:
+        print(f"  ✓ Cluster secret '{TERRAFORM_ENV}' đã cập nhật trên management.")
+    else:
+        print(f"  ⚠ Apply secret thất bại (VPN chưa bật?): {res.stderr[:200] if res.stderr else res.stdout[:200]}")
+        print(f"  → Chạy sau khi bật VPN: bash scripts/create-argocd-cluster-secrets.sh {TERRAFORM_ENV}")
+
+
 # ── Entry Point ───────────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
@@ -345,16 +412,20 @@ def main():
     print(f"\n  ✓ Jump / OpenVPN: {openvpn_public_ip}")
     print(f"  ✓ Master Private IP: {master_private_ip}")
 
-    if os.environ.get("SKIP_OPENVPN_ANSIBLE") == "1":
-        print("  ⏭ SKIP_OPENVPN_ANSIBLE=1 → bỏ qua bước Ansible.")
-        sys.exit(0)
-
     if TERRAFORM_ENV == "management":
         run_openvpn_ansible(openvpn_public_ip)
 
     fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns, jump_ssh_key_path=jump_key_path, key_on_jump=key_on_jump)
 
-    print(f"--- Step 4: Verifying API reachable from OpenVPN side ---")
+    # Cập nhật argocd/clusters/cluster-<env>.yaml từ kubeconfig (IP mới, không hardcode)
+    print("--- Step 4a: Update ArgoCD cluster manifest (IP từ kubeconfig) ---")
+    update_argocd_cluster_manifest_from_kubeconfig()
+
+    # Apply secret cluster lên management ngay (dynamic IP, không cần bước tay)
+    if TERRAFORM_ENV in ("dev", "prod"):
+        _apply_argocd_cluster_secret_on_management()
+
+    print(f"--- Step 5: Verifying API reachable from OpenVPN side ---")
     if not wait_for_api_from_openvpn(openvpn_public_ip, master_private_ip, jump_ssh_key_path=jump_key_path):
         print("  ⚠ API check failed — continue anyway. Kiểm tra Security Group port 6443.")
 
@@ -376,7 +447,7 @@ def main():
         print("\n  ─────────────────────────────────────────")
         print("  ▶ BƯỚC TIẾP THEO:")
         print("     1. Đảm bảo VPN management đang bật")
-        print(f"    2. Configure:    ./configure.py {TERRAFORM_ENV}")
+        print(f"    2. Configure:    ./configure.py {TERRAFORM_ENV}   (sẽ apply secret + push Git, ArgoCD sync IP mới)")
         print("  ─────────────────────────────────────────")
     print("=" * 60)
 

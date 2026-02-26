@@ -1,6 +1,0 @@
-{
-    "namespace": "meo-stationery",
-    "syncWave": "5",
-    "version": "main",
-    "helmPath": "k8s_helm/backend"
-}

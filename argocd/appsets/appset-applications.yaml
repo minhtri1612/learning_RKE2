@@ -1,34 +1,50 @@
+# App generic: definitions trong argocd/apps/definitions/*.yaml
+# Config theo env: argocd/apps/config/*.yaml (dev.yaml, prod.yaml). Thêm env = thêm file config.
+# Matrix: config (env) × definitions (app) → Application cho từng cặp
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: applications-dev
+  name: applications
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
-  - git:
-      repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      revision: dev
-      files:
-      - path: "k8s_helm/*/config.json"
+  - matrix:
+      generators:
+      # Config dựa trên môi trường: mỗi file trong config/ = 1 env (dev, prod)
+      - git:
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          revision: main
+          pathParamPrefix: env
+          files:
+          - path: "argocd/apps/config/*.yaml"
+      # App generic: mỗi file trong definitions/ = 1 app (name, path, namespace, syncWave)
+      - git:
+          repoURL: https://github.com/minhtri1612/learning_RKE2.git
+          revision: main
+          pathParamPrefix: app
+          files:
+          - path: "argocd/apps/definitions/*.yaml"
   template:
     metadata:
-      name: 'meo-station-{{path.basename}}-dev'
+      name: 'meo-station-{{.name}}-{{.env}}'
       namespace: argocd
       annotations:
-        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+        argocd.argoproj.io/sync-wave: '{{.syncWave}}'
     spec:
-      project: dev
+      project: '{{.project}}'
       source:
         repoURL: https://github.com/minhtri1612/learning_RKE2.git
-        targetRevision: '{{version}}'
-        path: '{{helmPath}}'
+        targetRevision: '{{.targetRevision}}'
+        path: '{{.path}}'
         helm:
           valueFiles:
           - values.yaml
-          - values-dev.yaml
+          - values-{{.valueFileSuffix}}.yaml
       destination:
-        name: dev
-        namespace: '{{namespace}}'
+        name: '{{.clusterName}}'
+        namespace: '{{.namespace}}'
       syncPolicy:
         automated:
           prune: true
@@ -57,57 +73,4 @@ spec:
       - group: ""
         kind: Service
         jsonPointers:
-        - /metadata/annotations
----
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: applications-prod
-  namespace: argocd
-spec:
-  generators:
-  - git:
-      repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      revision: main
-      files:
-      - path: "k8s_helm/*/config.json"
-  template:
-    metadata:
-      name: 'meo-station-{{path.basename}}-prod'
-      namespace: argocd
-      annotations:
-        argocd.argoproj.io/sync-wave: '{{syncWave}}'
-    spec:
-      project: prod
-      source:
-        repoURL: https://github.com/minhtri1612/learning_RKE2.git
-        targetRevision: '{{version}}'
-        path: '{{helmPath}}'
-        helm:
-          valueFiles:
-          - values.yaml
-          - values-prod.yaml
-      destination:
-        name: prod
-        namespace: '{{namespace}}'
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-        - RespectIgnoreDifferences=true
-      ignoreDifferences:
-      - group: apps
-        kind: Deployment
-        jsonPointers:
-        - /spec/replicas
-      - group: apps
-        kind: StatefulSet
-        jsonPointers:
-        - /spec/replicas
-      - group: autoscaling
-        kind: HorizontalPodAutoscaler
-        jsonPointers:
-        - /status
         - /metadata/annotations
