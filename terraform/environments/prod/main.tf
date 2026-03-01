@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------
-# Prod environment – RKE2 + OpenVPN + ALB/NLB
-# Provider: symlink provider.tf -> ../../global/provider.tf (dùng chung)
+# Prod environment – Docker host only (no RKE2). ALB/NLB vẫn có; NLB không còn target.
+# Operator chạy trên Management; kết nối Docker daemon qua port 2376.
 # Chạy: terraform -chdir=environments/prod init && terraform -chdir=environments/prod apply -var-file=terraform.tfvars
 # -----------------------------------------------------------------------------
 
@@ -79,57 +79,18 @@ module "loadbalancers" {
   alb_certificate_arn  = module.certificate.certificate_arn
 }
 
-# OpenVPN chỉ có ở Management; dev/prod truy cập qua VPC peering từ Management.
+# OpenVPN chỉ có ở Management; prod truy cập qua VPC peering từ Management.
 
-module "rke2" {
-  source                    = "../../modules/rke2"
-  environment               = var.environment
-  name_prefix               = var.name_prefix
-  ami_id                    = local.ami_id
-  instance_type             = var.instance_type
-  master_count              = var.master_count
-  worker_count              = var.worker_count
-  private_subnet_ids        = module.vpc.private_subnet_ids
-  k8s_common_sg_id          = module.vpc.k8s_common_sg_id
-  k8s_master_sg_id          = module.vpc.k8s_master_sg_id
-  k8s_worker_sg_id          = module.vpc.k8s_worker_sg_id
-  iam_instance_profile_name = module.iam.instance_profile_name
-  key_name                  = module.keys.key_name
-  nlb_dns_name              = module.loadbalancers.nlb_dns_name
-  rke2_token                = module.secrets.rke2_token
-  use_spot_instances        = var.use_spot_instances
-}
-
-# NLB target group attachment (masters)
-resource "aws_lb_target_group_attachment" "nlb_masters" {
-  count            = length(module.rke2.master_ids)
-  target_group_arn = module.loadbalancers.nlb_tg_arn
-  target_id        = module.rke2.master_ids[count.index]
-  port             = 6443
-}
-
-# ALB target group attachments (masters + workers, HTTP + HTTPS)
-resource "aws_lb_target_group_attachment" "web_http_masters" {
-  count            = length(module.rke2.master_ids)
-  target_group_arn = module.loadbalancers.web_http_tg_arn
-  target_id        = module.rke2.master_ids[count.index]
-  port             = 80
-}
-resource "aws_lb_target_group_attachment" "web_http_workers" {
-  count            = length(module.rke2.worker_ids)
-  target_group_arn = module.loadbalancers.web_http_tg_arn
-  target_id        = module.rke2.worker_ids[count.index]
-  port             = 80
-}
-resource "aws_lb_target_group_attachment" "web_https_masters" {
-  count            = length(module.rke2.master_ids)
-  target_group_arn = module.loadbalancers.web_https_tg_arn
-  target_id        = module.rke2.master_ids[count.index]
-  port             = 443
-}
-resource "aws_lb_target_group_attachment" "web_https_workers" {
-  count            = length(module.rke2.worker_ids)
-  target_group_arn = module.loadbalancers.web_https_tg_arn
-  target_id        = module.rke2.worker_ids[count.index]
-  port             = 443
+# Docker host – EC2 chỉ cài Docker, không RKE2. Operator (Management) điều khiển qua tcp://<ip>:2376.
+module "docker_host" {
+  source              = "../../modules/docker-host"
+  name_prefix         = var.name_prefix
+  environment         = var.environment
+  instance_count      = var.worker_count
+  instance_type       = var.instance_type
+  ami_id              = local.ami_id
+  private_subnet_ids  = module.vpc.private_subnet_ids
+  security_group_ids  = [module.vpc.k8s_common_sg_id, module.vpc.docker_host_sg_id]
+  key_name            = module.keys.key_name
+  docker_tcp_port     = 2376
 }

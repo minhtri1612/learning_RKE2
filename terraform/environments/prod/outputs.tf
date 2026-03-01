@@ -1,26 +1,38 @@
 # OpenVPN chỉ có ở Management; prod truy cập qua jump host Management.
 
+output "docker_host_private_ips" {
+  value       = module.docker_host.private_ips
+  description = "Private IPs của Docker host (cho DockerHost CRD hostURL; SSH qua VPN: ssh -i k8s-key.pem ubuntu@<ip>)"
+}
+
+output "docker_host_instance_ids" {
+  value       = module.docker_host.instance_ids
+  description = "EC2 instance IDs của Docker host (cho ALB target group attachment khi cần)"
+}
+
 output "master_private_ip" {
-  value       = module.rke2.master_private_ips
-  description = "Private IPs master nodes (sau khi VPN: ssh -i k8s-key.pem ubuntu@<ip>)"
+  value       = module.docker_host.private_ips
+  description = "Deprecated: dùng docker_host_private_ips. Giữ để tương thích script cũ."
 }
 
 output "master_public_ip" {
-  value = module.rke2.master_public_ips
+  value       = []
+  description = "Prod không còn RKE2; Docker host không public IP."
 }
 
 output "worker_public_ips" {
-  value = module.rke2.worker_public_ips
+  value       = []
+  description = "Prod không còn RKE2; Docker host không public IP."
 }
 
 output "nlb_dns_name" {
   value       = module.loadbalancers.nlb_dns_name
-  description = "NLB DNS cho Kubernetes API"
+  description = "NLB DNS (Prod không còn K8s API; NLB không có target)"
 }
 
 output "cluster_api_url" {
-  value       = "https://${module.loadbalancers.nlb_dns_name}:6443"
-  description = "Kubernetes API URL cho ArgoCD đăng ký cluster (management deploy xuống env này)"
+  value       = null
+  description = "Prod không có cluster; dùng cluster Management."
 }
 
 output "web_alb_dns_name" {
