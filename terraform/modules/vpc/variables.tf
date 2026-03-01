@@ -36,3 +36,9 @@ variable "peer_vpc_cidrs" {
   default     = []
   description = "CIDR các VPC peering (ví dụ VPC management) được phép truy cập API master (6443)."
 }
+
+variable "management_vpc_cidr" {
+  type        = list(string)
+  default     = []
+  description = "CIDR VPC Management (e.g. 10.0.0.0/16). Cho phép Operator trong Management kết nối Docker daemon (port 2376) trên Docker host Dev/Prod. Chỉ truyền ở Dev/Prod."
+}

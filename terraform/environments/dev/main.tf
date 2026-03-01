@@ -40,6 +40,8 @@ module "vpc" {
   private_subnet_cidrs = ["10.1.101.0/24", "10.1.102.0/24"]
   # Cho phép VPC management (10.0.0.0/16) gọi API dev qua peering
   peer_vpc_cidrs = ["10.0.0.0/16"]
+  # Cho phép Operator (Management) kết nối Docker daemon trên Docker host (port 2376)
+  management_vpc_cidr = ["10.0.0.0/16"]
 }
 
 module "iam" {

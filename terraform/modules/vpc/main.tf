@@ -320,3 +320,53 @@ resource "aws_security_group" "k8s_worker" {
   }
   tags = { Name = "${var.name_prefix}-worker-sg-${var.environment}" }
 }
+
+# Docker host SG – EC2 chỉ cài Docker (Dev/Prod). SSH từ VPN/OpenVPN; port 2376 từ VPC Management để Operator kết nối.
+resource "aws_security_group" "docker_host" {
+  name        = "${var.name_prefix}-docker-host-sg-${var.environment}"
+  vpc_id      = aws_vpc.main.id
+  description = "Docker-only host: SSH from VPN; Docker TCP from Management VPC for K8s Docker Operator"
+
+  ingress {
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.openvpn.id]
+    description     = "SSH from OpenVPN"
+  }
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["10.8.0.0/24"]
+    description = "SSH from VPN clients"
+  }
+  dynamic "ingress" {
+    for_each = length(var.peer_vpc_cidrs) > 0 ? [1] : []
+    content {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = var.peer_vpc_cidrs
+      description = "SSH from peered VPCs (e.g. Management)"
+    }
+  }
+  # Docker daemon TCP – Operator (Management) kết nối qua tcp://<private_ip>:2376
+  dynamic "ingress" {
+    for_each = length(var.management_vpc_cidr) > 0 ? [1] : []
+    content {
+      from_port   = 2376
+      to_port     = 2376
+      protocol    = "tcp"
+      cidr_blocks = var.management_vpc_cidr
+      description = "Docker TCP from Management VPC (K8s Docker Operator)"
+    }
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = { Name = "${var.name_prefix}-docker-host-sg-${var.environment}" }
+}

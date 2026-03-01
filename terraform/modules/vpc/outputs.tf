@@ -46,3 +46,8 @@ output "k8s_worker_sg_id" {
 output "web_alb_sg_id" {
   value = aws_security_group.web_alb.id
 }
+
+output "docker_host_sg_id" {
+  value       = aws_security_group.docker_host.id
+  description = "SG for Docker-only EC2 (Dev/Prod). Ingress: 22 from VPN/OpenVPN; 2376 from Management VPC."
+}
