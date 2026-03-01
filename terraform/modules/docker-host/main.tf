@@ -18,7 +18,8 @@ resource "aws_instance" "docker_host" {
   }
 
   user_data = templatefile("${path.module}/userdata_docker.sh", {
-    docker_tcp_port = var.docker_tcp_port
+    docker_tcp_port  = var.docker_tcp_port
+    docker_tcp_bind  = "0.0.0.0"
   })
   user_data_replace_on_change = true
 
