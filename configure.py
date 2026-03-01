@@ -248,6 +248,24 @@ def apply_argocd_projects_and_rbac():
         print("  ✓ ArgoCD RBAC applied")
 
 
+def install_k8s_docker_operator():
+    """Installs K8s Docker Operator (management only). Apply after ArgoCD so Operator can manage Docker hosts in Dev/Prod."""
+    print("--- Step: Installing K8s Docker Operator ---")
+    kubeconfig_path = _kubeconfig_for_deploy()
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig_path
+    install_yaml = os.path.join(HELM_DIR, "k8s-docker-operator", "install.yaml")
+    if not os.path.isfile(install_yaml):
+        print(f"  ⚠ Skipping: {install_yaml} not found. Copy from https://github.com/minhtri1612/k8s-docker install/install.yaml")
+        return
+    run_command(f"kubectl apply -f {install_yaml}", cwd=_SCRIPT_DIR, env=env, timeout=120)
+    print("  ✓ K8s Docker Operator applied.")
+    print("  Checking pods in namespace system...")
+    run_command("kubectl get pods -n system", cwd=_SCRIPT_DIR, env=env, timeout=15)
+    print("  Checking CRDs (kdop.io.vn)...")
+    subprocess.run("kubectl get crd | grep kdop", shell=True, cwd=_SCRIPT_DIR, env=env, timeout=10)
+
+
 def get_rancher_hostname():
     if TERRAFORM_ENV == "management":
         return "rancher.local"
@@ -579,36 +597,32 @@ def main():
     print("  ⚠️  VPN phải đang bật: sudo openvpn --config minhtri.ovpn")
     print("=" * 60)
 
-    # Guard: check VPN first
-    check_vpn_connectivity()
+    # Guard: check VPN first (chỉ cần khi có cluster – management)
+    if TERRAFORM_ENV == "management":
+        check_vpn_connectivity()
 
     tf_out = get_terraform_output()
-    wait_for_nlb_health_checks()
-    install_ebs_csi_driver()
 
     if TERRAFORM_ENV == "management":
+        wait_for_nlb_health_checks()
+        install_ebs_csi_driver()
         install_argocd()
         wait_for_argocd_ready()
         apply_argocd_projects_and_rbac()
+        install_k8s_docker_operator()
         deploy_argocd_applications()
         print("\n  ─── ArgoCD cluster registration ───")
         print("  Sau khi deploy dev + prod, chạy:")
         print("     bash scripts/create-argocd-cluster-secrets.sh")
         print("     bash scripts/deploy-argocd-bootstrap.sh")
     else:
-        install_rancher()
-        install_external_secrets_operator()
-        ensure_aws_secrets_credentials()
-        apply_external_secrets_manifests()
-        # Tự động đăng ký cluster với ArgoCD (Management) và Sync Git
-        auto_register_cluster_and_sync_git(TERRAFORM_ENV)
-        # Xóa webhook ingress-nginx để Ingress apply được (dynamic, không bước tay)
-        fix_ingress_nginx_webhook(TERRAFORM_ENV)
-        if TERRAFORM_ENV == "prod":
-            fix_ingress_nginx_webhook("dev")  # một lần chạy configure prod sửa luôn dev
-            mgmt_kube = os.path.join(_SCRIPT_DIR, "kube_config_rke2_management.yaml")
-            if os.path.isfile(mgmt_kube):
-                trigger_argocd_app_sync(["meo-station-backend-dev", "meo-station-backend-prod"], mgmt_kube)
+        # Dev/Prod không còn RKE2 – chỉ còn Docker host. Không cài Rancher/ESO (không có cluster).
+        print("  Dev/Prod: không có cluster RKE2; chỉ Terraform Docker host.")
+        print("  Dùng cluster Management + DockerHost/DockerContainer CRD để điều khiển Docker host.")
+        if tf_out.get("docker_host_private_ips"):
+            ips = tf_out["docker_host_private_ips"].get("value", [])
+            if ips:
+                print(f"  Docker host private IPs (cho DockerHost CRD): {ips}")
 
     print("\n--- Updating /etc/hosts for Ingress access ---")
     alb_dns = tf_out.get("web_alb_dns_name", {}).get("value", "")
@@ -622,13 +636,13 @@ def main():
     print("=" * 60)
     print(f"\n  📋 Cluster access (VPN required):")
     print(f"     export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
-    print(f"     kubectl get nodes")
     if TERRAFORM_ENV == "management":
+        print(f"     kubectl get nodes")
         print(f"\n  🌐 ArgoCD UI:  http://argocd.local")
         print(f"     kubectl port-forward svc/argocd-server -n argocd 8080:443 (backup)")
     else:
-        print(f"\n  🌐 Rancher UI: https://rancher-{TERRAFORM_ENV}.local")
-        print(f"     App:        https://meo-stationery-{TERRAFORM_ENV}.local")
+        print(f"     Dev/Prod không có cluster; dùng KUBECONFIG Management để kubectl.")
+        print(f"\n  🌐 App (qua ALB): https://meo-stationery-{TERRAFORM_ENV}.local")
     print(f"\n  🔧 Update /etc/hosts: ./scripts/update-hosts.sh {TERRAFORM_ENV}")
     print("\n  ⚠️  TLS note: self-signed cert → browser warning is expected.")
     print("=" * 60)
