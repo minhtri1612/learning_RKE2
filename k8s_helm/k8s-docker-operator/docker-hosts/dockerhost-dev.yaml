@@ -1,0 +1,21 @@
+# DockerHost resources for Dev – apply to Management cluster.
+# Operator (Management) connects to these IPs via VPC peering (port 2376).
+# Sau terraform apply dev: terraform -chdir=terraform/environments/dev output -json docker_host_private_ips
+# Thay REPLACE_DEV_IP_* bằng IP thật từ output.
+---
+apiVersion: kdop.io.vn/v1alpha1
+kind: DockerHost
+metadata:
+  name: dev-docker-host-1
+  namespace: default
+spec:
+  hostURL: "tcp://REPLACE_DEV_IP_1:2376"
+  # tlsSecretName: optional, leave empty if no TLS
+---
+apiVersion: kdop.io.vn/v1alpha1
+kind: DockerHost
+metadata:
+  name: dev-docker-host-2
+  namespace: default
+spec:
+  hostURL: "tcp://REPLACE_DEV_IP_2:2376"
