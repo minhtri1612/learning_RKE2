@@ -79,14 +79,8 @@ spec:
         # namespace deploy app
         namespace: '{{namespace}}'
       syncPolicy:
-        # Dev: auto-sync. Prod: manual (autoSync: false trong prod.yaml → block này bị bỏ qua bởi template).
-        # Dùng `automated` field từ config – nếu autoSync=false thì không render block này.
-        # NOTE: ApplicationSet không support conditional blocks natively.
-        # Giải pháp: tách thành 2 ApplicationSet riêng (xem bên dưới) hoặc dùng plugin.
-        # Hiện tại: dev auto-sync, prod PHẢI manual trigger từ UI/CLI.
-        automated:
-          prune: {{autoSync}}
-          selfHeal: {{autoSync}}
+        # Đơn giản hóa: tất cả env manual sync từ Argo UI/CLI.
+        # Nếu muốn auto-sync cho dev, bật trực tiếp trên từng Application dev trong UI.
         syncOptions:
         - CreateNamespace=true
         - RespectIgnoreDifferences=true
