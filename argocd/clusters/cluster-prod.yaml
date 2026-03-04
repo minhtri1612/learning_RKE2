@@ -1,3 +1,18 @@
+# ⚠️  SECURITY: Cluster credentials KHÔNG ĐƯỢC commit vào Git.
+# File này chỉ là TEMPLATE. Có 2 cách an toàn để apply:
+#
+# === Cách 1 (ĐƠN GIẢN NHẤT): argocd CLI ===
+#   argocd cluster add <context-name> --name prod \
+#     --kubeconfig ~/.kube/config \
+#     --server https://10.2.101.59:6443 \
+#     --grpc-web
+#
+# === Cách 2: Dùng Sealed Secrets ===
+#   1. Tạo Secret bình thường với certData/keyData thật
+#   2. kubeseal --cert pub-cert.pem -o yaml > cluster-prod-sealed.yaml
+#   3. Commit cluster-prod-sealed.yaml (an toàn vì đã encrypt)
+#
+# Template (KHÔNG commit version này có credentials thật):
 apiVersion: v1
 kind: Secret
 metadata:
@@ -5,8 +20,20 @@ metadata:
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: cluster
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
 type: Opaque
 stringData:
   name: prod
   server: https://10.2.101.59:6443
-  config: '{"tlsClientConfig": {"insecure": true, "certData": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJrVENDQVRpZ0F3SUJBZ0lJRlhDTkRjeUN5czR3Q2dZSUtvWkl6ajBFQXdJd0pERWlNQ0FHQTFVRUF3d1oKY210bE1pMWpiR2xsYm5RdFkyRkFNVGMzTWpFMk5UWTNOekFlRncweU5qQXlNamN3TkRFME16ZGFGdzB5TnpBeQpNamN3TkRFME16ZGFNREF4RnpBVkJnTlZCQW9URG5ONWMzUmxiVHB0WVhOMFpYSnpNUlV3RXdZRFZRUURFd3h6CmVYTjBaVzA2WVdSdGFXNHdXVEFUQmdjcWhrak9QUUlCQmdncWhrak9QUU1CQndOQ0FBUU9FWlZWU3RwcmNQSG8KdDFJRjN3K3BGQkl1a3RiU2hGT2JMOGZ4bGVMaVF4cWF6dm9zeFNZQjFhTEFsaGU2ZXowSWJPbUR4Qzg1dDJXMwpsZG9PejNoN28wZ3dSakFPQmdOVkhROEJBZjhFQkFNQ0JhQXdFd1lEVlIwbEJBd3dDZ1lJS3dZQkJRVUhBd0l3Ckh3WURWUjBqQkJnd0ZvQVU2NVF4R0prRldZVXI2TG9tZFVGWmtwRjBnQWt3Q2dZSUtvWkl6ajBFQXdJRFJ3QXcKUkFJZ0ZoVkplcVlzanh4dG5mOTVubDJLaU1YVDBtS3RWVTVKdDQ1MERreEZHdjBDSUE5LzNMTCtFVHhhUjBQcApPR2RNQmkzTm0vdXM2RGRqUktxaCtXVjNFN3BkCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0KLS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJlakNDQVIrZ0F3SUJBZ0lCQURBS0JnZ3Foa2pPUFFRREFqQWtNU0l3SUFZRFZRUUREQmx5YTJVeUxXTnMKYVdWdWRDMWpZVUF4TnpjeU1UWTFOamMzTUI0WERUSTJNREl5TnpBME1UUXpOMW9YRFRNMk1ESXlOVEEwTVRRegpOMW93SkRFaU1DQUdBMVVFQXd3WmNtdGxNaTFqYkdsbGJuUXRZMkZBTVRjM01qRTJOVFkzTnpCWk1CTUdCeXFHClNNNDlBZ0VHQ0NxR1NNNDlBd0VIQTBJQUJJZnorUmt0TnprRld5U3piYWx0a2t2NlEydkw5MG8rNEhpSktvYXMKekNCQy9vRzgrMTJnUDhpUFVaVm50RnZjbENLV1pXc2dUL2JDZndBRnh5RlJZN0NqUWpCQU1BNEdBMVVkRHdFQgovd1FFQXdJQ3BEQVBCZ05WSFJNQkFmOEVCVEFEQVFIL01CMEdBMVVkRGdRV0JCVHJsREVZbVFWWmhTdm91aVoxClFWbVNrWFNBQ1RBS0JnZ3Foa2pPUFFRREFnTkpBREJHQWlFQTVlR2ppNVRxRnlkczNodTNNZGNEWit4M1VKVjAKQXFtNm8xcjltK1R1L3NBQ0lRRG1EVFMxQlhOczlNYmlpTFg0R3J5YWkvaDRNMTJUM2dLTThJaXJ1QzNoV1E9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==", "keyData": "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSU4vWGJTU0dnVW42M2lRUVE2dksxTWZhR0FSMk5GL2pDaWdNRGlZZ2VaUTNvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFRGhHVlZVcmFhM0R4NkxkU0JkOFBxUlFTTHBMVzBvUlRteS9IOFpYaTRrTWFtczc2TE1VbQpBZFdpd0pZWHVuczlDR3pwZzhRdk9iZGx0NVhhRHM5NGV3PT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo="}}'
+  # config phải được inject lúc runtime, không commit plaintext vào đây.
+  config: |
+    {
+      "tlsClientConfig": {
+        "insecure": false,
+        "caData": "<BASE64_CA_CERT>",
+        "certData": "<BASE64_CLIENT_CERT>",
+        "keyData": "<BASE64_CLIENT_KEY>"
+      }
+    }
+
