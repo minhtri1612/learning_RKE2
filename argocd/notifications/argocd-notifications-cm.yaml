@@ -8,20 +8,30 @@ data:
   service.slack: |
     token: $slack-token
 
-  # Default triggers for all applications
+  # Default triggers cho mọi app
   defaultTriggers: |
     - on-deployed
     - on-health-degraded
     - on-sync-failed
 
-  # Default subscriptions - send to #new-channel for all apps
+  # Subscriptions phân tách theo env:
+  # - Prod: #alerts-prod (on-call team, noise thấp)
+  # - Dev: #alerts-dev (dev team, noise cao hơn OK)
   subscriptions: |
     - recipients:
-        - slack:new-channel
+        - slack:alerts-prod
       triggers:
         - on-deployed
         - on-health-degraded
         - on-sync-failed
+      selector: environment=prod
+    - recipients:
+        - slack:alerts-dev
+      triggers:
+        - on-deployed
+        - on-health-degraded
+        - on-sync-failed
+      selector: environment=dev
 
   # Triggers - when to send notifications
   trigger.on-deployed: |

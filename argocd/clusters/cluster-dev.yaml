@@ -24,21 +24,12 @@ metadata:
   labels:
     argocd.argoproj.io/secret-type: cluster
   annotations:
-    # Không để ArgoCD tự sync secret này từ Git (prune=true sẽ xóa nếu apply bằng CLI)
+    # Không để ArgoCD override phần credentials (config) được inject runtime.
     argocd.argoproj.io/compare-options: IgnoreExtraneous
 type: Opaque
 stringData:
   name: dev
-  server: https://10.1.101.115:6443
-  # config phải được inject lúc runtime, không commit plaintext vào đây.
-  # Xem hướng dẫn bên trên.
-  config: |
-    {
-      "tlsClientConfig": {
-        "insecure": false,
-        "caData": "<BASE64_CA_CERT>",
-        "certData": "<BASE64_CLIENT_CERT>",
-        "keyData": "<BASE64_CLIENT_KEY>"
-      }
-    }
+  # Server URL hiện tại của dev cluster (dùng cho doc + UI)
+  server: https://10.1.101.166:6443
+  # ⚠️ config được inject bằng script / argocd cluster add, KHÔNG khai báo trong Git.
 

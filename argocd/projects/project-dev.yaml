@@ -4,11 +4,14 @@ kind: AppProject
 metadata:
   name: dev
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   description: Development environment applications
-  
+
   sourceRepos:
-    - 'https://github.com/minhtri1612/learning_RKE2.git'  
+    - 'https://github.com/minhtri1612/learning_RKE2.git'
+
   destinations:
     - namespace: 'meo-stationery'
       server: '*'
@@ -16,11 +19,18 @@ spec:
       server: '*'
     - namespace: 'external-secrets'
       server: '*'
-  
+
+  # Dev cho phép cluster-scoped resources (ít rủi ro hơn, dev team cần debug tự do)
   clusterResourceWhitelist:
-    - group: '*'
-      kind: '*'
-  
+    - group: ''
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: storage.k8s.io
+      kind: StorageClass
+
   namespaceResourceWhitelist:
     - group: '*'
       kind: '*'

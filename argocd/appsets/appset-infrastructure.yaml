@@ -23,6 +23,23 @@ spec:
             controller:
               service:
                 type: NodePort
+              # Resource limits cho ingress-nginx controller
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              # Metrics cho Prometheus scraping
+              metrics:
+                enabled: true
+                serviceMonitor:
+                  enabled: false  # bật nếu có Prometheus Operator
+              # PodDisruptionBudget
+              podDisruptionBudget:
+                enabled: true
+                minAvailable: 1
             # LoadBalancer trên RKE2 thường Pending → ArgoCD chờ "healthy" mãi → sync kẹt. NodePort có endpoints ngay khi pods Ready.
       destination:
         server: '{{server}}'
@@ -33,3 +50,173 @@ spec:
           selfHeal: true
         syncOptions:
         - CreateNamespace=true
+        - ServerSideApply=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+---
+# cert-manager: TLS tự động cho Ingress (Let's Encrypt)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cert-manager-apps
+  namespace: argocd
+spec:
+  generators:
+  - clusters:
+      selector:
+        matchLabels:
+          argocd.argoproj.io/secret-type: cluster
+  template:
+    metadata:
+      name: '{{name}}-cert-manager'
+      annotations:
+        argocd.argoproj.io/sync-wave: "2"
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://charts.jetstack.io
+        chart: cert-manager
+        targetRevision: v1.14.4
+        helm:
+          values: |
+            installCRDs: true
+            replicaCount: 1
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 250m
+                memory: 256Mi
+            # Webhook HA
+            webhook:
+              replicaCount: 1
+            cainjector:
+              replicaCount: 1
+      destination:
+        server: '{{server}}'
+        namespace: cert-manager
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+---
+# External Secrets Operator: sync secrets từ AWS Secrets Manager → K8s Secrets
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: external-secrets-apps
+  namespace: argocd
+spec:
+  generators:
+  - clusters:
+      selector:
+        matchLabels:
+          argocd.argoproj.io/secret-type: cluster
+  template:
+    metadata:
+      name: '{{name}}-external-secrets'
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://charts.external-secrets.io
+        chart: external-secrets
+        targetRevision: 0.9.13
+        helm:
+          values: |
+            installCRDs: true
+            replicaCount: 1
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 250m
+                memory: 256Mi
+            # Webhook
+            webhook:
+              replicaCount: 1
+            certController:
+              replicaCount: 1
+      destination:
+        server: '{{server}}'
+        namespace: external-secrets
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+---
+# metrics-server: cần thiết cho HPA hoạt động (cung cấp CPU/memory metrics)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: metrics-server-apps
+  namespace: argocd
+spec:
+  generators:
+  - clusters:
+      selector:
+        matchLabels:
+          argocd.argoproj.io/secret-type: cluster
+  template:
+    metadata:
+      name: '{{name}}-metrics-server'
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://kubernetes-sigs.github.io/metrics-server/
+        chart: metrics-server
+        targetRevision: 3.12.0
+        helm:
+          values: |
+            args:
+              # RKE2 thường dùng self-signed cert → cần skip TLS verify
+              - --kubelet-insecure-tls
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+      destination:
+        server: '{{server}}'
+        namespace: kube-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - ServerSideApply=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m

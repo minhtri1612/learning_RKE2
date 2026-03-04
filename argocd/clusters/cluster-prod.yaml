@@ -21,19 +21,11 @@ metadata:
   labels:
     argocd.argoproj.io/secret-type: cluster
   annotations:
+    # Không để ArgoCD override phần credentials (config) được inject runtime.
     argocd.argoproj.io/compare-options: IgnoreExtraneous
 type: Opaque
 stringData:
   name: prod
   server: https://10.2.101.59:6443
-  # config phải được inject lúc runtime, không commit plaintext vào đây.
-  config: |
-    {
-      "tlsClientConfig": {
-        "insecure": false,
-        "caData": "<BASE64_CA_CERT>",
-        "certData": "<BASE64_CLIENT_CERT>",
-        "keyData": "<BASE64_CLIENT_KEY>"
-      }
-    }
+  # ⚠️ config được inject bằng script / argocd cluster add, KHÔNG khai báo trong Git.
 

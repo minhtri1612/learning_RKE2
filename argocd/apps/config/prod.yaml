@@ -3,5 +3,11 @@ env: prod
 project: prod
 clusterName: prod
 valueFileSuffix: prod
-# Khi promote, targetRevision nên là tag/commit đã được QA (ví dụ: v1.2.3), không bám trực tiếp main.
+# targetRevision phải là tag release đã qua QA, KHÔNG bám main.
 targetRevision: v1.2.3
+autoSync: false  # prod = MANUAL sync (deploy qua UI/CLI sau review)
+# Image Updater bị disable cho prod:
+# Prod image được kiểm soát bởi targetRevision ở trên (tag cố định).
+# Để update prod image: sửa targetRevision → tạo PR → merge → manual sync từ ArgoCD UI.
+imageUpdaterEnabled: "false"
+

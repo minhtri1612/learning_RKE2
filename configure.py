@@ -329,16 +329,16 @@ def install_external_secrets_operator():
         env=env, timeout=360,
     )
     print("  ✓ External Secrets Operator installed.")
-    crd_name = "clustersecretstores.external-secrets.io"
-    for waited in range(0, 120, 5):
+    # Wait for ESO CRDs to be Established so ClusterSecretStore/ExternalSecret apply succeeds (ESO 2.x uses v1 API)
+    for crd_name in ("clustersecretstores.external-secrets.io", "externalsecrets.external-secrets.io"):
         res = subprocess.run(
-            f"kubectl get crd {crd_name} --request-timeout=5s 2>/dev/null",
-            shell=True, env=env, capture_output=True, timeout=10,
+            f"kubectl wait --for=condition=Established crd/{crd_name} --timeout=120s 2>/dev/null",
+            shell=True, env=env, capture_output=True, timeout=130,
         )
         if res.returncode == 0:
-            print(f"  ✓ CRD {crd_name} ready (waited {waited}s).")
-            break
-        time.sleep(5)
+            print(f"  ✓ CRD {crd_name} established.")
+        else:
+            print(f"  ⚠ CRD {crd_name} wait failed (continuing anyway).")
 
 
 def ensure_aws_secrets_credentials():
@@ -387,12 +387,12 @@ def ensure_aws_secrets_credentials():
 
 
 def apply_external_secrets_manifests():
-    """Apply ClusterSecretStore + ExternalSecret."""
+    """Apply ClusterSecretStore + ExternalSecret từ argocd/externalsecrets/."""
     print("--- Step 5: Applying External Secrets Manifests ---")
     kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
-    # Wait for webhook
+    # Waiting for ESO webhook to be ready
     for waited in range(0, 120, 5):
         r = subprocess.run(
             "kubectl get endpoints external-secrets-webhook -n external-secrets "
@@ -404,21 +404,26 @@ def apply_external_secrets_manifests():
         if waited % 15 == 0 and waited > 0:
             print(f"  Waiting for ESO webhook... ({waited}s)")
         time.sleep(5)
-    chart_dir = os.path.join(_SCRIPT_DIR, "external-secrets", "applications")
-    values_file = os.path.join(chart_dir, f"values-{TERRAFORM_ENV}.yaml")
-    if not os.path.isfile(values_file):
-        print(f"  ⚠ {values_file} not found, skipping.")
+
+    # argocd/externalsecrets/ chứa ClusterSecretStore + ExternalSecret (dạng YAML thường, không phải Helm)
+    manifests_dir = os.path.join(_SCRIPT_DIR, "argocd", "externalsecrets")
+    if not os.path.isdir(manifests_dir):
+        print(f"  ⚠ {manifests_dir} not found, skipping.")
         return
-    for ns in ("meo-stationery", "database"):
+
+    # Tạo namespaces trước (ExternalSecret sẽ được tạo trong đó)
+    for ns in ("meo-stationery", "database", "external-secrets"):
         subprocess.run(
             f"kubectl create namespace {ns} --dry-run=client -o yaml | kubectl apply -f -",
             shell=True, env=env, timeout=10, capture_output=True,
         )
+
+    # Apply trực tiếp — không cần helm template
     run_command(
-        f"helm template external-secrets {chart_dir} -f {os.path.join(chart_dir, 'values.yaml')} -f {values_file} | kubectl apply -f -",
+        f"kubectl apply -f {manifests_dir}/",
         env=env, timeout=30,
     )
-    print(f"  ✓ External Secrets applied for {TERRAFORM_ENV}.")
+    print(f"  ✓ External Secrets manifests applied from argocd/externalsecrets/.")
 
 
 def deploy_argocd_applications():

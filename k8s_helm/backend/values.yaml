@@ -63,3 +63,10 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 5
   targetCPUUtilizationPercentage: 80
+
+# NetworkPolicy: giới hạn traffic vào/ra backend pod
+# Bật khi cluster đã cài CNI hỗ trợ NetworkPolicy (Calico, Cilium, Weave)
+# Dev: false (namespace labels chưa được cấu hình đủ)
+# Prod: true
+networkPolicy:
+  enabled: false

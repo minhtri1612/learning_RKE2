@@ -1,14 +1,18 @@
 # ArgoCD AppProject for Production
+# Restrict allowed resource kinds – blast radius giảm nếu ai đó deploy nhầm.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: prod
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   description: Production environment applications
-  
+
   sourceRepos:
-    - 'https://github.com/minhtri1612/learning_RKE2.git'  
+    - 'https://github.com/minhtri1612/learning_RKE2.git'
+
   destinations:
     - namespace: 'meo-stationery'
       server: '*'
@@ -16,11 +20,37 @@ spec:
       server: '*'
     - namespace: 'external-secrets'
       server: '*'
-  
-  clusterResourceWhitelist:
-    - group: '*'
-      kind: '*'
-  
+
+  # Không cho deploy cluster-scoped resources từ prod project
+  clusterResourceWhitelist: []
+
+  # Chỉ allow namespace-scoped resources cần thiết
   namespaceResourceWhitelist:
-    - group: '*'
-      kind: '*'
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: batch
+      kind: Job
+    - group: external-secrets.io
+      kind: ExternalSecret
+    - group: external-secrets.io
+      kind: SecretStore

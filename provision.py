@@ -312,71 +312,110 @@ def wait_for_api_from_openvpn(openvpn_ip, master_private_ip, max_wait=600, jump_
     return False
 
 
-def update_argocd_cluster_manifest_from_kubeconfig():
+def register_cluster_with_argocd_cli(env, kubeconfig_path, mgmt_kubeconfig):
     """
-    Cập nhật argocd/clusters/cluster-<env>.yaml từ kubeconfig vừa tạo.
-    Không hardcode IP — mỗi lần provision xong là file đúng IP mới.
+    Option B — ĐÚ CHUẨN PRODUCTION:
+    Đăng ký cluster với ArgoCD qua `argocd cluster add` CLI.
+    Credentials (certData, keyData) được inject trực tiếp vào ArgoCD Secret trên cluster
+    thông qua ArgoCD API — KHÔNG bao giờ được ghi vào file YAML hoặc commit lên Git.
+
+    Yêu cầu:
+    - argocd CLI phải được cài trên máy local hoặc trên management node
+    - ArgoCD phải đang chạy trên management cluster (sau configure.py management)
+    - VPN phải đang bật
     """
-    if TERRAFORM_ENV not in ("dev", "prod"):
+    if env not in ("dev", "prod"):
         return
-    manifest_path = os.path.join(_SCRIPT_DIR, "argocd", "clusters", f"cluster-{TERRAFORM_ENV}.yaml")
-    kubeconfig_path = os.path.abspath(KUBECONFIG_FILE)
-    if not os.path.isfile(manifest_path) or not os.path.isfile(kubeconfig_path):
+    if not os.path.isfile(kubeconfig_path):
+        print(f"  ⚠ Kubeconfig không tồn tại: {kubeconfig_path} — bỏ qua đăng ký cluster.")
         return
+    if not os.path.isfile(mgmt_kubeconfig):
+        print(f"  ⚠ Management kubeconfig chưa có — bỏ qua đăng ký (sẽ làm sau configure.py management).")
+        return
+
+    # Đọc server URL từ kubeconfig để dùng làm context name cho argocd cluster add
     try:
-        import yaml
-    except ImportError:
-        script = os.path.join(_SCRIPT_DIR, "scripts", "update-argocd-cluster-manifest-from-kubeconfig.sh")
-        if os.path.isfile(script):
-            res = subprocess.run(["bash", script, TERRAFORM_ENV], cwd=_SCRIPT_DIR, capture_output=True, text=True, timeout=30)
-            if res.returncode == 0:
-                print(f"  ✓ ArgoCD manifest updated (script): argocd/clusters/cluster-{TERRAFORM_ENV}.yaml")
-            else:
-                print(f"  ⚠ Update manifest thất bại. Chạy tay: ./scripts/update-argocd-cluster-manifest-from-kubeconfig.sh {TERRAFORM_ENV}")
+        import yaml as _yaml
+        with open(kubeconfig_path) as f:
+            kc = _yaml.safe_load(f)
+        server = (kc.get("clusters") or [{}])[0].get("cluster", {}).get("server", "")
+        context_name = (kc.get("contexts") or [{}])[0].get("name", env)
+    except Exception as e:
+        print(f"  ⚠ Không đọc được kubeconfig: {e} — bỏ qua.")
         return
-    with open(kubeconfig_path) as f:
-        data = yaml.safe_load(f)
-    server = (data.get("clusters") or [{}])[0].get("cluster", {}).get("server")
-    users = data.get("users") or [{}]
-    user = users[0].get("user", {})
-    client_cert = user.get("client-certificate-data") or ""
-    client_key = user.get("client-key-data") or ""
-    if not server:
-        print("  ⚠ Không đọc được server từ kubeconfig, bỏ qua cập nhật manifest.")
+
+    print(f"--- Option B: Register {env} cluster via argocd cluster add (no keys in Git) ---")
+    print(f"  Server: {server}")
+
+    # Lấy ArgoCD admin password để login
+    env_vars = os.environ.copy()
+    env_vars["KUBECONFIG"] = mgmt_kubeconfig
+
+    password_res = subprocess.run(
+        "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d",
+        shell=True, capture_output=True, text=True, env=env_vars, timeout=15,
+    )
+    argocd_password = (password_res.stdout or "").strip()
+    if not argocd_password:
+        print("  ⚠ Không lấy được ArgoCD admin password. Đăng ký thủ công:")
+        print(f"    argocd cluster add {context_name} --name {env} --kubeconfig {kubeconfig_path}")
         return
-    import json
-    config_json = json.dumps({"tlsClientConfig": {"insecure": True, "certData": client_cert, "keyData": client_key}})
-    with open(manifest_path) as f:
-        content = f.read()
-    content = re.sub(r"(\s+server:\s*)(\S+)", rf"\g<1>{server}", content, count=1)
-    # Replace entire config value (single-line or leftover multi-line) to avoid broken YAML
-    content = re.sub(r"(\n  config:).*", f"\\1 '{config_json}'\n", content, count=1, flags=re.DOTALL)
-    with open(manifest_path, "w") as f:
-        f.write(content)
-    print(f"  ✓ ArgoCD manifest updated (server={server}) → argocd/clusters/cluster-{TERRAFORM_ENV}.yaml")
+
+    # Login ArgoCD (dùng internal svc endpoint từ management cluster)
+    login_res = subprocess.run(
+        "argocd login argocd-server.argocd.svc.cluster.local:443 "
+        f"--username admin --password \"{argocd_password}\" "
+        "--insecure --grpc-web",
+        shell=True, capture_output=True, text=True, env=env_vars, timeout=30,
+    )
+    if login_res.returncode != 0:
+        # Fallback: login via port-forward
+        print("  Trying argocd login via localhost:8080 (port-forward) ...")
+        login_res = subprocess.run(
+            f"argocd login localhost:8080 "
+            f"--username admin --password \"{argocd_password}\" "
+            "--insecure",
+            shell=True, capture_output=True, text=True, timeout=30,
+        )
+        if login_res.returncode != 0:
+            print("  ⚠ ArgoCD login failed. Đăng ký thủ công:")
+            print(f"    argocd login <argocd-server> --username admin")
+            print(f"    argocd cluster add {context_name} --name {env} --kubeconfig {kubeconfig_path} --insecure")
+            return
+
+    # argocd cluster add: inject credentials trực tiếp vào ArgoCD Secret, không qua Git
+    add_res = subprocess.run(
+        f"argocd cluster add {context_name} "
+        f"--name {env} "
+        f"--kubeconfig {kubeconfig_path} "
+        "--insecure "
+        "--yes",
+        shell=True, capture_output=True, text=True, timeout=60,
+    )
+    if add_res.returncode == 0:
+        print(f"  ✓ Cluster '{env}' đã đăng ký với ArgoCD (credentials không vào Git).")
+        print(f"  Verify: kubectl get secret cluster-{env} -n argocd --kubeconfig={mgmt_kubeconfig}")
+    else:
+        err = (add_res.stderr or add_res.stdout or "").strip()[:300]
+        print(f"  ⚠ argocd cluster add thất bại: {err}")
+        print(f"  Đăng ký thủ công sau khi bật VPN:")
+        print(f"    KUBECONFIG={mgmt_kubeconfig}")
+        print(f"    argocd cluster add {context_name} --name {env} --kubeconfig {kubeconfig_path} --insecure --yes")
 
 
-def _apply_argocd_cluster_secret_on_management():
+
+def _try_register_cluster_now(env):
     """
-    Apply secret cluster lên management từ kubeconfig hiện tại (IP mới, dynamic).
-    Chạy khi có kube_config_rke2_management.yaml (sau configure.py management).
+    Thử đăng ký cluster ngay lúc provision nếu management kubeconfig đã có sẵn.
+    Thực chất là wrapper gọi register_cluster_with_argocd_cli().
     """
     mgmt_kube = os.path.join(_SCRIPT_DIR, "kube_config_rke2_management.yaml")
-    script = os.path.join(_SCRIPT_DIR, "scripts", "create-argocd-cluster-secrets.sh")
     if not os.path.isfile(mgmt_kube):
-        print("  ⏭ Management kubeconfig chưa có → bỏ qua apply secret (sẽ chạy khi configure.py dev/prod).")
+        print("  ⏭ Management kubeconfig chưa có → bỏ qua đăng ký cluster (sẽ làm sau configure.py management).")
+        print(f"  Sau này chạy: argocd cluster add <context> --name {env} --kubeconfig {os.path.abspath(KUBECONFIG_FILE)} --insecure --yes")
         return
-    if not os.path.isfile(script):
-        return
-    env = os.environ.copy()
-    env["KUBECONFIG"] = os.path.abspath(mgmt_kube)
-    print("--- Step 4b: Apply ArgoCD cluster secret on management (IP từ kubeconfig) ---")
-    res = subprocess.run(["bash", script, TERRAFORM_ENV], cwd=_SCRIPT_DIR, env=env, capture_output=True, text=True, timeout=60)
-    if res.returncode == 0:
-        print(f"  ✓ Cluster secret '{TERRAFORM_ENV}' đã cập nhật trên management.")
-    else:
-        print(f"  ⚠ Apply secret thất bại (VPN chưa bật?): {res.stderr[:200] if res.stderr else res.stdout[:200]}")
-        print(f"  → Chạy sau khi bật VPN: bash scripts/create-argocd-cluster-secrets.sh {TERRAFORM_ENV}")
+    register_cluster_with_argocd_cli(env, os.path.abspath(KUBECONFIG_FILE), mgmt_kube)
+
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
@@ -417,13 +456,11 @@ def main():
 
     fetch_kubeconfig(openvpn_public_ip, master_private_ip, nlb_dns, jump_ssh_key_path=jump_key_path, key_on_jump=key_on_jump)
 
-    # Cập nhật argocd/clusters/cluster-<env>.yaml từ kubeconfig (IP mới, không hardcode)
-    print("--- Step 4a: Update ArgoCD cluster manifest (IP từ kubeconfig) ---")
-    update_argocd_cluster_manifest_from_kubeconfig()
-
-    # Apply secret cluster lên management ngay (dynamic IP, không cần bước tay)
+    # Option B: Đăng ký cluster vưới ArgoCD qua CLI — credentials KHÔNG vào Git
+    # cluster-dev.yaml / cluster-prod.yaml trong Git chỉ là template placeholder, không chứa key
     if TERRAFORM_ENV in ("dev", "prod"):
-        _apply_argocd_cluster_secret_on_management()
+        print(f"--- Step 4: Register {TERRAFORM_ENV} cluster with ArgoCD (Option B) ---")
+        _try_register_cluster_now(TERRAFORM_ENV)
 
     print(f"--- Step 5: Verifying API reachable from OpenVPN side ---")
     if not wait_for_api_from_openvpn(openvpn_public_ip, master_private_ip, jump_ssh_key_path=jump_key_path):
@@ -445,9 +482,12 @@ def main():
         print("  ─────────────────────────────────────────")
     else:
         print("\n  ─────────────────────────────────────────")
-        print("  ▶ BƯỚC TIẾP THEO:")
+        print("  ▶ BƯOC TIẾP THEO:")
         print("     1. Đảm bảo VPN management đang bật")
-        print(f"    2. Configure:    ./configure.py {TERRAFORM_ENV}   (sẽ apply secret + push Git, ArgoCD sync IP mới)")
+        print(f"    2. Configure:    ./configure.py {TERRAFORM_ENV}")
+        print(f"    3. Nếu đăng ký cluster chưa xảy ra tự động, chạy thủ công:")
+        print(f"       argocd cluster add <context> --name {TERRAFORM_ENV} \\")
+        print(f"         --kubeconfig {os.path.abspath(KUBECONFIG_FILE)} --insecure --yes")
         print("  ─────────────────────────────────────────")
     print("=" * 60)
 

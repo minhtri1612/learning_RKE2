@@ -1,0 +1,17 @@
+# PodDisruptionBudget: đảm bảo rolling update / node drain không làm downtime
+# Yêu cầu: replicaCount >= 2 để PDB có hiệu lực
+{{- if gt (int .Values.replicaCount) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "backend.fullname" . }}-pdb
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "backend.labels" . | nindent 4 }}
+spec:
+  # Luôn giữ ít nhất 1 pod chạy trong khi drain/rolling update
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "backend.selectorLabels" . | nindent 6 }}
+{{- end }}

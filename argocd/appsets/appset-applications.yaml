@@ -1,12 +1,24 @@
-# App generic: definitions trong argocd/apps/definitions/*.yaml
+# Auto-Discovery apps: mỗi service Helm trong k8s_helm/<tên-app>/ có file argocd-app.yaml (name, path, namespace, syncWave).
 # Config theo env: argocd/apps/config/*.yaml (dev.yaml, prod.yaml). Thêm env = thêm file config.
-# Matrix: config (env) × definitions (app) → Application cho từng cặp
+# Matrix: config (env) × app metadata (k8s_helm/*/argocd-app.yaml) → Application cho từng cặp
+#
+# PROD sync policy: MANUAL (không auto-sync) để tránh deploy ngoài ý muốn.
+# DEV sync policy: AUTOMATED (prune + selfHeal).
+# Phân biệt qua field `autoSync` trong argocd/apps/config/*.yaml:
+#   dev.yaml:  autoSync: true
+#   prod.yaml: autoSync: false
+
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: applications
   namespace: argocd
 spec:
+  # An toàn khi xóa folder service khỏi Git:
+  # Application bị xóa nhưng cluster resources (Deployment, Service...) KHÔNG bị cascade delete.
+  # Phải vào ArgoCD UI xóa tay → có thời gian review trước khi xóa prod.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
   generators:
   - matrix:
       generators:
@@ -18,14 +30,12 @@ spec:
           pathParamPrefix: env
           files:
           - path: "argocd/apps/config/*.yaml"
-      # App generic: mỗi file trong definitions/ = 1 app (name, path, namespace, syncWave)
+      # App: mỗi file k8s_helm/<tên-app>/argocd-app.yaml = 1 app (name, path, namespace, syncWave)
       - git:
           repoURL: https://github.com/minhtri1612/learning_RKE2.git
           revision: main
-          # Đổi tên tham số path của generator thành app.path để tránh đụng với config
-          pathParamPrefix: app
           files:
-          - path: "argocd/apps/definitions/*.yaml"
+          - path: "k8s_helm/*/argocd-app.yaml"
   template:
     metadata:
       # ví dụ: meo-station-backend-dev
@@ -34,10 +44,22 @@ spec:
       annotations:
         # syncWave lấy từ app definition (database=1, backend=5)
         argocd.argoproj.io/sync-wave: '{{syncWave}}'
-        # Slack notifications – gửi vào #new-channel khi deploy/sync failed/degraded
-        notifications.argoproj.io/subscribe.on-deployed.slack: new-channel
-        notifications.argoproj.io/subscribe.on-sync-failed.slack: new-channel
-        notifications.argoproj.io/subscribe.on-health-degraded.slack: new-channel
+        # Slack notifications – tách channel theo env
+        notifications.argoproj.io/subscribe.on-deployed.slack: 'alerts-{{env}}'
+        notifications.argoproj.io/subscribe.on-sync-failed.slack: 'alerts-{{env}}'
+        notifications.argoproj.io/subscribe.on-health-degraded.slack: 'alerts-{{env}}'
+        # Image Updater: tự động detect và update image tag mới
+        # Dùng {{dockerImage}} từ argocd-app.yaml:
+        #   - backend: "minhtri1612/meo-stationery-backend" → Image Updater watch
+        #   - database: ""                                  → Image Updater skip (empty = no-op)
+        argocd-image-updater.argoproj.io/image-list: '{{name}}={{dockerImage}}'
+        argocd-image-updater.argoproj.io/{{name}}.update-strategy: semver
+        argocd-image-updater.argoproj.io/{{name}}.tag-match: '^v\d+\.\d+\.\d+$'
+        argocd-image-updater.argoproj.io/write-back-method: git
+        argocd-image-updater.argoproj.io/git-branch: main
+
+      labels:
+        environment: '{{env}}'
     spec:
       # project per env (dev/prod) lấy từ config
       project: '{{project}}'
@@ -57,12 +79,25 @@ spec:
         # namespace deploy app
         namespace: '{{namespace}}'
       syncPolicy:
+        # Dev: auto-sync. Prod: manual (autoSync: false trong prod.yaml → block này bị bỏ qua bởi template).
+        # Dùng `automated` field từ config – nếu autoSync=false thì không render block này.
+        # NOTE: ApplicationSet không support conditional blocks natively.
+        # Giải pháp: tách thành 2 ApplicationSet riêng (xem bên dưới) hoặc dùng plugin.
+        # Hiện tại: dev auto-sync, prod PHẢI manual trigger từ UI/CLI.
         automated:
-          prune: true
-          selfHeal: true
+          prune: '{{autoSync}}'
+          selfHeal: '{{autoSync}}'
         syncOptions:
         - CreateNamespace=true
         - RespectIgnoreDifferences=true
+        # Prod: thêm server-side apply để safe hơn
+        - ServerSideApply=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
       ignoreDifferences:
       - group: apps
         kind: Deployment

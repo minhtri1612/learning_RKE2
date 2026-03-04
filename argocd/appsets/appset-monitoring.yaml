@@ -1,0 +1,129 @@
+# Monitoring stack: kube-prometheus-stack (Prometheus + Grafana + AlertManager + node-exporter)
+# Đây là bộ standard nhất cho production K8s monitoring
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: monitoring-apps
+  namespace: argocd
+spec:
+  generators:
+  - clusters:
+      selector:
+        matchLabels:
+          argocd.argoproj.io/secret-type: cluster
+  template:
+    metadata:
+      name: '{{name}}-monitoring'
+      annotations:
+        argocd.argoproj.io/sync-wave: "3"
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://prometheus-community.github.io/helm-charts
+        chart: kube-prometheus-stack
+        targetRevision: 58.2.2
+        helm:
+          values: |
+            # Grafana
+            grafana:
+              enabled: true
+              adminPassword: ""  # để trống → dùng Secret bên ngoài (inject qua existingSecret)
+              # existingSecret: grafana-admin-secret  # uncomment khi dùng ESO
+              ingress:
+                enabled: true
+                ingressClassName: nginx
+                hosts:
+                  - grafana.{{name}}.local
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              # Dashboard tự động discovery từ ConfigMap
+              sidecar:
+                dashboards:
+                  enabled: true
+                  searchNamespace: ALL
+
+            # Prometheus
+            prometheus:
+              prometheusSpec:
+                retention: 15d
+                resources:
+                  requests:
+                    cpu: 200m
+                    memory: 512Mi
+                  limits:
+                    cpu: 1000m
+                    memory: 2Gi
+                storageSpec:
+                  volumeClaimTemplate:
+                    spec:
+                      accessModes: ["ReadWriteOnce"]
+                      resources:
+                        requests:
+                          storage: 20Gi
+                # Tự động scrape ServiceMonitor trong mọi namespace
+                serviceMonitorSelectorNilUsesHelmValues: false
+                podMonitorSelectorNilUsesHelmValues: false
+
+            # AlertManager: routing alert về Slack
+            alertmanager:
+              alertmanagerSpec:
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 200m
+                    memory: 256Mi
+              config:
+                global:
+                  slack_api_url: ""  # inject qua Secret/ESO
+                route:
+                  group_by: ['alertname', 'namespace']
+                  group_wait: 30s
+                  group_interval: 5m
+                  repeat_interval: 4h
+                  receiver: 'slack-alerts'
+                  routes:
+                    - match:
+                        severity: critical
+                      receiver: 'slack-critical'
+                receivers:
+                  - name: 'slack-alerts'
+                    slack_configs:
+                      - channel: '#alerts-{{name}}'
+                        title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+                        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+                  - name: 'slack-critical'
+                    slack_configs:
+                      - channel: '#alerts-critical'
+                        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+                        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+            # node-exporter: metrics từng node
+            nodeExporter:
+              enabled: true
+
+            # kube-state-metrics: metrics về K8s objects
+            kubeStateMetrics:
+              enabled: true
+      destination:
+        server: '{{server}}'
+        namespace: monitoring
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m

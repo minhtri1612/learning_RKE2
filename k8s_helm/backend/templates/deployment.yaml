@@ -15,39 +15,70 @@ spec:
       labels:
         {{- include "backend.selectorLabels" . | nindent 8 }}
     spec:
+      # HA: đảm bảo các replicas trải đều trên các nodes khác nhau
+      affinity:
+        podAntiAffinity:
+          # Required: KHÔNG cho 2 replicas cùng app chạy trên 1 node
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - {{ include "backend.name" . }}
+            topologyKey: "kubernetes.io/hostname"
+      # Graceful shutdown: cho app xử lý xong requests trước khi SIGTERM
+      terminationGracePeriodSeconds: 30
       initContainers:
       - name: wait-for-postgres
         image: busybox:1.28
         command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 50m
+            memory: 32Mi
       containers:
       - name: {{ .Values.backend.name }}
         image: {{ .Values.workload.image }}
         imagePullPolicy: Always
-        
-        # Health checks disabled temporarily for debugging
-        # livenessProbe:
-        #   httpGet:
-        #     path: /api/health # Adjust to your actual health check endpoint
-        #     port: 3000
-        #   initialDelaySeconds: 30
-        #   periodSeconds: 20
-        # readinessProbe:
-        #   httpGet:
-        #     path: /api/health # Adjust to your actual health check endpoint
-        #     port: 3000
-        #   initialDelaySeconds: 15
-        #   periodSeconds: 10
-        
+
+        # Health checks – production critical
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          # Startup probe tách riêng: cho app thời gian bootstrap (db migration, etc.)
+          # Nếu sau maxFailures × periodSeconds app vẫn chưa healthy → restart
+          httpGet:
+            path: /api/health
+            port: 3000
+          failureThreshold: 30
+          periodSeconds: 5
+
         envFrom:
         - configMapRef:
             name: {{ include "backend.fullname" . }}-configmap
         - secretRef:
             name: {{ default (printf "%s-secret" (include "backend.fullname" .)) .Values.existingSecret.name }}
-        
-        # Add debug environment variables
-        # For production, consider removing DEBUG and setting NODE_ENV via ConfigMap
-        env:
-        
+
+        env: []
+
         resources:
           requests:
             memory: {{ .Values.workload.resources.requests.memory }}
@@ -57,3 +88,4 @@ spec:
             cpu: {{ .Values.workload.resources.limits.cpu }}
         ports:
         - containerPort: 3000
+          name: http

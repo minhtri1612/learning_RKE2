@@ -32,7 +32,7 @@ data:
     # Map local users to roles
     g, dev-user, role:dev
     g, prod-user, role:prod
-    g, minhtri, role:dev
+    g, minhtri, role:admin  # chủ repo → full admin
     
     # Map SSO users to roles (if using SSO - uncomment and adjust)
     # g, minhtri@example.com, role:dev

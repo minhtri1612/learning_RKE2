@@ -5,10 +5,11 @@ metadata:
   labels:
     {{- include "backend.labels" . | nindent 4 }}
   annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-    "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-timeout": "900"
+    # ArgoCD PreSync hook: chạy TRƯỚC khi bất kỳ resource nào được apply
+    # Nếu Job fail → ArgoCD dừng toàn bộ sync → backend cũ vẫn chạy an toàn
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"  # chạy trước tất cả wave khác trong cùng app
 spec:
   activeDeadlineSeconds: 900
   backoffLimit: 3
