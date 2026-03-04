@@ -1,3 +1,21 @@
+# ⚠️  SECURITY: Cluster credentials KHÔNG ĐƯỢC commit vào Git.
+# File này chỉ là TEMPLATE. Có 2 cách an toàn để apply:
+#
+# === Cách 1 (ĐƠN GIẢN NHẤT): argocd CLI ===
+#   argocd cluster add <context-name> --name dev \
+#     --kubeconfig ~/.kube/config \
+#     --server https://10.1.101.115:6443 \
+#     --grpc-web
+#
+# === Cách 2: Dùng Sealed Secrets ===
+#   1. Tạo Secret bình thường với certData/keyData thật
+#   2. kubeseal --cert pub-cert.pem -o yaml > cluster-dev-sealed.yaml
+#   3. Commit cluster-dev-sealed.yaml (an toàn vì đã encrypt)
+#
+# === Cách 3: External Secrets Operator ===
+#   Lưu certData/keyData trong AWS Secrets Manager, ESO tự sync
+#
+# Template (KHÔNG commit version này có credentials thật):
 apiVersion: v1
 kind: Secret
 metadata:
@@ -5,8 +23,22 @@ metadata:
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: cluster
+  annotations:
+    # Không để ArgoCD tự sync secret này từ Git (prune=true sẽ xóa nếu apply bằng CLI)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
 type: Opaque
 stringData:
   name: dev
   server: https://10.1.101.115:6443
-  config: '{"tlsClientConfig": {"insecure": true, "certData": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJrakNDQVRpZ0F3SUJBZ0lJV1JhcG9iQnNhUUl3Q2dZSUtvWkl6ajBFQXdJd0pERWlNQ0FHQTFVRUF3d1oKY210bE1pMWpiR2xsYm5RdFkyRkFNVGMzTWpRME56Y3pPREFlRncweU5qQXpNREl4TURNMU16aGFGdzB5TnpBegpNREl4TURNMU16aGFNREF4RnpBVkJnTlZCQW9URG5ONWMzUmxiVHB0WVhOMFpYSnpNUlV3RXdZRFZRUURFd3h6CmVYTjBaVzA2WVdSdGFXNHdXVEFUQmdjcWhrak9QUUlCQmdncWhrak9QUU1CQndOQ0FBU2JZUmNramJWSmk1SFUKTzg2ZDVFTTFrdHVkQm1JQTFwOGpRU3BLMVBseEZJdk9zcFFxajJpN1hYSWM3eC81aW5seHlLODYzUFpFakxFZwplQlgyNFNRaW8wZ3dSakFPQmdOVkhROEJBZjhFQkFNQ0JhQXdFd1lEVlIwbEJBd3dDZ1lJS3dZQkJRVUhBd0l3Ckh3WURWUjBqQkJnd0ZvQVVLQU5WTWFXOUxzY0kzcU50WmVTR0lLc1U4a1V3Q2dZSUtvWkl6ajBFQXdJRFNBQXcKUlFJZ0ZWMGtSNXpQS1ZFNmlxRVdRYVZmdkpieG5GYy9QSjRVV0VNY2laeXdyemdDSVFDU2lCSjRJV0lLZitXKwpBUFVrL0JpbndTdmZzY2hZbjhaTnVSOEV2Z1RxclE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLQpNSUlCZWpDQ0FSK2dBd0lCQWdJQkFEQUtCZ2dxaGtqT1BRUURBakFrTVNJd0lBWURWUVFEREJseWEyVXlMV05zCmFXVnVkQzFqWVVBeE56Y3lORFEzTnpNNE1CNFhEVEkyTURNd01qRXdNelV6T0ZvWERUTTJNREl5T0RFd016VXoKT0Zvd0pERWlNQ0FHQTFVRUF3d1pjbXRsTWkxamJHbGxiblF0WTJGQU1UYzNNalEwTnpjek9EQlpNQk1HQnlxRwpTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCR01wNDM2WC92NEhvR1ErSkVoalJUQ015S1dTODE2cGJ6RFdTMm1UCnQzVjJnSmJLUk41ZmhIN0ZTUlR1bFJSYVFzV3lIdy9kK2ZMaE5mc1RrMWJTV1lTalFqQkFNQTRHQTFVZER3RUIKL3dRRUF3SUNwREFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQjBHQTFVZERnUVdCQlFvQTFVeHBiMHV4d2plbzIxbAo1SVlncXhUeVJUQUtCZ2dxaGtqT1BRUURBZ05KQURCR0FpRUFuTU92Si91MmhUOHdhRm95QTdwTDZMY0gzR3o1CnZuS3pFaGNpY1dNVmZwTUNJUUNqZmdUSjlVdzVnWWRpRTBycitCTHR6eDZEY1A0dnFIakoxUE4wTUZGY1NBPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=", "keyData": "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUttRTV0UzllVzREK2NQb0IxVEtBcXduWFVWcUl5WDB4aWV1cjBVcnRyTzRvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFbTJFWEpJMjFTWXVSMUR2T25lUkROWkxiblFaaUFOYWZJMEVxU3RUNWNSU0x6cktVS285bwp1MTF5SE84ZitZcDVjY2l2T3R6MlJJeXhJSGdWOXVFa0lnPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo="}}'
+  # config phải được inject lúc runtime, không commit plaintext vào đây.
+  # Xem hướng dẫn bên trên.
+  config: |
+    {
+      "tlsClientConfig": {
+        "insecure": false,
+        "caData": "<BASE64_CA_CERT>",
+        "certData": "<BASE64_CLIENT_CERT>",
+        "keyData": "<BASE64_CLIENT_KEY>"
+      }
+    }
+
