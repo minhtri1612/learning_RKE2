@@ -85,8 +85,8 @@ spec:
         # Giải pháp: tách thành 2 ApplicationSet riêng (xem bên dưới) hoặc dùng plugin.
         # Hiện tại: dev auto-sync, prod PHẢI manual trigger từ UI/CLI.
         automated:
-          prune: '{{autoSync}}'
-          selfHeal: '{{autoSync}}'
+          prune: {{autoSync}}
+          selfHeal: {{autoSync}}
         syncOptions:
         - CreateNamespace=true
         - RespectIgnoreDifferences=true
