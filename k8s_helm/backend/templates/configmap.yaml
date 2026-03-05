@@ -6,7 +6,8 @@ metadata:
   labels:
     {{- include "backend.labels" . | nindent 4 }}
   annotations:
-    # Apply trước migration job (wave -1) để PreSync hook pod mount được ConfigMap
+    # Cùng phase PreSync với migration Job, wave -2 để apply trước Job (wave -1)
+    argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/sync-wave: "-2"
 data:
   NEXTAUTH_URL: {{ .Values.config.nextAuthUrl | quote }}
