@@ -1,8 +1,8 @@
 # Dev overrides (merged với values.yaml)
 # Dev: dùng secrets từ AWS Secrets Manager qua External Secrets Operator.
-# ExternalSecret hiện đang tạo K8s Secret "meo-stationery-database-secrets" trong namespace database.
+# ExternalSecret dev tạo K8s Secret "meo-stationery-database-secrets-dev" (prod dùng "meo-stationery-database-secrets").
 existingSecret:
-  name: "meo-stationery-database-secrets"
+  name: "meo-stationery-database-secrets-dev"
 auth:
   username: meo_admin
   database: meo_stationery
