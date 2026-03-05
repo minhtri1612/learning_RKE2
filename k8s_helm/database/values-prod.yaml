@@ -1,10 +1,13 @@
-# Prod overrides (merged with values.yaml)
+# Prod overrides (merged với values.yaml)
+# Prod: dùng secrets từ AWS Secrets Manager qua External Secrets Operator.
+# ExternalSecret prod tạo Secret "meo-stationery-database-secrets" trong namespace database.
 existingSecret:
-  name: "postgres"
+  name: "meo-stationery-database-secrets"
+auth:
+  username: meo_admin
+  database: meo_stationery
+  password: ""  # password lấy từ Secret, không set trong Git
 persistence:
   size: 10Gi
   useEBS: true
   provisionStorageClass: false
-auth:
-  username: meo_admin
-  database: meo_stationery
