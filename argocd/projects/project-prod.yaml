@@ -23,38 +23,19 @@ spec:
     - namespace: 'argocd'
       server: 'https://kubernetes.default.svc'
 
-  # Prod: chỉ cho phép cluster-scoped Application (app-of-apps)
+  # Prod: tạm thời mở rộng giống dev để app sync được
   clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: storage.k8s.io
+      kind: StorageClass
     - group: argoproj.io
       kind: Application
 
-  # Chỉ allow namespace-scoped resources cần thiết
   namespaceResourceWhitelist:
-    - group: apps
-      kind: Deployment
-    - group: apps
-      kind: StatefulSet
-    - group: autoscaling
-      kind: HorizontalPodAutoscaler
-    - group: policy
-      kind: PodDisruptionBudget
-    - group: ""
-      kind: Service
-    - group: ""
-      kind: ConfigMap
-    - group: ""
-      kind: Secret
-    - group: ""
-      kind: ServiceAccount
-    - group: ""
-      kind: PersistentVolumeClaim
-    - group: networking.k8s.io
-      kind: Ingress
-    - group: networking.k8s.io
-      kind: NetworkPolicy
-    - group: batch
-      kind: Job
-    - group: external-secrets.io
-      kind: ExternalSecret
-    - group: external-secrets.io
-      kind: SecretStore
+    - group: '*'
+      kind: '*'
