@@ -1,0 +1,9 @@
+# App-of-Apps: danh sách app con (được render thành Application CRD)
+# Override env, project, destination, targetRevision trong values-dev.yaml / values-prod.yaml
+repoURL: https://github.com/minhtri1612/learning_RKE2.git
+targetRevision: main
+env: ""
+project: ""
+destination: ""
+
+apps: []

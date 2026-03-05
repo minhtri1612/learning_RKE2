@@ -392,18 +392,27 @@ def apply_external_secrets_manifests():
     kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
-    # Waiting for ESO webhook to be ready
-    for waited in range(0, 120, 5):
-        r = subprocess.run(
-            "kubectl get endpoints external-secrets-webhook -n external-secrets "
-            "-o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null",
-            shell=True, env=env, capture_output=True, text=True, timeout=10,
-        )
-        if r.returncode == 0 and (r.stdout or "").strip():
-            break
-        if waited % 15 == 0 and waited > 0:
-            print(f"  Waiting for ESO webhook... ({waited}s)")
-        time.sleep(5)
+    # Wait for ESO webhook deployment to be Available (pods Ready) — prod có thể chậm hơn dev
+    webhook_timeout = 240
+    print(f"  Waiting for ESO webhook to be ready (up to {webhook_timeout}s)...")
+    r = subprocess.run(
+        "kubectl wait --for=condition=Available deployment/external-secrets-webhook "
+        "-n external-secrets --timeout=%ds 2>/dev/null" % webhook_timeout,
+        shell=True, env=env, capture_output=True, text=True, timeout=webhook_timeout + 15,
+    )
+    if r.returncode != 0:
+        # Fallback: wait for Service to have endpoints (legacy check)
+        for waited in range(0, webhook_timeout, 5):
+            r2 = subprocess.run(
+                "kubectl get endpoints external-secrets-webhook -n external-secrets "
+                "-o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null",
+                shell=True, env=env, capture_output=True, text=True, timeout=10,
+            )
+            if r2.returncode == 0 and (r2.stdout or "").strip():
+                break
+            if waited % 30 == 0 and waited > 0:
+                print(f"  Waiting for ESO webhook endpoints... ({waited}s)")
+            time.sleep(5)
 
     # argocd/externalsecrets/ chứa ClusterSecretStore + ExternalSecret (dạng YAML thường, không phải Helm)
     manifests_dir = os.path.join(_SCRIPT_DIR, "argocd", "externalsecrets")
@@ -418,12 +427,23 @@ def apply_external_secrets_manifests():
             shell=True, env=env, timeout=10, capture_output=True,
         )
 
-    # Apply trực tiếp — không cần helm template
-    run_command(
-        f"kubectl apply -f {manifests_dir}/",
-        env=env, timeout=30,
-    )
-    print(f"  ✓ External Secrets manifests applied from argocd/externalsecrets/.")
+    # Apply với retry: đôi khi webhook vừa Ready nhưng API server vẫn cache "no endpoints"
+    for attempt in range(1, 4):
+        apply_result = subprocess.run(
+            f"kubectl apply -f {manifests_dir}/",
+            shell=True, env=env, capture_output=True, text=True, timeout=60,
+        )
+        if apply_result.returncode == 0:
+            print(f"  ✓ External Secrets manifests applied from argocd/externalsecrets/.")
+            return
+        if "no endpoints available for service \"external-secrets-webhook\"" not in (apply_result.stderr or ""):
+            print(apply_result.stderr or apply_result.stdout or "")
+            sys.exit(1)
+        if attempt < 3:
+            print(f"  Webhook chưa sẵn sàng, retry sau 20s (lần {attempt}/3)...")
+            time.sleep(20)
+    print("  ✗ Apply External Secrets thất bại sau 3 lần (webhook vẫn không có endpoint).")
+    sys.exit(1)
 
 
 def deploy_argocd_applications():

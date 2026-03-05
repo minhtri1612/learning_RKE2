@@ -1,6 +1,13 @@
 nameOverride: "postgres"
 fullnameOverride: "postgres"
 
+# ArgoCD sync wave when chart used as subchart (umbrella); standalone default 0
+argocd:
+  syncWave: "0"
+
+# Khi dùng umbrella: set namespace: "database" để deploy vào namespace database
+namespace: ""
+
 image:
   repository: postgres
   pullPolicy: Always

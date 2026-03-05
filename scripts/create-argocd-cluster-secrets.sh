@@ -23,6 +23,20 @@ if [[ ! -f "$MGMT_KUBECONFIG" ]]; then
   exit 1
 fi
 
+# Kiểm tra management cluster reachable (tránh lỗi "failed to download openapi" / i/o timeout)
+MGMT_SERVER=$(kubectl --kubeconfig="$MGMT_KUBECONFIG" config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)
+if [[ -z "$MGMT_SERVER" ]]; then
+  echo "Error: Không đọc được server từ $MGMT_KUBECONFIG"
+  exit 1
+fi
+if ! kubectl --kubeconfig="$MGMT_KUBECONFIG" get ns default --request-timeout=10s >/dev/null 2>&1; then
+  echo "Error: Không kết nối được management cluster tại $MGMT_SERVER"
+  echo "  - Master management đã bị terminated? Chạy: terraform -chdir=terraform/environments/management apply -auto-approve -var-file=terraform.tfvars"
+  echo "  - Sau khi master mới lên, cập nhật kubeconfig (IP mới): lấy từ terraform output hoặc SCP từ node mới."
+  echo "  - Bật VPN nếu đang dùng VPN để vào VPC."
+  exit 1
+fi
+
 # ── Register cluster: tạo SA + token trên target cluster, rồi tạo Secret trên management ──
 register_cluster() {
   local env="$1"

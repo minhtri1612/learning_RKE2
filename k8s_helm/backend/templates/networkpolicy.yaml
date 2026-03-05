@@ -5,9 +5,13 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: {{ include "backend.fullname" . }}-netpol
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
   labels:
     {{- include "backend.labels" . | nindent 4 }}
+  {{- with .Values.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .syncWave | default "0" | quote }}
+  {{- end }}
 spec:
   podSelector:
     matchLabels:

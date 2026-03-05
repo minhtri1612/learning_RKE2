@@ -2,9 +2,13 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "database.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
   labels:
     {{- include "database.labels" . | nindent 4 }}
+  {{- with .Values.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .syncWave | default "0" | quote }}
+  {{- end }}
 spec:
   serviceName: {{ include "database.fullname" . }}
   replicas: 1

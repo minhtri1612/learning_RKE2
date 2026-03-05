@@ -1,0 +1,31 @@
+# App-of-Apps prod: render Application CRD (meo-station-database-prod, meo-station-backend-prod).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: meo-station-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: prod
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: v1.2.3
+    path: k8s_helm/meo-station
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

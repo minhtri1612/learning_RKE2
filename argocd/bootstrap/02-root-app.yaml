@@ -1,14 +1,13 @@
-# Root Application - App of Apps (ApplicationSets Pattern)
-# 
-# This root app syncs ApplicationSets which auto-generate Applications for all environments.
+# Root Application - App of Apps (chỉ Application, không ApplicationSet)
+#
+# Root app sync folder argocd/applications → tạo các app con (app in app).
 #
 # Setup:
 # 1. Apply projects: kubectl apply -f argocd/projects/
 # 2. Apply RBAC: kubectl apply -f argocd/rbac/
 # 3. Apply root app: kubectl apply -f argocd/bootstrap/02-root-app.yaml
 #
-# ApplicationSet "applications" (trong appsets): đọc argocd/apps/definitions/* + list env (dev, prod) → sinh app × env.
-# ApplicationSet "infrastructure-apps": ingress-nginx, etc.
+# argocd/applications/: meo-station-dev, meo-station-prod (umbrella); dev/prod-ingress-nginx, dev/prod-metrics-server.
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -111,7 +110,7 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-appsets
+  name: root-applications
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
@@ -122,7 +121,7 @@ spec:
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: main
-    path: argocd/appsets
+    path: argocd/applications
     directory:
       recurse: true
   destination:

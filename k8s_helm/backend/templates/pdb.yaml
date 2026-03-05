@@ -5,9 +5,13 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "backend.fullname" . }}-pdb
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
   labels:
     {{- include "backend.labels" . | nindent 4 }}
+  {{- with .Values.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .syncWave | default "0" | quote }}
+  {{- end }}
 spec:
   # Luôn giữ ít nhất 1 pod chạy trong khi drain/rolling update
   minAvailable: 1

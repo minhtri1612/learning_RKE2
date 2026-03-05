@@ -2,6 +2,13 @@ backend:
   name: backend-deployment
   namespace: meo-stationery
 
+# ArgoCD sync wave when chart used as subchart (umbrella); standalone default 0
+argocd:
+  syncWave: "0"
+
+# Khi dùng umbrella: set namespace: "meo-stationery" để deploy vào đúng namespace
+namespace: ""
+
 workload:
   image: minhtri1612/meo-stationery-backend:vcl
   resources:

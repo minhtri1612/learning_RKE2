@@ -1,0 +1,21 @@
+# Prod: config cho App-of-Apps — sinh 2 Application con (database, backend)
+env: prod
+project: prod
+destination: prod
+targetRevision: v1.2.3
+
+apps:
+  - name: meo-station-database
+    path: k8s_helm/database
+    namespace: database
+    syncWave: "1"
+    valueFiles:
+      - values.yaml
+      - values-prod.yaml
+  - name: meo-station-backend
+    path: k8s_helm/backend
+    namespace: meo-stationery
+    syncWave: "5"
+    valueFiles:
+      - values.yaml
+      - values-prod.yaml
