@@ -5,10 +5,9 @@ metadata:
   namespace: {{ .Values.namespace | default .Release.Namespace }}
   labels:
     {{- include "backend.labels" . | nindent 4 }}
-  {{- with .Values.argocd }}
   annotations:
-    argocd.argoproj.io/sync-wave: {{ .syncWave | default "0" | quote }}
-  {{- end }}
+    # Apply trước migration job (wave -1) để PreSync hook pod mount được ConfigMap
+    argocd.argoproj.io/sync-wave: "-2"
 data:
   NEXTAUTH_URL: {{ .Values.config.nextAuthUrl | quote }}
   NODE_ENV: "production"

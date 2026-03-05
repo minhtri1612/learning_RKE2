@@ -8,8 +8,14 @@
 set -e
 ENV="${1:-dev}"
 NAMESPACE="meo-stationery"
-ES_NAME="backend-secrets-${ENV}"
-SECRET_NAME="meo-stationery-backend-secrets"
+# dev: ExternalSecret/Secret meo-stationery-backend-secrets-dev; prod: meo-stationery-backend-secrets
+if [[ "$ENV" == "dev" ]]; then
+  ES_NAME="meo-stationery-backend-secrets-dev"
+  SECRET_NAME="meo-stationery-backend-secrets-dev"
+else
+  ES_NAME="meo-stationery-backend-secrets"
+  SECRET_NAME="meo-stationery-backend-secrets"
+fi
 JOB_NAME="meo-station-backend-${ENV}-migration"
 
 echo "=== Refreshing backend secrets and migration (env=$ENV) ==="
