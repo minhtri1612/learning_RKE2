@@ -20,9 +20,13 @@ spec:
       server: '*'
     - namespace: 'external-secrets'
       server: '*'
+    - namespace: 'argocd'
+      server: 'https://kubernetes.default.svc'
 
-  # Không cho deploy cluster-scoped resources từ prod project
-  clusterResourceWhitelist: []
+  # Prod: chỉ cho phép cluster-scoped Application (app-of-apps)
+  clusterResourceWhitelist:
+    - group: argoproj.io
+      kind: Application
 
   # Chỉ allow namespace-scoped resources cần thiết
   namespaceResourceWhitelist:

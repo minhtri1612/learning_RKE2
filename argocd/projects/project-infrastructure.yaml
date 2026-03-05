@@ -42,6 +42,10 @@ spec:
     kind: MutatingWebhookConfiguration
   - group: admissionregistration.k8s.io
     kind: ValidatingWebhookConfiguration
+  - group: networking.k8s.io
+    kind: IngressClass
+  - group: apiregistration.k8s.io
+    kind: APIService
   # ESO cluster-scoped resources
   - group: external-secrets.io
     kind: ClusterSecretStore
