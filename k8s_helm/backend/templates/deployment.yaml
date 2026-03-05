@@ -19,18 +19,19 @@ spec:
       labels:
         {{- include "backend.selectorLabels" . | nindent 8 }}
     spec:
-      # HA: đảm bảo các replicas trải đều trên các nodes khác nhau
+      # HA: ưu tiên trải replicas trên nhiều node; nếu ít node hơn replica thì vẫn schedule được (preferred)
       affinity:
         podAntiAffinity:
-          # Required: KHÔNG cho 2 replicas cùng app chạy trên 1 node
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values:
-                - {{ include "backend.name" . }}
-            topologyKey: "kubernetes.io/hostname"
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - {{ include "backend.name" . }}
+              topologyKey: kubernetes.io/hostname
       # Graceful shutdown: cho app xử lý xong requests trước khi SIGTERM
       terminationGracePeriodSeconds: 30
       initContainers:
