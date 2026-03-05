@@ -2,21 +2,28 @@
 # Đồng bộ password dev: database + app-credentials dùng CÙNG một password
 # (giống fix prod – tránh P1000 Authentication failed).
 #
+# Postgres CHỈ đọc POSTGRES_PASSWORD lúc lần đầu init ổ data. Đổi secret/AWS sau đó
+# không đổi password trong DB → vẫn P1000. Dùng --reset-db để xóa PVC + re-init DB.
+#
 # Chạy trên máy có: aws CLI, jq, KUBECONFIG trỏ dev cluster (hoặc truyền qua --kubeconfig).
 # Usage:
-#   export KUBECONFIG=/path/to/kube_config_rke2_dev.yaml   # trước khi chạy phần kubectl
+#   export KUBECONFIG=/path/to/kube_config_rke2_dev.yaml
 #   ./scripts/sync-dev-db-and-backend-secrets.sh           # chỉ cập nhật AWS
-#   ./scripts/sync-dev-db-and-backend-secrets.sh --cluster # AWS + xóa secret K8s + xóa job migration trên dev
+#   ./scripts/sync-dev-db-and-backend-secrets.sh --cluster  # AWS + xóa secret K8s + xóa job
+#   ./scripts/sync-dev-db-and-backend-secrets.sh --cluster --reset-db  # trên + re-init Postgres (xóa data dev)
 set -e
 
 DEV_DB_PASSWORD="${DEV_DB_PASSWORD:-your-dev-db-password-here}"
 RUN_CLUSTER=""
+RESET_DB=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --cluster) RUN_CLUSTER=1; shift ;;
+    --cluster)  RUN_CLUSTER=1; shift ;;
+    --reset-db) RESET_DB=1; shift ;;
     *) shift ;;
   esac
 done
+[[ -n "$RESET_DB" ]] && RUN_CLUSTER=1
 
 echo "=== Dev: đồng bộ database + app-credentials (password: ${DEV_DB_PASSWORD}) ==="
 
@@ -55,12 +62,36 @@ if [[ -n "$RUN_CLUSTER" ]]; then
   echo "Đợi ~15s cho ESO sync..."
   sleep 15
   kubectl -n meo-stationery delete job meo-station-backend-dev-migration --ignore-not-found=true
-  echo "Done. Vào ArgoCD sync lại meo-station-backend-dev. Nếu vẫn P1000 thì restart Postgres: kubectl -n database rollout restart statefulset postgres"
+
+  if [[ -n "$RESET_DB" ]]; then
+    echo "=== --reset-db: re-init Postgres (xóa PVC → DB khởi tạo lại với password mới, MẤT DATA DEV) ==="
+    STS=$(kubectl -n database get statefulset -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [[ -z "$STS" ]]; then
+      echo "Không tìm thấy StatefulSet trong namespace database. Bỏ qua reset-db."
+    else
+      echo "StatefulSet: $STS"
+      kubectl -n database scale statefulset "$STS" --replicas=0
+      echo "Đợi pod terminate..."
+      sleep 10
+      # PVC từ volumeClaimTemplates: postgres-storage-<statefulsetname>-0
+      for pvc in postgres-storage-${STS}-0; do
+        kubectl -n database delete pvc "$pvc" --ignore-not-found=true
+      done
+      kubectl -n database scale statefulset "$STS" --replicas=1
+      echo "Postgres đang khởi tạo lại với password mới từ secret. Đợi ~30s rồi ArgoCD sync meo-station-backend-dev."
+    fi
+  fi
+
+  echo "Done. Vào ArgoCD sync lại meo-station-backend-dev."
 else
   echo "Chạy trên dev cluster (KUBECONFIG=.../kube_config_rke2_dev.yaml):"
+  echo "  ./scripts/sync-dev-db-and-backend-secrets.sh --cluster --reset-db"
+  echo "  (--reset-db = xóa data Postgres dev để DB dùng lại password mới, hết P1000)"
+  echo "Hoặc thủ công:"
   echo "  kubectl -n database delete secret meo-stationery-database-secrets-dev"
   echo "  kubectl -n meo-stationery delete secret meo-stationery-backend-secrets-dev"
   echo "  sleep 15"
   echo "  kubectl -n meo-stationery delete job meo-station-backend-dev-migration"
+  echo "  kubectl -n database scale statefulset postgres --replicas=0 && sleep 10 && kubectl -n database delete pvc postgres-storage-postgres-0 && kubectl -n database scale statefulset postgres --replicas=1"
   echo "Rồi ArgoCD → meo-station-backend-dev → Sync."
 fi
