@@ -1,0 +1,27 @@
+# App of Apps: Business Applications tier
+# App này sync folder argocd/applications/business → tạo các app business con:
+#   - meo-station-dev, meo-station-prod
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: business-apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: main
+    path: argocd/applications/business
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
