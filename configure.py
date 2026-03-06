@@ -342,17 +342,26 @@ def install_external_secrets_operator():
 
 
 def ensure_aws_secrets_credentials():
-    """Tạo K8s Secret aws-secrets-credentials cho ESO."""
+    """Tạo K8s Secret aws-credentials cho ESO (ClusterSecretStore auth)."""
     print("--- Step 4: AWS credentials for External Secrets ---")
     kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
+    secret_name = "aws-credentials"  # phải khớp ClusterSecretStore (cluster-secret-store.yaml)
+
+    # Ensure namespace exists (idempotent)
+    run_command(
+        "kubectl create namespace external-secrets --dry-run=client -o yaml | kubectl apply -f -",
+        env=env,
+        timeout=20,
+    )
+
     res = subprocess.run(
-        "kubectl get secret aws-secrets-credentials -n external-secrets --request-timeout=5s 2>/dev/null",
+        f"kubectl get secret {secret_name} -n external-secrets --request-timeout=5s 2>/dev/null",
         shell=True, env=env, capture_output=True, timeout=10,
     )
     if res.returncode == 0:
-        print("  ✓ Secret aws-secrets-credentials already exists.")
+        print(f"  ✓ Secret {secret_name} already exists.")
         return
     access = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
     secret_val = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
@@ -368,26 +377,50 @@ def ensure_aws_secrets_credentials():
         if out_ak.returncode == 0 and out_sk.returncode == 0:
             access = out_ak.stdout.strip()
             secret_val = out_sk.stdout.strip()
+        else:
+            # Make failures visible (terraform not init / outputs missing / wrong env)
+            ak_err = (out_ak.stderr or "").strip()
+            sk_err = (out_sk.stderr or "").strip()
+            if ak_err:
+                print(f"  ✗ terraform output eso_access_key_id failed: {ak_err[:200]}")
+            if sk_err:
+                print(f"  ✗ terraform output eso_secret_access_key failed: {sk_err[:200]}")
     if access and secret_val:
+        # ClusterSecretStore cần: access-key-id, secret-access-key
         yaml_out = subprocess.run(
-            ["kubectl", "create", "secret", "generic", "aws-secrets-credentials",
+            ["kubectl", "create", "secret", "generic", secret_name,
              "-n", "external-secrets",
-             "--from-literal=access-key=" + access,
+             "--from-literal=access-key-id=" + access,
              "--from-literal=secret-access-key=" + secret_val,
              "--dry-run=client", "-o", "yaml"],
             env=env, capture_output=True, text=True, timeout=15,
         )
-        subprocess.run(
+        if yaml_out.returncode != 0:
+            err = (yaml_out.stderr or yaml_out.stdout or "").strip()
+            print(f"  ✗ Failed to render secret manifest via kubectl. kubeconfig={kubeconfig_path}")
+            print(f"    {err[:400]}")
+            sys.exit(1)
+
+        apply_out = subprocess.run(
             ["kubectl", "apply", "-f", "-"],
             input=yaml_out.stdout, env=env, capture_output=True, text=True, timeout=15,
         )
-        print("  ✓ Created aws-secrets-credentials.")
+        if apply_out.returncode != 0:
+            err = (apply_out.stderr or apply_out.stdout or "").strip()
+            print(f"  ✗ Failed to apply secret {secret_name}. kubeconfig={kubeconfig_path}")
+            print(f"    {err[:400]}")
+            sys.exit(1)
+        print(f"  ✓ Created {secret_name} in namespace external-secrets.")
     else:
         print("  ⚠ Credentials not found. Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY.")
 
 
 def apply_external_secrets_manifests():
-    """Apply ClusterSecretStore + ExternalSecret từ argocd/externalsecrets/."""
+    """Apply ClusterSecretStore + ExternalSecret for current env.
+
+    We render from Helm chart external-secrets/applications using values-<env>.yaml.
+    This avoids relying on argocd/externalsecrets/ which may not exist.
+    """
     print("--- Step 5: Applying External Secrets Manifests ---")
     kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
@@ -414,30 +447,37 @@ def apply_external_secrets_manifests():
                 print(f"  Waiting for ESO webhook endpoints... ({waited}s)")
             time.sleep(5)
 
-    # argocd/externalsecrets/ chứa ClusterSecretStore + ExternalSecret (dạng YAML thường, không phải Helm)
-    manifests_dir = os.path.join(_SCRIPT_DIR, "argocd", "externalsecrets")
-    if not os.path.isdir(manifests_dir):
-        print(f"  ⚠ {manifests_dir} not found, skipping.")
-        return
-
-    # Tạo namespaces trước (ExternalSecret sẽ được tạo trong đó)
+    # Create namespaces first (ExternalSecret targets live here)
     for ns in ("meo-stationery", "database", "external-secrets"):
         subprocess.run(
             f"kubectl create namespace {ns} --dry-run=client -o yaml | kubectl apply -f -",
             shell=True, env=env, timeout=10, capture_output=True,
         )
 
-    # Apply với retry: đôi khi webhook vừa Ready nhưng API server vẫn cache "no endpoints"
+    chart_dir = os.path.join(_SCRIPT_DIR, "external-secrets", "applications")
+    values_base = os.path.join(chart_dir, "values.yaml")
+    values_env = os.path.join(chart_dir, f"values-{TERRAFORM_ENV}.yaml")
+    if not os.path.isdir(chart_dir) or not os.path.isfile(values_base) or not os.path.isfile(values_env):
+        print(f"  ⚠ Helm chart not found for env={TERRAFORM_ENV}. Skipping apply.")
+        print(f"    Expected: {chart_dir}/values.yaml and {chart_dir}/values-{TERRAFORM_ENV}.yaml")
+        return
+
+    cmd = (
+        f"helm template external-secrets {chart_dir} "
+        f"-f {values_base} -f {values_env} | kubectl apply -f -"
+    )
+
+    # Apply with retry: webhook may be Ready but endpoints not yet routable
     for attempt in range(1, 4):
         apply_result = subprocess.run(
-            f"kubectl apply -f {manifests_dir}/",
-            shell=True, env=env, capture_output=True, text=True, timeout=60,
+            cmd, shell=True, env=env, capture_output=True, text=True, timeout=120,
         )
         if apply_result.returncode == 0:
-            print(f"  ✓ External Secrets manifests applied from argocd/externalsecrets/.")
+            print("  ✓ External Secrets manifests applied (from external-secrets/applications Helm chart).")
             return
-        if "no endpoints available for service \"external-secrets-webhook\"" not in (apply_result.stderr or ""):
-            print(apply_result.stderr or apply_result.stdout or "")
+        stderr = (apply_result.stderr or "")
+        if "no endpoints available for service \"external-secrets-webhook\"" not in stderr:
+            print(stderr or apply_result.stdout or "")
             sys.exit(1)
         if attempt < 3:
             print(f"  Webhook chưa sẵn sàng, retry sau 20s (lần {attempt}/3)...")
