@@ -5,7 +5,13 @@ projectName: meo-stationery
 region: ap-southeast-2
 secretStoreName: aws-secrets-manager
 
-# AWS secret key (full path in Secrets Manager, e.g. meo-stationery/dev/app-credentials-v2)
+# AWS secret keys in Secrets Manager
+# - Backend (DATABASE_URL, NEXTAUTH_SECRET): e.g. meo-stationery/dev/app-credentials-v2
+awsBackendSecretKey: ""
+# - Database (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB): e.g. /meo-stationery/dev/database
+awsDatabaseSecretKey: ""
+#
+# Backward compatibility (legacy): if awsBackendSecretKey/awsDatabaseSecretKey empty, templates fall back to awsSecretKey.
 awsSecretKey: ""
 
 # Refresh intervals

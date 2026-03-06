@@ -11,11 +11,11 @@ helm install external-secrets external-secrets/external-secrets -n external-secr
 
 ## 2. AWS credentials cho ESO (tự động)
 
-**Terraform** đã tạo IAM user `k8s-eso-secrets-<env>` với policy `secretsmanager:GetSecretValue` trên `meo-stationery/*`. **deploy.py** tự lấy access key từ Terraform output và tạo K8s Secret `aws-secrets-credentials` khi chưa có. Không cần tạo tay.
+**Terraform** đã tạo IAM user `k8s-eso-secrets-<env>` với policy `secretsmanager:GetSecretValue` trên `meo-stationery/*`. **deploy.py** tự lấy access key từ Terraform output và tạo K8s Secret `aws-credentials` khi chưa có. Không cần tạo tay.
 
 Sau **terraform destroy + apply**: IAM user mới → access key mới. Xóa Secret cũ rồi chạy lại deploy để tạo Secret mới:
 ```bash
-kubectl delete secret aws-secrets-credentials -n external-secrets
+kubectl delete secret aws-credentials -n external-secrets
 ./deploy.py dev
 ```
 
@@ -48,14 +48,14 @@ external-secrets/
 └── README.md
 ```
 
-## 5. Troubleshooting: postgres pod "secret postgres not found"
+## 5. Troubleshooting: postgres pod "secret ... not found"
 
-Secret `postgres` do ESO tạo khi sync ExternalSecret. Nếu không có:
+Secret do ESO tạo khi sync ExternalSecret. Nếu không có:
 
 1. **Tạo AWS credentials cho ESO** (một lần):
    ```bash
-   kubectl create secret generic aws-secrets-credentials -n external-secrets \
-     --from-literal=access-key="YOUR_AWS_ACCESS_KEY" \
+   kubectl create secret generic aws-credentials -n external-secrets \
+     --from-literal=access-key-id="YOUR_AWS_ACCESS_KEY_ID" \
      --from-literal=secret-access-key="YOUR_AWS_SECRET_ACCESS_KEY"
    ```
    Hoặc chạy: `AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... ./deploy.py dev`
