@@ -27,15 +27,22 @@ done
 
 echo "=== Dev: đồng bộ database + app-credentials (password: ${DEV_DB_PASSWORD}) ==="
 
-# 1) AWS: /meo-stationery/dev/database
-echo "Updating AWS /meo-stationery/dev/database..."
-aws secretsmanager put-secret-value \
-  --secret-id "/meo-stationery/dev/database" \
-  --secret-string "{
+# 1) AWS: /meo-stationery/dev/database (tạo secret nếu chưa có)
+if ! aws secretsmanager describe-secret --secret-id "/meo-stationery/dev/database" &>/dev/null; then
+  echo "Creating AWS secret /meo-stationery/dev/database (chưa tồn tại)..."
+  aws secretsmanager create-secret \
+    --name "/meo-stationery/dev/database" \
+    --secret-string "{\"POSTGRES_USER\":\"meo_admin\",\"POSTGRES_PASSWORD\":\"${DEV_DB_PASSWORD}\",\"POSTGRES_DB\":\"meo_stationery\"}"
+else
+  echo "Updating AWS /meo-stationery/dev/database..."
+  aws secretsmanager put-secret-value \
+    --secret-id "/meo-stationery/dev/database" \
+    --secret-string "{
     \"POSTGRES_USER\": \"meo_admin\",
     \"POSTGRES_PASSWORD\": \"${DEV_DB_PASSWORD}\",
     \"POSTGRES_DB\": \"meo_stationery\"
   }"
+fi
 
 # 2) AWS: meo-stationery/dev/app-credentials-v2 (DATABASE_URL cùng password)
 echo "Updating AWS meo-stationery/dev/app-credentials-v2 (DATABASE_URL)..."

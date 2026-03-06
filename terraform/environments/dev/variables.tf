@@ -46,7 +46,7 @@ variable "worker_count" {
 
 variable "use_spot_instances" {
   type    = bool
-  default = true
+  default = false   # On-Demand: tránh dev bị AWS terminate (Spot)
 }
 
 variable "vpc_cidr" {

@@ -31,24 +31,38 @@ Sau khi lấy mã nguồn mới, ArgoCD tiến hành so sánh (Diff) giữa 2 b�
 2. **Live State (Trạng thái thực tế):** Lấy trực tiếp từ API của cụm Kubernetes (Cluster Dev).
 *Kết quả:* Khi ArgoCD phát hiện sự khác biệt (ví dụ: trên Git yêu cầu sửa port thành 8080, nhưng trên Cụm đang là 80), trạng thái của ứng dụng lập tức chuyển sang màu vàng **`OutOfSync`**.
 
-### Bước 5: Bắt đầu quá trình đồng bộ (Automated Sync)
-Nhờ có cờ sau đây được thiết lập mức cao nhất trong file ApplicationSet:
-```yaml
-syncPolicy:
-  automated:
-    prune: true
-    selfHeal: true
-```
-ArgoCD tự động kích hoạt tính năng **Auto-Sync**:
-- Nó sử dụng chìa khóa xác thực trong file `cluster-dev.yaml` để kết nối API của Cụm K8s Dev.
-- Ra lệnh đè cấu hình mới cho Kubernetes: "Cập nhật ứng dụng Mèo Station Backend sang port 8080".
-- *Lưu ý về Self-Heal:* Nếu ai đó lén dùng tay thay đổi cấu hình trực tiếp trên K8s mà không thông qua Git, ArgoCD sẽ coi đó là "lệch chuẩn" và ngay lập tức vả lại trạng thái cho giống hệt với Git.
-- *Lưu ý về Prune:* Nếu tài nguyên nào đó bị xoá trên Git, ArgoCD cũng sẽ tự động dỡ bỏ nó khỏi cụm K8s.
+### Bước 5: Đồng bộ thủ công qua bảng lệnh CLI (Manual Sync)
+Theo thiết kế chuẩn Enterprise, chúng ta **tắt chế độ Auto-Sync (tắt prune/selfHeal)** trên môi trường Dev/Prod để kỹ sư có quyền kiểm soát thời điểm release (Kiểm soát Zero-Downtime, Rolling Update).
+Thay vì để ArgoCD tự động chạy theo Git, chúng ta sẽ quản lý bằng tay qua CLI:
 
-### Bước 6: Phản hồi và hoàn tất (Healthy & Synced)
-- Sau khi Kubernetes thay đổi cấu hình xong, các Pods mới quay sang trạng thái hoạt động bình thường (`Running`).
-- ArgoCD đánh giá trạng thái ứng dụng chuyển thành màu xanh **`Healthy`** và **`Synced`**.
-- Nếu có cấu hình hệ thống `argocd-notifications`, lúc này nó sẽ bắn cảnh báo thành công qua Webhook về kênh Slack, Teams hoặc Email cho Developer biết *"Deploy Thành Công!"*.
+**Kịch bản 1: Dev push code mới**
+- Hệ thống CI build image → push tag mới lên Registry.
+- ArgoCD Image Updater phát hiện có tag mới → tự động đẩy một Git commit ẩn để update thông số image tag vào trong branch.
+- ArgoCD phát hiện ra `OutOfSync` nhưng **KHÔNG** tự update.
+- Kỹ sư / Pipeline Script tiến hành chạy lệnh Sync thủ công qua CLI:
+  ```bash
+  argocd app sync meo-station-backend-dev
+  ```
+- *Hành vi của ArgoCD:* Nó sẽ tiến hành Rolling Update. Tạo Pod mới với version mới, chờ Pod mới `Ready` thì bắt đầu Terminate Pod cũ một cách từ từ để đảm bảo **Zero Downtime**.
+
+### Bước 6: Phản hồi và Kịch bản Rollback (Manual Rollback qua CLI)
+Sau khi ứng dụng đã Sync thành công (chuyển sang `Healthy`), mọi thứ hoạt động bình thường. Tuy nhiên, nếu version mới vừa đẩy lên gặp lỗi (ví dụ: CrashLoopBackOff), kỹ sư cần Rollback ngay lập tức.
+
+**Kịch bản 4: Rollback về Version cũ**
+ArgoCD lưu trữ toàn bộ History (lịch sử) các bản release của bạn. Để rollback nhanh gọn không cần chờ đợi sửa code trên Git:
+
+1. **Xem lịch sử các bản Deploy (History):**
+   ```bash
+   argocd app history meo-station-backend-dev
+   ```
+   *(Kết quả sẽ in ra ID của các bản deploy trước đó, ví dụ ID=5 là bản v1.2.3 chạy ổn định, ID=6 là bản v1.2.4 bị lỗi).*
+
+2. **Thực thi Rollback nóng qua CLI:**
+   ```bash
+   argocd app rollback meo-station-backend-dev 5
+   ```
+- *Hành vi của ArgoCD:* Nó sẽ lập tức huỷ bỏ các Pod của version hiện tại và khôi phục lại các Pod về đúng trạng thái cấu hình của History ID=5 (Deploy lại đúng version cũ từ Git history).
+- *Cách xử lý tiếp theo:* Sau khi Prod đã an toàn với bản cũ, quy trình đúng là Developer sẽ phải sửa lại tham số `targetRevision` hoặc image tag về bản ổn định trên file `values-prod.yaml` → Tạo Pull Request → Merge → Sync lại để gỡ cờ báo dơ `OutOfSync` trên ArgoCD.
 
 ---
 

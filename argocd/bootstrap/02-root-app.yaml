@@ -32,34 +32,7 @@ spec:
       prune: true
       selfHeal: true
 ---
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: argocd-clusters
-  namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-spec:
-  project: infrastructure
-  source:
-    repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
-    path: argocd/clusters
-    directory:
-      recurse: true
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argocd
-  ignoreDifferences:
-    - group: ""
-      kind: Secret
-      jqPathExpressions:
-        - .data.config
-        - .stringData.config
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+# argocd-clusters removed: path argocd/clusters không dùng; cluster credentials từ "argocd cluster add", không lưu Git.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

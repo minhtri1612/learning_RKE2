@@ -346,16 +346,23 @@ def register_cluster_with_argocd_cli(env, kubeconfig_path, mgmt_kubeconfig):
 
     print(f"--- Option B: Register {env} cluster via argocd cluster add (no keys in Git) ---")
     print(f"  Server: {server}")
+    print("  (Cần VPN bật để máy bạn reach management cluster 10.0.x.x:6443)")
 
     # Lấy ArgoCD admin password để login
     env_vars = os.environ.copy()
     env_vars["KUBECONFIG"] = mgmt_kubeconfig
 
-    password_res = subprocess.run(
-        "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d",
-        shell=True, capture_output=True, text=True, env=env_vars, timeout=15,
-    )
-    argocd_password = (password_res.stdout or "").strip()
+    try:
+        password_res = subprocess.run(
+            "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d",
+            shell=True, capture_output=True, text=True, env=env_vars, timeout=45,
+        )
+        argocd_password = (password_res.stdout or "").strip()
+    except subprocess.TimeoutExpired:
+        print("  ⚠ Timeout: không kết nối được tới management cluster. Bật VPN rồi đăng ký thủ công:")
+        print(f"    export KUBECONFIG={os.path.abspath(mgmt_kubeconfig)}")
+        print(f"    argocd cluster add {context_name} --name {env} --kubeconfig {os.path.abspath(kubeconfig_path)} --insecure --yes")
+        return
     if not argocd_password:
         print("  ⚠ Không lấy được ArgoCD admin password. Đăng ký thủ công:")
         print(f"    argocd cluster add {context_name} --name {env} --kubeconfig {kubeconfig_path}")
