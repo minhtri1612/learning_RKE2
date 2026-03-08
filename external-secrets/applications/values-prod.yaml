@@ -2,7 +2,7 @@ env: prod
 
 projectName: meo-stationery
 awsBackendSecretKey: meo-stationery/prod/app-credentials
-awsDatabaseSecretKey: /meo-stationery/prod/database
+awsDatabaseSecretKey: meo-stationery/prod/app-credentials
 
 backend:
   refreshInterval: 1h
