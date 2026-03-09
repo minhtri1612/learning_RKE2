@@ -187,3 +187,136 @@ Sau khi root app sync xong, app có `destination.name: dev` sẽ deploy sang clu
     --from-literal=POSTGRES_PASSWORD=localdev
   ```
   Sau đó bấm **SYNC** lại app trong Argo CD.
+
+---
+
+## 6. Khởi động lại môi trường Kind sau khi reboot
+
+Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại **không có lệnh “start lại nguyên cụm” đơn giản**. Cách an toàn, ít lỗi nhất:
+
+> **Xóa cụm cũ nếu còn → tạo lại 3 cluster Kind → cài lại Argo CD → đăng ký dev/prod → tạo lại secrets local → sync lại app.**
+
+Giả sử đang ở branch `kind` của repo này.
+
+### 6.1. Xóa 3 cluster cũ (nếu còn)
+
+```bash
+kind delete cluster --name management
+kind delete cluster --name dev
+kind delete cluster --name prod
+```
+
+Không sao cả: mọi config cho Kind đã nằm trong Git (branch `kind`).
+
+### 6.2. Tạo lại 3 cluster Kind
+
+```bash
+kind create cluster --name management --config kind/management-kind-config.yaml
+kind create cluster --name dev        --config kind/dev-kind-config.yaml
+kind create cluster --name prod       --config kind/prod-kind-config.yaml
+
+kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-prod
+```
+
+### 6.3. Cài lại Argo CD trên `management`
+
+```bash
+kubectl config use-context kind-management
+
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+kubectl -n argocd wait --for=condition=Ready pods --all --timeout=300s
+```
+
+Lấy lại password admin + port-forward:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+```
+
+### 6.4. Đăng ký lại cluster `dev` + `prod` cho Argo CD
+
+Trên `kind-dev` và `kind-prod`:
+
+```bash
+kubectl --context kind-dev  apply -f kind/dev-argocd-manager.yaml
+kubectl --context kind-prod apply -f kind/prod-argocd-manager.yaml
+sleep 5
+
+DEV_TOKEN=$(kubectl --context kind-dev  get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
+PROD_TOKEN=$(kubectl --context kind-prod get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
+```
+
+Ví dụ dùng **IP container trực tiếp** (dev/prod control-plane) và port 6443:
+
+```bash
+kubectl config use-context kind-management
+
+kubectl create secret generic cluster-dev -n argocd \
+  --from-literal=name=dev \
+  --from-literal=server=https://172.18.0.5:6443 \
+  --from-literal=config="{\"bearerToken\":\"$DEV_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
+kubectl label secret cluster-dev -n argocd argocd.argoproj.io/secret-type=cluster
+
+kubectl create secret generic cluster-prod -n argocd \
+  --from-literal=name=prod \
+  --from-literal=server=https://172.18.0.6:6443 \
+  --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
+kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
+```
+
+(Hoặc dùng gateway `172.18.0.1:<host-port>` như phần 3.3 nếu phù hợp máy của bạn.)
+
+### 6.5. Tạo lại secrets local cho database + backend (giả ESO)
+
+Vì cluster Kind mới hoàn toàn nên các Secret giả ESO phải tạo lại.
+
+**Trên `kind-dev`:**
+
+```bash
+# DB
+kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context kind-dev -n database create secret generic meo-stationery-database-secrets-dev \
+  --from-literal=POSTGRES_USER=meo_admin \
+  --from-literal=POSTGRES_DB=meo_stationery \
+  --from-literal=POSTGRES_PASSWORD=localdev
+
+# Backend
+kubectl --context kind-dev create namespace meo-stationery --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context kind-dev -n meo-stationery create secret generic meo-stationery-backend-secrets-dev \
+  --from-literal=DATABASE_URL='postgresql://meo_admin:localdev@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
+  --from-literal=NEXTAUTH_SECRET='kind-dev-nextauth'
+```
+
+**Trên `kind-prod`:** tương tự nhưng dùng secret prod:
+
+```bash
+# DB
+kubectl --context kind-prod create namespace database --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context kind-prod -n database create secret generic meo-stationery-database-secrets \
+  --from-literal=POSTGRES_USER=meo_admin \
+  --from-literal=POSTGRES_DB=meo_stationery \
+  --from-literal=POSTGRES_PASSWORD=localprod
+
+# Backend
+kubectl --context kind-prod create namespace meo-stationery --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context kind-prod -n meo-stationery create secret generic meo-stationery-backend-secrets \
+  --from-literal=DATABASE_URL='postgresql://meo_admin:localprod@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
+  --from-literal=NEXTAUTH_SECRET='kind-prod-nextauth'
+```
+
+### 6.6. Apply lại bootstrap Argo CD
+
+Làm lại **y chang bước 4** ở trên:
+
+- `kubectl apply -f argocd/projects/`
+- `kubectl apply -f argocd/repositories/`
+- `kubectl apply -f argocd/bootstrap/02-root-app.yaml`
+
+Sau đó, trong Argo CD:
+
+- Sync `argocd/meo-station-database-dev` → `argocd/meo-station-database-prod`
+- Rồi sync `argocd/meo-station-backend-dev` → `argocd/meo-station-backend-prod`
+

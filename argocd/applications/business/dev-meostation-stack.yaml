@@ -1,9 +1,7 @@
-# App-of-Apps dev: app này chỉ render Application CRD (meo-station-database-dev, meo-station-backend-dev).
-# Root app sync argocd/applications → tạo Application này → sync ra 2 app con.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: meo-station-dev
+  name: dev-meostation-stack
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "2"
@@ -17,7 +15,6 @@ spec:
       valueFiles:
         - values.yaml
         - values-dev.yaml
-  # Output là Application CRD → phải apply vào namespace argocd (cùng cluster ArgoCD)
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -33,3 +30,4 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
+
