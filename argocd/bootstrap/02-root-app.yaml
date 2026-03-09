@@ -93,8 +93,10 @@ spec:
   project: infrastructure
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
+    targetRevision: kind
     path: argocd/applications
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

@@ -11,12 +11,50 @@ data:
   
   # CSV format: p, subject, resource, action, object, effect
   policy.csv: |
-    # Admin role - full access
-    p, role:admin, applications, *, */*, allow
-    p, role:admin, clusters, *, *, allow
-    p, role:admin, repositories, *, *, allow
-    p, role:admin, projects, *, *, allow
-    p, role:admin, accounts, *, *, allow
+    # ===== Builtin readonly role (giữ nguyên như ArgoCD mặc định) =====
+    p, role:readonly, applications, get, */*, allow
+    p, role:readonly, applicationsets, get, */*, allow
+    p, role:readonly, certificates, get, *, allow
+    p, role:readonly, clusters, get, *, allow
+    p, role:readonly, repositories, get, *, allow
+    p, role:readonly, write-repositories, get, *, allow
+    p, role:readonly, projects, get, *, allow
+    p, role:readonly, accounts, get, *, allow
+    p, role:readonly, gpgkeys, get, *, allow
+    p, role:readonly, logs, get, */*, allow
+
+    # ===== Builtin admin role (full access, copy từ builtin-policy.csv) =====
+    p, role:admin, applications, create, */*, allow
+    p, role:admin, applications, update, */*, allow
+    p, role:admin, applications, update/*, */*, allow
+    p, role:admin, applications, delete, */*, allow
+    p, role:admin, applications, delete/*, */*, allow
+    p, role:admin, applications, sync, */*, allow
+    p, role:admin, applications, override, */*, allow
+    p, role:admin, applications, action/*, */*, allow
+    p, role:admin, applicationsets, get, */*, allow
+    p, role:admin, applicationsets, create, */*, allow
+    p, role:admin, applicationsets, update, */*, allow
+    p, role:admin, applicationsets, delete, */*, allow
+    p, role:admin, certificates, create, *, allow
+    p, role:admin, certificates, update, *, allow
+    p, role:admin, certificates, delete, *, allow
+    p, role:admin, clusters, create, *, allow
+    p, role:admin, clusters, update, *, allow
+    p, role:admin, clusters, delete, *, allow
+    p, role:admin, repositories, create, *, allow
+    p, role:admin, repositories, update, *, allow
+    p, role:admin, repositories, delete, *, allow
+    p, role:admin, write-repositories, create, *, allow
+    p, role:admin, write-repositories, update, *, allow
+    p, role:admin, write-repositories, delete, *, allow
+    p, role:admin, projects, create, *, allow
+    p, role:admin, projects, update, *, allow
+    p, role:admin, projects, delete, *, allow
+    p, role:admin, accounts, update, *, allow
+    p, role:admin, gpgkeys, create, *, allow
+    p, role:admin, gpgkeys, delete, *, allow
+    p, role:admin, exec, create, */*, allow
     
     # Dev role - can manage dev project only
     p, role:dev, applications, *, dev/*, allow
@@ -30,9 +68,10 @@ data:
     p, role:prod, projects, get, *, allow
     
     # Map local users to roles
+    g, admin, role:admin     # giữ quyền full cho tài khoản builtin admin
     g, dev-user, role:dev
     g, prod-user, role:prod
-    g, minhtri, role:admin  # chủ repo → full admin
+    g, minhtri, role:admin   # chủ repo → full admin
     
     # Map SSO users to roles (if using SSO - uncomment and adjust)
     # g, minhtri@example.com, role:dev
