@@ -1,0 +1,13 @@
+# Kind cluster: dev (giống VPC dev)
+# API server expose ra host port 30443 để Argo CD (chạy trên cluster management) có thể gọi vào.
+# Trên host cgroup v1 không dùng containerdConfigPatches (giống prod) để tránh kubelet không start.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.28.0
+    extraPortMappings:
+      - containerPort: 6443
+        hostPort: 30443
+        protocol: TCP
