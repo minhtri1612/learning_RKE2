@@ -9,5 +9,6 @@ auth:
   password: ""  # password lấy từ Secret, không set trong Git
 persistence:
   size: 10Gi
-  useEBS: true
+  # Kind/local: không có EBS CSI → dùng default StorageClass (standard / local-path).
+  useEBS: false
   provisionStorageClass: false

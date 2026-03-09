@@ -1,7 +1,7 @@
 # Dev overrides (merged with values.yaml)
 existingSecret:
   name: "meo-stationery-backend-secrets-dev"   # từ ExternalSecret dev (target.name trong externalsecret-backend.yaml)
-replicaCount: 0
+replicaCount: 3
 workload:
   image: minhtri1612/meo-stationery-backend:vcl
   resources:
@@ -13,8 +13,8 @@ workload:
       cpu: "500m"
 autoscaling:
   enabled: true
-  minReplicas: 0
-  maxReplicas: 0
+  minReplicas: 3
+  maxReplicas: 5
   targetCPUUtilizationPercentage: 80
 ingress:
   host: meo-stationery-dev.local

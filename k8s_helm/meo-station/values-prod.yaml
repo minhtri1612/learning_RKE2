@@ -2,7 +2,7 @@
 env: prod
 project: prod
 destination: prod
-targetRevision: main
+targetRevision: kind
 
 apps:
   - name: meo-station-database

@@ -2,7 +2,7 @@
 env: dev
 project: dev
 destination: dev
-targetRevision: main
+targetRevision: kind
 
 apps:
   - name: meo-station-database
