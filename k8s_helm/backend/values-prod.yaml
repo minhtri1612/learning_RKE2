@@ -1,5 +1,5 @@
 # Prod overrides (merged with values.yaml)
-replicaCount: 2
+replicaCount: 0
 existingSecret:
   name: "meo-stationery-backend-secrets"
 workload:
@@ -13,8 +13,8 @@ workload:
       cpu: "1000m"
 autoscaling:
   enabled: true
-  minReplicas: 6
-  maxReplicas: 8
+  minReplicas: 0
+  maxReplicas: 0
   targetCPUUtilizationPercentage: 80
 ingress:
   host: meo-stationery-prod.local

@@ -29,7 +29,7 @@ service:
 serviceAccount:
   create: false
 
-replicaCount: 2
+replicaCount: 0
 
 # Configuration for the application
 config:
@@ -67,8 +67,8 @@ ingress:
 
 autoscaling:
   enabled: true
-  minReplicas: 2
-  maxReplicas: 5
+  minReplicas: 0
+  maxReplicas: 0
   targetCPUUtilizationPercentage: 80
 
 # NetworkPolicy: giới hạn traffic vào/ra backend pod

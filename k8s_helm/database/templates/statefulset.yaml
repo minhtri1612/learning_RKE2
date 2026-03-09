@@ -11,7 +11,7 @@ metadata:
   {{- end }}
 spec:
   serviceName: {{ include "database.fullname" . }}
-  replicas: 1
+  replicas: {{ .Values.replicas | default 0 }}
   selector:
     matchLabels:
       {{- include "database.selectorLabels" . | nindent 6 }}

@@ -29,6 +29,9 @@ auth:
 existingSecret:
   name: ""   # e.g. "postgres" when using External Secrets
 
+# Replicas: 0 = chỉ test manifest (Kind ~2GB), 1+ = chạy thật
+replicas: 0
+
 persistence:
   size: 1Gi
   storageClassName: ""  # Empty string = use default storage class (local-path)
