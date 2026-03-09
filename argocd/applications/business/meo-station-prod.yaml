@@ -10,7 +10,7 @@ spec:
   project: prod
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
+    targetRevision: kind
     path: k8s_helm/meo-station
     helm:
       valueFiles:
