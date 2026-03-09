@@ -14,7 +14,7 @@ spec:
   project: infrastructure
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
+    targetRevision: kind
     path: argocd/applications/business
     directory:
       recurse: true
