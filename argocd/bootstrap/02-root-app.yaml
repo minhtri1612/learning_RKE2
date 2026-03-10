@@ -83,7 +83,7 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-applications
+  name: root-apps-dev
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
@@ -93,10 +93,37 @@ spec:
   project: infrastructure
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: kind
-    path: argocd/applications
-    directory:
-      recurse: true
+    targetRevision: main
+    path: argocd/apps-chart
+    helm:
+      valueFiles:
+        - values-dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-apps-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: main
+    path: argocd/apps-chart
+    helm:
+      valueFiles:
+        - values-prod.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
