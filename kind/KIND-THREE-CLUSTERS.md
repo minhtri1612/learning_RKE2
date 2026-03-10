@@ -6,11 +6,14 @@ Argo CD cài **chỉ** trên **cluster management**. Deploy app dev sang cluster
 
 ## 1. Tạo 3 cluster Kind
 
+**Bắt buộc chạy từ thư mục gốc repo** (nếu đang ở `~` sẽ lỗi `open kind/management-kind-config.yaml: no such file or directory`):
+
 ```bash
-# Từ thư mục gốc repo
+cd ~/Downloads/practice_RKE2   # hoặc cd /path/to/practice_RKE2
+
 kind create cluster --name management --config kind/management-kind-config.yaml
-kind create cluster --name dev --config kind/dev-kind-config.yaml
-kind create cluster --name prod --config kind/prod-kind-config.yaml
+kind create cluster --name dev        --config kind/dev-kind-config.yaml
+kind create cluster --name prod       --config kind/prod-kind-config.yaml
 ```
 
 - **management**: API server trên host tại `127.0.0.1:33443` (Argo CD chạy ở đây)
@@ -26,7 +29,7 @@ kubectl config get-contexts
 # kind-prod        kind-prod        ...
 ```
 
-**Nếu `kubectl` báo lỗi TLS** (`x509: certificate is valid for ..., not 0.0.0.0`): kubeconfig đang trỏ server `0.0.0.0` — certificate API server không có SAN đó. Sửa bằng cách trỏ cluster sang `127.0.0.1` (chi tiết: **README.md**, mục lỗi TLS):
+**Nếu `kubectl` báo lỗi TLS** (`x509: certificate is valid for ..., not 0.0.0.0`): kubeconfig đang trỏ server `0.0.0.0` — certificate API server không có SAN đó. **Chạy ngay** (trước bước 2) để trỏ cluster sang `127.0.0.1`:
 
 ```bash
 kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
@@ -60,11 +63,25 @@ kubectl -n argocd port-forward svc/argocd-server 8080:443
 # Login: https://localhost:8080, user admin
 ```
 
+**Lưu ý khi vừa recreate ArgoCD (xóa/tạo lại cluster):** token của `argocd` CLI cũ sẽ lỗi kiểu `invalid session: token signature is invalid`.
+Fix nhanh: xóa config cũ và login lại:
+
+```bash
+rm -rf ~/.argocd
+PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+argocd login localhost:8080 --insecure --username admin --password "$PASS"
+```
+
 ---
 
 ## 3. Đăng ký cluster “dev” và “prod” với Argo CD (trên management)
 
-Argo CD chạy **trong** cluster management. Để nó deploy sang dev và prod, nó phải gọi API server của dev và prod. Từ pod trong management, địa chỉ “máy host” là:
+Argo CD chạy **trong** cluster management.
+
+- **Cluster management**: Argo CD tự deploy vào chính cluster này qua `https://kubernetes.default.svc` (không cần “register” gì thêm).
+- **Cluster dev/prod**: để Argo CD deploy sang 2 cluster này, cần **đăng ký** credentials cho dev/prod.
+
+Để Argo CD (chạy trong management) gọi được API server của dev/prod, từ pod trong management, địa chỉ “máy host” là:
 
 - **Mac/Windows (Docker Desktop):** `host.docker.internal`
 - **Linux (Kind):** dùng **`172.18.0.1`** — Kind tạo network `kind` với gateway 172.18.0.1; từ pod trong management phải dùng IP này để ra host (port 30443/31443). Nếu dùng `172.17.0.1` sẽ bị **dial tcp ... i/o timeout**.
@@ -178,15 +195,17 @@ Sau khi root app sync xong, app có `destination.name: dev` sẽ deploy sang clu
 - **Kind trên Linux:** Argo CD phải gọi API dev/prod qua IP host; Kind dùng network gateway **172.18.0.1** (không phải 172.17.0.1). Nếu đăng ký cluster với 172.17.0.1 sẽ bị `dial tcp ... i/o timeout`. Sửa: cập nhật secret cluster sang `server=https://172.18.0.1:30443` / `31443` (xem bước 3.3). **Nếu 172.18.0.1 vẫn timeout** (vd. firewall host): dùng IP container trực tiếp, port **6443** (không dùng host port): `docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'` và tương tự `prod-control-plane` → patch secret `server=https://<IP>:6443`. IP sẽ đổi nếu xóa/tạo lại cluster.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.3.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
-- **meo-station-database-dev/prod:** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass). Trên Kind không có External Secrets → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` không tồn tại → Pod database không start. Tạo tay trên từng cluster (ví dụ dev):
+- **meo-station-database-dev/prod:** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass). Trên Kind không có External Secrets → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` không tồn tại → Pod database không start. Tạo tay trên từng cluster. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
+
+  **Trên `kind-dev`:**
   ```bash
-  kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl apply -f -
+  kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
   kubectl --context kind-dev -n database create secret generic meo-stationery-database-secrets-dev \
     --from-literal=POSTGRES_USER=meo_admin \
     --from-literal=POSTGRES_DB=meo_stationery \
     --from-literal=POSTGRES_PASSWORD=localdev
   ```
-  Sau đó bấm **SYNC** lại app trong Argo CD.
+  **Trên `kind-prod`:** đổi context và tên secret (xem mục 6.5). Sau đó bấm **SYNC** lại app trong Argo CD.
 
 ---
 
@@ -211,11 +230,21 @@ Không sao cả: mọi config cho Kind đã nằm trong Git (branch `kind`).
 ### 6.2. Tạo lại 3 cluster Kind
 
 ```bash
+cd ~/Downloads/practice_RKE2   # bắt buộc từ thư mục repo
+
 kind create cluster --name management --config kind/management-kind-config.yaml
 kind create cluster --name dev        --config kind/dev-kind-config.yaml
 kind create cluster --name prod       --config kind/prod-kind-config.yaml
 
 kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-prod
+```
+
+**Nếu kubectl báo lỗi TLS** (x509: certificate ... not 0.0.0.0), chạy ngay:
+
+```bash
+kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
+kubectl config set-cluster kind-dev --server=https://127.0.0.1:30443
+kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
 ```
 
 ### 6.3. Cài lại Argo CD trên `management`
@@ -236,6 +265,16 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 kubectl -n argocd port-forward svc/argocd-server 8080:443
 ```
 
+**Quan trọng (khi chạy lại từ mục 6 sau reboot):** `argocd` CLI có thể vẫn giữ token cũ → lỗi kiểu:
+`invalid session: token signature is invalid`.
+Sau khi cài lại Argo CD (mục 6.3) **hãy reset token và login lại** trước khi chạy các lệnh `argocd ...`:
+
+```bash
+rm -rf ~/.argocd
+PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+argocd login localhost:8080 --insecure --username admin --password "$PASS"
+```
+
 ### 6.4. Đăng ký lại cluster `dev` + `prod` cho Argo CD
 
 Trên `kind-dev` và `kind-prod`:
@@ -254,15 +293,18 @@ Ví dụ dùng **IP container trực tiếp** (dev/prod control-plane) và port 
 ```bash
 kubectl config use-context kind-management
 
+DEV_IP=$(docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+PROD_IP=$(docker inspect prod-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+
 kubectl create secret generic cluster-dev -n argocd \
   --from-literal=name=dev \
-  --from-literal=server=https://172.18.0.5:6443 \
+  --from-literal=server=https://$DEV_IP:6443 \
   --from-literal=config="{\"bearerToken\":\"$DEV_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
 kubectl label secret cluster-dev -n argocd argocd.argoproj.io/secret-type=cluster
 
 kubectl create secret generic cluster-prod -n argocd \
   --from-literal=name=prod \
-  --from-literal=server=https://172.18.0.6:6443 \
+  --from-literal=server=https://$PROD_IP:6443 \
   --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
 kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
 ```
@@ -271,37 +313,37 @@ kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=clust
 
 ### 6.5. Tạo lại secrets local cho database + backend (giả ESO)
 
-Vì cluster Kind mới hoàn toàn nên các Secret giả ESO phải tạo lại.
+Vì cluster Kind mới hoàn toàn nên các Secret giả ESO phải tạo lại. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên (`| kubectl --context kind-dev apply -f -`), nếu không namespace sẽ bị tạo nhầm cluster.
 
 **Trên `kind-dev`:**
 
 ```bash
 # DB
-kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
 kubectl --context kind-dev -n database create secret generic meo-stationery-database-secrets-dev \
   --from-literal=POSTGRES_USER=meo_admin \
   --from-literal=POSTGRES_DB=meo_stationery \
   --from-literal=POSTGRES_PASSWORD=localdev
 
 # Backend
-kubectl --context kind-dev create namespace meo-stationery --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context kind-dev create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
 kubectl --context kind-dev -n meo-stationery create secret generic meo-stationery-backend-secrets-dev \
   --from-literal=DATABASE_URL='postgresql://meo_admin:localdev@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
   --from-literal=NEXTAUTH_SECRET='kind-dev-nextauth'
 ```
 
-**Trên `kind-prod`:** tương tự nhưng dùng secret prod:
+**Trên `kind-prod`:** tương tự nhưng dùng secret prod (và **phải** có `--context kind-prod` ở cả hai bên pipe):
 
 ```bash
 # DB
-kubectl --context kind-prod create namespace database --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context kind-prod create namespace database --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
 kubectl --context kind-prod -n database create secret generic meo-stationery-database-secrets \
   --from-literal=POSTGRES_USER=meo_admin \
   --from-literal=POSTGRES_DB=meo_stationery \
   --from-literal=POSTGRES_PASSWORD=localprod
 
 # Backend
-kubectl --context kind-prod create namespace meo-stationery --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context kind-prod create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
 kubectl --context kind-prod -n meo-stationery create secret generic meo-stationery-backend-secrets \
   --from-literal=DATABASE_URL='postgresql://meo_admin:localprod@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
   --from-literal=NEXTAUTH_SECRET='kind-prod-nextauth'
