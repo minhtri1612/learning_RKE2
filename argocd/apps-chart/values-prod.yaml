@@ -2,7 +2,7 @@ meostation:
   name: prod-meostation-stack
   project: prod
   repoURL: https://github.com/minhtri1612/learning_RKE2.git
-  targetRevision: main
+  targetRevision: v1.2.3
   path: k8s_helm/meo-station
   valueFiles:
     - values.yaml
@@ -51,7 +51,7 @@ infrastructure:
   externalsecrets:
     name: externalsecrets-prod
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
+    targetRevision: v1.2.3
     valueFiles:
       - values.yaml
       - values-prod.yaml
