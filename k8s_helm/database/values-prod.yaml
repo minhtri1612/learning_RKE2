@@ -12,3 +12,5 @@ persistence:
   # Kind/local: không có EBS CSI → dùng default StorageClass (standard / local-path).
   useEBS: false
   provisionStorageClass: false
+
+replicas: 1

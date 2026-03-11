@@ -11,3 +11,5 @@ auth:
 # Kind/local: không có EBS CSI → dùng default StorageClass (standard / local-path).
 persistence:
   useEBS: false
+
+replicas: 1
