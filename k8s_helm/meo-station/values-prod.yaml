@@ -36,5 +36,5 @@ database:
     database: meo_stationery
     password: ""
   persistence:
-    useEBS: true
+    useEBS: false
   replicas: 1
