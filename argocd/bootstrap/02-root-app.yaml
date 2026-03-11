@@ -1,13 +1,13 @@
 # Root Application - App of Apps (chỉ Application, không ApplicationSet)
 #
-# Root app sync folder argocd/applications → tạo các app con (app in app).
+# Root app argocd-apps sync folder argocd/apps → tạo các app con (dev/prod-infrastructure, dev/prod-meostation).
 #
 # Setup:
 # 1. Apply projects: kubectl apply -f argocd/projects/
 # 2. Apply RBAC: kubectl apply -f argocd/rbac/
 # 3. Apply root app: kubectl apply -f argocd/bootstrap/02-root-app.yaml
 #
-# argocd/applications/: meo-station-dev, meo-station-prod (umbrella); dev/prod-ingress-nginx, dev/prod-metrics-server.
+# argocd/apps/: infrastructure/{dev,prod}, meostation/{dev,prod} — mỗi file application.yaml là Application(s).
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -31,8 +31,6 @@ spec:
     automated:
       prune: true
       selfHeal: true
----
-# argocd-clusters removed: path argocd/clusters không dùng; cluster credentials từ "argocd cluster add", không lưu Git.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -83,7 +81,7 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-apps-dev
+  name: argocd-apps
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
@@ -93,37 +91,10 @@ spec:
   project: infrastructure
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: kind
-    path: argocd/apps-chart
-    helm:
-      valueFiles:
-        - values-dev.yaml
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argocd
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: root-apps-prod
-  namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  project: infrastructure
-  source:
-    repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: kind
-    path: argocd/apps-chart
-    helm:
-      valueFiles:
-        - values-prod.yaml
+    targetRevision: main
+    path: argocd/apps
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

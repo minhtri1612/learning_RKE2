@@ -1,22 +1,40 @@
-{{- if .Values.infrastructure.enabled }}
+# dev-infrastructure-stack: ingress-nginx, metrics-server, externalsecrets (cluster dev)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Values.infrastructure.ingress.name }}
+  name: dev-ingress-nginx
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  project: {{ .Values.infrastructure.project }}
+  project: infrastructure
   source:
     repoURL: https://kubernetes.github.io/ingress-nginx
     chart: ingress-nginx
-    targetRevision: {{ .Values.infrastructure.ingress.targetRevision }}
+    targetRevision: 4.8.3
     helm:
       values: |
-{{ .Values.infrastructure.ingress.helmValues | indent 8 }}
+        controller:
+          admissionWebhooks:
+            enabled: false
+          service:
+            type: NodePort
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          metrics:
+            enabled: true
+            serviceMonitor:
+              enabled: false
+          podDisruptionBudget:
+            enabled: true
+            minAvailable: 1
   destination:
-    name: {{ .Values.infrastructure.destinationName }}
+    name: dev
     namespace: ingress-nginx
   syncPolicy:
     automated:
@@ -35,21 +53,29 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Values.infrastructure.metrics.name }}
+  name: dev-metrics-server
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  project: {{ .Values.infrastructure.project }}
+  project: infrastructure
   source:
     repoURL: https://kubernetes-sigs.github.io/metrics-server/
     chart: metrics-server
-    targetRevision: {{ .Values.infrastructure.metrics.targetRevision }}
+    targetRevision: 3.12.0
     helm:
       values: |
-{{ .Values.infrastructure.metrics.helmValues | indent 8 }}
+        args:
+          - --kubelet-insecure-tls
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
   destination:
-    name: {{ .Values.infrastructure.destinationName }}
+    name: dev
     namespace: kube-system
   syncPolicy:
     automated:
@@ -67,23 +93,24 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Values.infrastructure.externalsecrets.name }}
+  name: externalsecrets-dev
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  project: {{ .Values.infrastructure.project }}
+  project: infrastructure
   source:
-    repoURL: {{ .Values.infrastructure.externalsecrets.repoURL }}
-    targetRevision: {{ .Values.infrastructure.externalsecrets.targetRevision }}
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: kind
     path: external-secrets/applications
     helm:
-      valueFiles: {{ .Values.infrastructure.externalsecrets.valueFiles | toJson }}
+      valueFiles:
+        - values.yaml
+        - values-dev.yaml
   destination:
-    name: {{ .Values.infrastructure.destinationName }}
+    name: dev
     namespace: external-secrets
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
-{{- end }}

@@ -1,9 +1,14 @@
-# App-of-Apps: danh sách app con (được render thành Application CRD)
-# Override env, project, destination, targetRevision trong values-dev.yaml / values-prod.yaml
-repoURL: https://github.com/minhtri1612/learning_RKE2.git
-targetRevision: main
+# Umbrella: override cho subchart (backend, database).
+# env/project/destination dùng cho naming/labels; targetRevision do ArgoCD Application quyết định.
 env: ""
 project: ""
 destination: ""
 
-apps: []
+backend:
+  namespace: meo-stationery
+  replicaCount: 2
+  # existingSecret, workload, ingress... override trong values-dev.yaml / values-prod.yaml
+
+database:
+  namespace: database
+  # existingSecret, replicas, persistence... override trong values-dev.yaml / values-prod.yaml

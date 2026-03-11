@@ -1,21 +1,38 @@
-# Dev: config cho App-of-Apps — sinh 2 Application con (database, backend)
+# Dev: override cho umbrella (backend + database subcharts)
 env: dev
 project: dev
 destination: dev
-targetRevision: kind
 
-apps:
-  - name: meo-station-database
-    path: k8s_helm/database
-    namespace: database
-    syncWave: "1"
-    valueFiles:
-      - values.yaml
-      - values-dev.yaml
-  - name: meo-station-backend
-    path: k8s_helm/backend
-    namespace: meo-stationery
-    syncWave: "5"
-    valueFiles:
-      - values.yaml
-      - values-dev.yaml
+backend:
+  namespace: meo-stationery
+  existingSecret:
+    name: "meo-stationery-backend-secrets-dev"
+  replicaCount: 2
+  workload:
+    image: minhtri1612/meo-stationery-backend:vcl
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "64m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+  ingress:
+    host: meo-stationery-dev.local
+
+database:
+  namespace: database
+  existingSecret:
+    name: "meo-stationery-database-secrets-dev"
+  auth:
+    username: meo_admin
+    database: meo_stationery
+    password: ""
+  persistence:
+    useEBS: false
+  replicas: 1

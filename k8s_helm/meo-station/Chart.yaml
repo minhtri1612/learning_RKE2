@@ -1,7 +1,13 @@
 apiVersion: v2
 name: meo-station
-description: App-of-Apps template — sinh Application CRD (database, backend), không dependencies
+description: Umbrella chart — deploy backend + database (subcharts), không sinh Application CRD
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: "1.0.0"
-# Không dependencies: chart chỉ render Application CRD, không render Pod/Service trực tiếp
+dependencies:
+  - name: database
+    version: "0.1.0"
+    repository: "file://../database"
+  - name: backend
+    version: "0.1.0"
+    repository: "file://../backend"
