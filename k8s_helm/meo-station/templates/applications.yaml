@@ -40,10 +40,6 @@ spec:
       kind: Deployment
       jsonPointers:
         - /spec/replicas
-    - group: apps
-      kind: StatefulSet
-      jsonPointers:
-        - /spec/replicas
     - group: autoscaling
       kind: HorizontalPodAutoscaler
       jsonPointers:
