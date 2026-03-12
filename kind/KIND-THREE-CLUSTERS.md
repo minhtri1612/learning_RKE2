@@ -74,14 +74,14 @@ argocd login localhost:8080 --insecure --username admin --password "$PASS"
 
 ---
 
-## 3. Đăng ký cluster “dev” và “prod” với Argo CD (trên management)
+## 3. Đăng ký cluster "dev" và "prod" với Argo CD (trên management)
 
 Argo CD chạy **trong** cluster management.
 
-- **Cluster management**: Argo CD tự deploy vào chính cluster này qua `https://kubernetes.default.svc` (không cần “register” gì thêm).
+- **Cluster management**: Argo CD tự deploy vào chính cluster này qua `https://kubernetes.default.svc` (không cần "register" gì thêm).
 - **Cluster dev/prod**: để Argo CD deploy sang 2 cluster này, cần **đăng ký** credentials cho dev/prod.
 
-Để Argo CD (chạy trong management) gọi được API server của dev/prod, từ pod trong management, địa chỉ “máy host” là:
+Để Argo CD (chạy trong management) gọi được API server của dev/prod, từ pod trong management, địa chỉ "máy host" là:
 
 - **Mac/Windows (Docker Desktop):** `host.docker.internal`
 - **Linux (Kind):** dùng **`172.18.0.1`** — Kind tạo network `kind` với gateway 172.18.0.1; từ pod trong management phải dùng IP này để ra host (port 30443/31443). Nếu dùng `172.17.0.1` sẽ bị **dial tcp ... i/o timeout**.
@@ -116,7 +116,7 @@ PROD_TOKEN=$(kubectl --context kind-prod get secret argocd-manager-long-lived-to
 echo "$PROD_TOKEN"
 ```
 
-### 3.3. Tạo Secret cluster “dev” và “prod” trong Argo CD (trên management)
+### 3.3. Tạo Secret cluster "dev" và "prod" trong Argo CD (trên management)
 
 Chạy **cùng shell** sau khi đã chạy 3.1 và 3.2 (để có biến `$DEV_TOKEN`, `$PROD_TOKEN`).
 
@@ -166,25 +166,31 @@ kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=clust
 
 ```bash
 kubectl config use-context kind-management
-cd /path/to/practice_RKE2   # hoặc learning_RKE2
+cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 
 argocd login localhost:8080 --insecure --username admin --password "<admin_password>"
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
+# Apply projects trước
 kubectl apply -f argocd/projects/
-kubectl apply -f argocd/bootstrap/02-stack-app.yaml
+
+# Apply 2 stack app (dev + prod)
+kubectl apply -n argocd -f argocd/bootstrap/02-stack-app.yaml
+kubectl apply -n argocd -f argocd/bootstrap/03-prod-meostation-stack.yaml
 ```
 
-Sau khi `stack-app` sync xong, nó sẽ tự động sinh ra 3 Parent App (`backend-app`, `database-app`, `infrastructure-app`).
-Các Parent App này sẽ tiếp tục sinh ra các Child App (`-dev`, `-prod`) và deploy sang cluster **dev** và **prod** tương ứng.
+Sau khi 2 stack app sync xong, chúng sẽ tự động sinh ra các service app con:
 
-> **Lưu ý:** Đối với app trên môi trường **prod**, chính sách sync được đặt là `Manual`, bạn cần vào UI của ArgoCD (hoặc dùng CLI) click Sync thủ công.
+- `dev-meostation-stack` → `backend-app-dev`, `database-app-dev` (deploy sang cluster **dev**)
+- `prod-meostation-stack` → `backend-app-prod`, `database-app-prod` (deploy sang cluster **prod**)
+
+> **Lưu ý:** Đối với app trên môi trường **prod**, chính sách sync được đặt là `Manual`. Bạn cần vào UI Argo CD (hoặc dùng CLI) click Sync thủ công cho từng app prod.
 
 ---
 
 ## 5. Kiểm tra
 
-- UI: https://localhost:8080 → Applications: dev-* trỏ cluster **dev**, prod-* trỏ cluster **prod**.
+- UI: https://localhost:8080 → Applications: `dev-*` trỏ cluster **dev**, `prod-*` trỏ cluster **prod**.
 - Management: `kubectl --context kind-management get pods -n argocd`
 - Dev: `kubectl --context kind-dev get pods -A`
 - Prod: `kubectl --context kind-prod get pods -A`
@@ -213,7 +219,7 @@ Các Parent App này sẽ tiếp tục sinh ra các Child App (`-dev`, `-prod`) 
 
 ## 6. Khởi động lại môi trường Kind sau khi reboot
 
-Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại **không có lệnh “start lại nguyên cụm” đơn giản**. Cách an toàn, ít lỗi nhất:
+Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại **không có lệnh "start lại nguyên cụm" đơn giản**. Cách an toàn, ít lỗi nhất:
 
 > **Xóa cụm cũ nếu còn → tạo lại 3 cluster Kind → cài lại Argo CD → đăng ký dev/prod → tạo lại secrets local → sync lại app.**
 
@@ -353,21 +359,31 @@ kubectl --context kind-prod -n meo-stationery create secret generic meo-statione
 
 ### 6.6. Apply lại bootstrap Argo CD
 
-Làm lại **y chang bước 4** ở trên:
-
 ```bash
+kubectl config use-context kind-management
+cd ~/Downloads/practice_RKE2
+
+argocd repo add https://github.com/minhtri1612/learning_RKE2.git
+
+# Apply projects
 kubectl apply -f argocd/projects/
-kubectl apply -f argocd/bootstrap/02-stack-app.yaml
+
+# Apply 2 stack app (dev + prod)
+kubectl apply -n argocd -f argocd/bootstrap/02-stack-app.yaml
+kubectl apply -n argocd -f argocd/bootstrap/03-prod-meostation-stack.yaml
 ```
 
-Sau khi `stack-app` (Root) sync xong, nó sẽ tự động tạo ra 3 Parent App (`backend-app`, `database-app`, `infrastructure-app`).
+Sau khi 2 stack app sync xong, chúng sẽ tự động sinh ra:
 
-Đợi các Parent App tự động sinh ra các Child App. Đặc biệt với môi trường **prod** (do cấu hình sync là `Manual`), bạn có thể force sync bằng lệnh sau nếu cần:
+- `dev-meostation-stack` → `backend-app-dev`, `database-app-dev`
+- `prod-meostation-stack` → `backend-app-prod`, `database-app-prod`
+
+Với môi trường **prod** (sync policy là `Manual`), force sync thủ công:
 
 ```bash
-argocd app sync backend-app-prod
-argocd app sync database-app-prod
-argocd app sync infrastructure-app-prod
+argocd app sync argocd/prod-meostation-stack
+argocd app sync argocd/backend-app-prod
+argocd app sync argocd/database-app-prod
 ```
 
 > **Lưu ý:** Nếu ArgoCD CLI báo `permission denied`, login lại trước:
@@ -376,4 +392,3 @@ argocd app sync infrastructure-app-prod
 > PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 > argocd login localhost:8080 --insecure --username admin --password "$PASS"
 > ```
-
