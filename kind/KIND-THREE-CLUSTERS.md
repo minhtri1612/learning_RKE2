@@ -195,7 +195,7 @@ Sau khi root app sync xong, app có `destination.name: dev` sẽ deploy sang clu
 - **Kind trên Linux:** Argo CD phải gọi API dev/prod qua IP host; Kind dùng network gateway **172.18.0.1** (không phải 172.17.0.1). Nếu đăng ký cluster với 172.17.0.1 sẽ bị `dial tcp ... i/o timeout`. Sửa: cập nhật secret cluster sang `server=https://172.18.0.1:30443` / `31443` (xem bước 3.3). **Nếu 172.18.0.1 vẫn timeout** (vd. firewall host): dùng IP container trực tiếp, port **6443** (không dùng host port): `docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'` và tương tự `prod-control-plane` → patch secret `server=https://<IP>:6443`. IP sẽ đổi nếu xóa/tạo lại cluster.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.3.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
-- **meo-station-database-dev/prod:** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass). Trên Kind không có External Secrets → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` không tồn tại → Pod database không start. Tạo tay trên từng cluster. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
+- **database trong dev-meostation-stack/prod-meostation-stack:** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
 
   **Trên `kind-dev`:**
   ```bash
@@ -353,12 +353,23 @@ kubectl --context kind-prod -n meo-stationery create secret generic meo-statione
 
 Làm lại **y chang bước 4** ở trên:
 
-- `kubectl apply -f argocd/projects/`
-- `kubectl apply -f argocd/repositories/`
-- `kubectl apply -f argocd/bootstrap/02-root-app.yaml`
+```bash
+kubectl apply -f argocd/projects/
+kubectl apply -f argocd/repositories/
+kubectl apply -f argocd/bootstrap/02-root-app.yaml
+```
 
-Sau đó, trong Argo CD:
+Sau khi root app sync xong, sync 2 stack ứng dụng (mỗi stack đã bao gồm cả backend + database trong Umbrella Chart):
 
-- Sync `argocd/meo-station-database-dev` → `argocd/meo-station-database-prod`
-- Rồi sync `argocd/meo-station-backend-dev` → `argocd/meo-station-backend-prod`
+```bash
+argocd app sync dev-meostation-stack
+argocd app sync prod-meostation-stack
+```
+
+> **Lưu ý:** Nếu ArgoCD CLI báo `permission denied`, login lại trước:
+> ```bash
+> rm -rf ~/.argocd
+> PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+> argocd login localhost:8080 --insecure --username admin --password "$PASS"
+> ```
 
