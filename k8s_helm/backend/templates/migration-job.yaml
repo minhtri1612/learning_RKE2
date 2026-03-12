@@ -6,11 +6,11 @@ metadata:
   labels:
     {{- include "backend.labels" . | nindent 4 }}
   annotations:
-    # ArgoCD PreSync hook: chạy TRƯỚC khi bất kỳ resource nào được apply
-    # Nếu Job fail → ArgoCD dừng toàn bộ sync → backend cũ vẫn chạy an toàn
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-    argocd.argoproj.io/sync-wave: "-1"  # chạy trước tất cả wave khác trong cùng app
+    # Helm post-install/post-upgrade hook: ArgoCD treats this as PostSync
+    # Runs AFTER all resources are healthy → database StatefulSet ready before migration
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    helm.sh/hook-weight: "5"
 spec:
   activeDeadlineSeconds: 900
   backoffLimit: 3
