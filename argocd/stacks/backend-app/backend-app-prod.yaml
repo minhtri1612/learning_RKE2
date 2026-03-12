@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend-app-prod
+  namespace: argocd
+  labels:
+    env: prod
+spec:
+  project: prod
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: v1.2.3  # PINNED VERSION
+    path: k8s_helm/backend
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+  destination:
+    name: prod
+    namespace: meo-stationery
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

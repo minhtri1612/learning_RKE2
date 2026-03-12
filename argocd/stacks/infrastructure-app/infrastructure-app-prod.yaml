@@ -1,23 +1,13 @@
-# dev-infrastructure-stack
-# Components: ingress-nginx, metrics-server
-# Version: latest from helm repos (dev can use latest)
-#
-# Naming: <env>-<project>-stack
----
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: dev-infrastructure-stack
+  name: infrastructure-app-prod
   namespace: argocd
   labels:
-    env: dev
-    category: infrastructure
+    env: prod
 spec:
   project: infrastructure
-  
-  # Multiple sources - deploy all infra components
   sources:
-    # 1. Ingress NGINX
     - repoURL: https://kubernetes.github.io/ingress-nginx
       chart: ingress-nginx
       targetRevision: 4.8.3
@@ -31,13 +21,8 @@ spec:
               type: NodePort
             resources:
               requests:
-                cpu: 100m
-                memory: 128Mi
-              limits:
-                cpu: 500m
-                memory: 512Mi
-    
-    # 2. Metrics Server
+                cpu: 250m
+                memory: 256Mi
     - repoURL: https://kubernetes-sigs.github.io/metrics-server/
       chart: metrics-server
       targetRevision: 3.12.0
@@ -46,19 +31,9 @@ spec:
         values: |
           args:
             - --kubelet-insecure-tls
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-  
   destination:
-    name: dev
+    name: prod
     namespace: ingress-nginx
-  
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true

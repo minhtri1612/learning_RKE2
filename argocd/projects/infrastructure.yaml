@@ -1,34 +1,17 @@
-# AppProject: infrastructure
-# For: ingress-nginx, metrics-server, external-secrets, cert-manager
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: infrastructure
   namespace: argocd
 spec:
-  description: Infrastructure components (ingress, metrics, secrets)
-  
+  description: Infrastructure components
   sourceRepos:
     - https://kubernetes.github.io/ingress-nginx
     - https://kubernetes-sigs.github.io/metrics-server/
-    - https://charts.external-secrets.io
-    - https://charts.jetstack.io
     - https://github.com/minhtri1612/learning_RKE2.git
-  
   destinations:
-    - namespace: ingress-nginx
+    - namespace: '*'
       server: '*'
-    - namespace: kube-system
-      server: '*'
-    - namespace: external-secrets
-      server: '*'
-    - namespace: cert-manager
-      server: '*'
-  
   clusterResourceWhitelist:
-    - group: '*'
-      kind: '*'
-  
-  namespaceResourceWhitelist:
     - group: '*'
       kind: '*'

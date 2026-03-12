@@ -1,0 +1,22 @@
+# PARENT: Apply này → tự đẻ ra infrastructure-app-dev, infrastructure-app-prod
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: kind
+    path: argocd/stacks/infrastructure-app
+    directory:
+      recurse: false
+      exclude: 'infrastructure-app.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
