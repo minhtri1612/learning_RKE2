@@ -1,0 +1,15 @@
+# Prod overrides (merged with k8s_helm/database/values.yaml)
+existingSecret:
+  name: "meo-stationery-database-secrets"
+auth:
+  username: meo_admin
+  database: meo_stationery
+  password: ""  # password lấy từ Secret, không set trong Git
+
+persistence:
+  size: 10Gi
+  useEBS: false
+  provisionStorageClass: false
+
+replicas: 1
+

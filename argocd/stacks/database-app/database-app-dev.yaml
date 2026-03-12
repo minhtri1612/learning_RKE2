@@ -14,7 +14,7 @@ spec:
     helm:
       valueFiles:
         - values.yaml
-        - values-dev.yaml
+        - ../../argocd/env-values/dev/database-values.yaml
   destination:
     name: dev
     namespace: database
@@ -24,3 +24,4 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+

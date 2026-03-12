@@ -14,7 +14,7 @@ spec:
     helm:
       valueFiles:
         - values.yaml
-        - values-dev.yaml
+        - ../../argocd/env-values/dev/backend-values.yaml
   destination:
     name: dev
     namespace: meo-stationery

@@ -9,15 +9,16 @@ spec:
   project: prod
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: v1.2.3  # PINNED VERSION
+    targetRevision: kind
     path: k8s_helm/database
     helm:
       valueFiles:
         - values.yaml
-        - values-prod.yaml
+        - ../../argocd/env-values/prod/database-values.yaml
   destination:
     name: prod
     namespace: database
   syncPolicy:
     syncOptions:
       - CreateNamespace=true
+
