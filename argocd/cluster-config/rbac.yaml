@@ -1,0 +1,28 @@
+# ArgoCD RBAC Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  # Default policy: read-only
+  policy.default: role:readonly
+  
+  policy.csv: |
+    # Admin: full access
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, *, allow
+    p, role:admin, repositories, *, *, allow
+    p, role:admin, projects, *, *, allow
+    
+    # Dev team: can sync dev apps only
+    p, role:dev-team, applications, get, dev/*, allow
+    p, role:dev-team, applications, sync, dev/*, allow
+    p, role:dev-team, applications, action/*, dev/*, allow
+    
+    # Prod team: can view prod, sync requires approval
+    p, role:prod-team, applications, get, prod/*, allow
+    p, role:prod-team, applications, sync, prod/*, allow
+    
+    # Groups mapping
+    g, admin, role:admin

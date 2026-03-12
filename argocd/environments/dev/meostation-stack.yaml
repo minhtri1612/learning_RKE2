@@ -1,0 +1,36 @@
+# dev-meostation-stack
+# Deploy: umbrella chart (backend + database)
+# Version: branch 'kind' (dev uses latest)
+#
+# Naming: <env>-<project>-stack
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dev-meostation-stack
+  namespace: argocd
+  labels:
+    env: dev
+    category: business
+spec:
+  project: dev
+  
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: kind  # Dev: use branch for latest changes
+    path: k8s_helm/meo-station
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-dev.yaml
+  
+  destination:
+    name: dev
+    namespace: meo-stationery
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

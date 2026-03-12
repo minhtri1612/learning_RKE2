@@ -1,0 +1,27 @@
+# AppProject: prod
+# For: prod environment applications (meo-station, etc.)
+# More restrictive than dev
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: prod
+  namespace: argocd
+spec:
+  description: Production environment applications
+  
+  sourceRepos:
+    - https://github.com/minhtri1612/learning_RKE2.git
+  
+  destinations:
+    - namespace: meo-stationery
+      server: '*'
+    - namespace: database
+      server: '*'
+  
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+  
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

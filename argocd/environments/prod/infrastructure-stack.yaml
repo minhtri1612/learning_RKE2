@@ -1,0 +1,62 @@
+# prod-infrastructure-stack
+# Components: ingress-nginx, metrics-server
+# Version: PINNED (prod must pin versions)
+#
+# Naming: <env>-<project>-stack
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prod-infrastructure-stack
+  namespace: argocd
+  labels:
+    env: prod
+    category: infrastructure
+spec:
+  project: infrastructure
+  
+  # Multiple sources - deploy all infra components
+  sources:
+    # 1. Ingress NGINX - PINNED VERSION
+    - repoURL: https://kubernetes.github.io/ingress-nginx
+      chart: ingress-nginx
+      targetRevision: 4.8.3  # PINNED
+      helm:
+        releaseName: ingress-nginx
+        values: |
+          controller:
+            admissionWebhooks:
+              enabled: false
+            service:
+              type: NodePort
+            resources:
+              requests:
+                cpu: 250m
+                memory: 256Mi
+              limits:
+                cpu: 1000m
+                memory: 1024Mi
+    
+    # 2. Metrics Server - PINNED VERSION
+    - repoURL: https://kubernetes-sigs.github.io/metrics-server/
+      chart: metrics-server
+      targetRevision: 3.12.0  # PINNED
+      helm:
+        releaseName: metrics-server
+        values: |
+          args:
+            - --kubelet-insecure-tls
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+  
+  destination:
+    name: prod
+    namespace: ingress-nginx
+  
+  # PROD: No auto-sync, manual only
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

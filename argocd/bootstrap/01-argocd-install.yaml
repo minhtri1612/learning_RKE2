@@ -1,33 +1,13 @@
-# ArgoCD Installation Values
-# Used for: helm install argocd argo/argo-cd -f bootstrap/argocd-install.yaml -n argocd --create-namespace
-
-global:
-  domain: argocd.local
-
-server:
-  ingress:
-    enabled: true
-    ingressClassName: nginx
-    annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    hosts:
-      - argocd.local
-    paths:
-      - path: /
-        pathType: Prefix
-
-repoServer:
-  readinessProbe:
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 10
-    failureThreshold: 6
-  livenessProbe:
-    initialDelaySeconds: 60
-    periodSeconds: 10
-    timeoutSeconds: 10
-    failureThreshold: 6
-
-configs:
-  params:
-    server.insecure: "true"
+# Install ArgoCD
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#
+# Or use this file to track version:
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-version
+  namespace: argocd
+data:
+  version: "v2.9.3"
+  install-command: |
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.9.3/manifests/install.yaml

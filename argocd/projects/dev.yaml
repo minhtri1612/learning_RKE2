@@ -1,0 +1,26 @@
+# AppProject: dev
+# For: dev environment applications (meo-station, etc.)
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: dev
+  namespace: argocd
+spec:
+  description: Development environment applications
+  
+  sourceRepos:
+    - https://github.com/minhtri1612/learning_RKE2.git
+  
+  destinations:
+    - namespace: meo-stationery
+      server: '*'
+    - namespace: database
+      server: '*'
+  
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+  
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

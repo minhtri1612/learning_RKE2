@@ -1,14 +1,17 @@
-# Root Application - App of Apps (chỉ Application, không ApplicationSet)
+# Root Application - App of Apps (2 levels only)
 #
-# Root app argocd-apps sync folder argocd/apps → tạo các app con (dev/prod-infrastructure, dev/prod-meostation).
+# Hierarchy:
+#   root-app (this)
+#     ├── dev-infrastructure-stack
+#     ├── dev-meostation-stack
+#     ├── prod-infrastructure-stack
+#     └── prod-meostation-stack
 #
 # Setup:
-# 1. Apply projects: kubectl apply -f argocd/projects/
-# 2. Apply RBAC: kubectl apply -f argocd/rbac/
-# 3. Apply root app: kubectl apply -f argocd/bootstrap/02-root-app.yaml
-#
-# argocd/apps/: infrastructure/{dev,prod}, meostation/{dev,prod} — mỗi file application.yaml là Application(s).
+#   kubectl apply -f argocd/bootstrap/
 
+---
+# Sync projects first
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,13 +20,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  project: infrastructure
+  project: default
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
+    targetRevision: kind
     path: argocd/projects
-    directory:
-      recurse: true
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -31,22 +32,22 @@ spec:
     automated:
       prune: true
       selfHeal: true
+
 ---
+# Sync cluster config (repos, rbac)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: argocd-repositories
+  name: argocd-cluster-config
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  project: infrastructure
+  project: default
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
-    path: argocd/repositories
-    directory:
-      recurse: true
+    targetRevision: kind
+    path: argocd/cluster-config
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -54,91 +55,24 @@ spec:
     automated:
       prune: true
       selfHeal: true
+
 ---
+# Root app - sync all stacks from environments/
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: argocd-config
-  namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-spec:
-  project: infrastructure
-  source:
-    repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
-    path: argocd/config
-    directory:
-      recurse: true
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argocd
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: argocd-apps
+  name: root-app
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: infrastructure
+  project: default
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: kind
-    path: argocd/apps
-    directory:
-      recurse: true
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argocd
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: argocd-notifications
-  namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-spec:
-  project: infrastructure
-  source:
-    repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
-    path: argocd/notifications
-    directory:
-      recurse: true
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argocd
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: argocd-image-updater
-  namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-spec:
-  project: infrastructure
-  source:
-    repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
-    path: argocd/image-updater
+    path: argocd/environments
     directory:
       recurse: true
   destination:
