@@ -45,7 +45,7 @@ kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
 kubectl config use-context kind-management
 
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 kubectl -n argocd wait --for=condition=Ready pods --all --timeout=300s
 ```
@@ -172,11 +172,13 @@ argocd login localhost:8080 --insecure --username admin --password "<admin_passw
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
 kubectl apply -f argocd/projects/
-kubectl apply -f argocd/repositories/
 kubectl apply -f argocd/bootstrap/02-stack-app.yaml
 ```
 
-Sau khi stack app sync xong, các app con sẽ deploy sang cluster **dev** và **prod** tương ứng.
+Sau khi `stack-app` sync xong, nó sẽ tự động sinh ra 3 Parent App (`backend-app`, `database-app`, `infrastructure-app`).
+Các Parent App này sẽ tiếp tục sinh ra các Child App (`-dev`, `-prod`) và deploy sang cluster **dev** và **prod** tương ứng.
+
+> **Lưu ý:** Đối với app trên môi trường **prod**, chính sách sync được đặt là `Manual`, bạn cần vào UI của ArgoCD (hoặc dùng CLI) click Sync thủ công.
 
 ---
 
@@ -355,24 +357,17 @@ Làm lại **y chang bước 4** ở trên:
 
 ```bash
 kubectl apply -f argocd/projects/
-kubectl apply -f argocd/repositories/
 kubectl apply -f argocd/bootstrap/02-stack-app.yaml
 ```
 
-Phải apply thêm các parent app do hệ thống folder đã thay đổi sang cấu trúc Stack App:
+Sau khi `stack-app` (Root) sync xong, nó sẽ tự động tạo ra 3 Parent App (`backend-app`, `database-app`, `infrastructure-app`).
+
+Đợi các Parent App tự động sinh ra các Child App. Đặc biệt với môi trường **prod** (do cấu hình sync là `Manual`), bạn có thể force sync bằng lệnh sau nếu cần:
 
 ```bash
-kubectl apply -f argocd/stacks/backend-app/backend-app.yaml -n argocd
-kubectl apply -f argocd/stacks/database-app/database-app.yaml -n argocd
-kubectl apply -f argocd/stacks/infrastructure-app/infrastructure-app.yaml -n argocd
-```
-
-Sau khi parent app sync xong, đợt tạo các sub-app, và force sync nếu cần thiết (ví dụ môi trường prod vì để manual sync):
-
-```bash
-argocd app sync backend-app-dev
-argocd app sync database-app-dev
-argocd app sync infrastructure-app-dev
+argocd app sync backend-app-prod
+argocd app sync database-app-prod
+argocd app sync infrastructure-app-prod
 ```
 
 > **Lưu ý:** Nếu ArgoCD CLI báo `permission denied`, login lại trước:
