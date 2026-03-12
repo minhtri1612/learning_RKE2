@@ -7,17 +7,14 @@ metadata:
     env: prod
 spec:
   project: prod
-  sources:
-    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      targetRevision: v1.2.3  # PINNED chart version
-      path: k8s_helm/backend
-      helm:
-        valueFiles:
-          - values.yaml
-          - $values/argocd/env-values/prod/backend-values.yaml
-    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      targetRevision: kind    # env-values luôn lấy từ branch hiện tại
-      ref: values
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: v1.2.4  # PINNED VERSION (includes env-values)
+    path: k8s_helm/backend
+    helm:
+      valueFiles:
+        - values.yaml
+        - ../../argocd/env-values/prod/backend-values.yaml
   destination:
     name: prod
     namespace: meo-stationery
