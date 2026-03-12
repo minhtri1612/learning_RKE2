@@ -1,18 +1,19 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: stack-app
+  name: dev-meostation-stack
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
-  project: default
+  project: dev
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: kind
     path: argocd/stacks
     directory:
-      recurse: false
+      recurse: true
+      include: "*-dev.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

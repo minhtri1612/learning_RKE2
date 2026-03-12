@@ -1,18 +1,19 @@
-# PARENT: Apply này → tự đẻ ra database-app-dev, database-app-prod
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: database-app
+  name: prod-meostation-stack
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
-  project: default
+  project: prod
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: kind
-    path: argocd/stacks/database-app
+    path: argocd/stacks
     directory:
-      recurse: false
-      exclude: 'database-app.yaml'
+      recurse: true
+      include: "*-prod.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -20,3 +21,4 @@ spec:
     automated:
       prune: true
       selfHeal: true
+
