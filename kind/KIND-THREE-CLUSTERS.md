@@ -173,10 +173,10 @@ argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
 kubectl apply -f argocd/projects/
 kubectl apply -f argocd/repositories/
-kubectl apply -f argocd/bootstrap/02-root-app.yaml
+kubectl apply -f argocd/bootstrap/02-stack-app.yaml
 ```
 
-Sau khi root app sync xong, app có `destination.name: dev` sẽ deploy sang cluster **dev**, app có `destination.name: prod` sang cluster **prod**.
+Sau khi stack app sync xong, các app con sẽ deploy sang cluster **dev** và **prod** tương ứng.
 
 ---
 
@@ -195,7 +195,7 @@ Sau khi root app sync xong, app có `destination.name: dev` sẽ deploy sang clu
 - **Kind trên Linux:** Argo CD phải gọi API dev/prod qua IP host; Kind dùng network gateway **172.18.0.1** (không phải 172.17.0.1). Nếu đăng ký cluster với 172.17.0.1 sẽ bị `dial tcp ... i/o timeout`. Sửa: cập nhật secret cluster sang `server=https://172.18.0.1:30443` / `31443` (xem bước 3.3). **Nếu 172.18.0.1 vẫn timeout** (vd. firewall host): dùng IP container trực tiếp, port **6443** (không dùng host port): `docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'` và tương tự `prod-control-plane` → patch secret `server=https://<IP>:6443`. IP sẽ đổi nếu xóa/tạo lại cluster.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.3.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
-- **database trong dev-meostation-stack/prod-meostation-stack:** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
+- **database trong database-app-dev/database-app-prod:** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
 
   **Trên `kind-dev`:**
   ```bash
@@ -356,14 +356,23 @@ Làm lại **y chang bước 4** ở trên:
 ```bash
 kubectl apply -f argocd/projects/
 kubectl apply -f argocd/repositories/
-kubectl apply -f argocd/bootstrap/02-root-app.yaml
+kubectl apply -f argocd/bootstrap/02-stack-app.yaml
 ```
 
-Sau khi root app sync xong, sync 2 stack ứng dụng (mỗi stack đã bao gồm cả backend + database trong Umbrella Chart):
+Phải apply thêm các parent app do hệ thống folder đã thay đổi sang cấu trúc Stack App:
 
 ```bash
-argocd app sync dev-meostation-stack
-argocd app sync prod-meostation-stack
+kubectl apply -f argocd/stacks/backend-app/backend-app.yaml -n argocd
+kubectl apply -f argocd/stacks/database-app/database-app.yaml -n argocd
+kubectl apply -f argocd/stacks/infrastructure-app/infrastructure-app.yaml -n argocd
+```
+
+Sau khi parent app sync xong, đợt tạo các sub-app, và force sync nếu cần thiết (ví dụ môi trường prod vì để manual sync):
+
+```bash
+argocd app sync backend-app-dev
+argocd app sync database-app-dev
+argocd app sync infrastructure-app-dev
 ```
 
 > **Lưu ý:** Nếu ArgoCD CLI báo `permission denied`, login lại trước:
