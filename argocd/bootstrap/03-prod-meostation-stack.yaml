@@ -13,7 +13,7 @@ spec:
     path: argocd/stacks
     directory:
       recurse: true
-      include: "*-prod.yaml"
+      include: "**/*-prod.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
