@@ -1,8 +1,8 @@
-{{- range .Values.apps }}
+{{- range $key, $app := .Values.apps }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ $.Values.env }}-{{ .name }}-stack
+  name: {{ $.Values.env }}-{{ $app.name }}-stack
   namespace: argocd
   labels:
     env: {{ $.Values.env }}
@@ -10,14 +10,14 @@ spec:
   project: {{ $.Values.project }}
   source:
     repoURL: {{ $.Values.repoURL }}
-    targetRevision: {{ .targetRevision }}
-    path: {{ .path }}
+    targetRevision: {{ $app.targetRevision }}
+    path: {{ $app.path }}
     helm:
       values: |
-        {{ toYaml .values | nindent 8 }}
+        {{ toYaml $app.values | nindent 8 }}
   destination:
     name: {{ $.Values.cluster }}
-    namespace: {{ .namespace }}
+    namespace: {{ $app.namespace }}
   syncPolicy:
     {{- if $.Values.automated }}
     automated:

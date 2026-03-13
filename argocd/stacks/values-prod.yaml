@@ -1,50 +1,63 @@
+# ============================================================================
+# PROD ENVIRONMENT OVERRIDES (Dog extends Animal)
+# ============================================================================
+# Chỉ ghi ở đây những cái KHÁC so với values.yaml (base)
+# Những cái giống base sẽ TỰ ĐỘNG thừa hưởng từ values.yaml
+# ============================================================================
+
 env: prod
 project: prod
 cluster: prod
-automated: false
+automated: false     # 🔴 PROD: Manual sync (cẩn thận hơn)
 
 apps:
-  - name: backend
-    path: k8s_helm/backend
-    namespace: meo-stationery
-    targetRevision: v1.2.5
+  # ============ BACKEND OVERRIDES FOR PROD ============
+  backend:
+    targetRevision: v1.2.5   # 🔴 Prod: dùng stable version tag
     values:
-      replicaCount: 3
+      # Override từ base: 6 replicas cho prod (HA đầy đủ)
+      replicaCount: 6
+      
+      # Override từ base: prod dùng secrets từ AWS
       existingSecret:
         name: "meo-stationery-backend-secrets"
-      workload:
-        image: minhtri1612/meo-stationery-backend:vcl
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "128m"
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
+      
+      # Override từ base: bigger resources cho prod
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "128m"
+        limits:
+          memory: "2Gi"
+          cpu: "1000m"
+      
+      # Override từ base: enable autoscaling cho prod
       autoscaling:
         enabled: true
-        minReplicas: 3
-        maxReplicas: 5
-        targetCPUUtilizationPercentage: 80
+        minReplicas: 6
+        maxReplicas: 12    # 🔴 Prod: higher ceiling
+      
+      # Override từ base: prod hostname khác
       ingress:
-        enabled: false
-        host: meo-stationery-prod.local
+        host: "meo-stationery-prod.local"
+      
+      # Override từ base: ENABLE network policy cho prod (security!)
       networkPolicy:
         enabled: true
-
-  - name: database
-    path: k8s_helm/database
-    namespace: database
-    targetRevision: v1.2.4
+  
+  # ============ DATABASE OVERRIDES FOR PROD ============
+  database:
+    targetRevision: v1.2.4   # 🔴 Prod: dùng stable version tag
     values:
+      # Override từ base: prod dùng secrets từ AWS
       existingSecret:
         name: "meo-stationery-database-secrets"
-      auth:
-        username: meo_admin
-        database: meo_stationery
-        password: ""
+      
+      # Override từ base: bigger storage cho prod
       persistence:
         size: 10Gi
-        useEBS: false
-        provisionStorageClass: false
-      replicas: 1
+        # useEBS: false (thừa hưởng từ base, nhưng dev có thể enable nếu AWS)
+      
+      # Thừa hưởng từ base:
+      # - replicas: 1
+      # - auth settings

@@ -67,9 +67,9 @@ ingress:
     secretName: meo-stationery-tls
 
 autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 4
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 1
   targetCPUUtilizationPercentage: 80
 
 # NetworkPolicy: giới hạn traffic vào/ra backend pod
