@@ -1,0 +1,45 @@
+env: prod
+project: prod
+cluster: prod
+automated: false
+
+backend:
+  targetRevision: v1.2.5
+  values:
+    replicaCount: 3
+    existingSecret:
+      name: "meo-stationery-backend-secrets"
+    workload:
+      image: minhtri1612/meo-stationery-backend:vcl
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "128m"
+        limits:
+          memory: "2Gi"
+          cpu: "1000m"
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 80
+    ingress:
+      enabled: false
+      host: meo-stationery-prod.local
+    networkPolicy:
+      enabled: true
+
+database:
+  targetRevision: v1.2.4
+  values:
+    existingSecret:
+      name: "meo-stationery-database-secrets"
+    auth:
+      username: meo_admin
+      database: meo_stationery
+      password: ""
+    persistence:
+      size: 10Gi
+      useEBS: false
+      provisionStorageClass: false
+    replicas: 1

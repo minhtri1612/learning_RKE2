@@ -1,0 +1,13 @@
+repoURL: https://github.com/minhtri1612/learning_RKE2.git
+
+# Override per environment (values-dev.yaml / values-prod.yaml)
+env: ""
+project: ""
+cluster: ""
+automated: false
+
+backend:
+  targetRevision: ""
+
+database:
+  targetRevision: ""

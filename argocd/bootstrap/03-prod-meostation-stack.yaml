@@ -11,9 +11,10 @@ spec:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: kind
     path: argocd/stacks
-    directory:
-      recurse: true
-      include: "**/*-prod.yaml"
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -21,4 +22,3 @@ spec:
     automated:
       prune: true
       selfHeal: true
-
