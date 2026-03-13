@@ -1,0 +1,46 @@
+repoURL: https://github.com/minhtri1612/learning_RKE2.git
+
+environments:
+  - name: dev
+    cluster: dev
+    namespaces:
+      - meo-stationery
+      - database
+    clusterResourceWhitelist:
+      - group: ""
+        kind: Namespace
+    namespaceResourceWhitelist:
+      - group: "*"
+        kind: "*"          # dev: thoải mái, dễ debug
+
+  - name: prod
+    cluster: prod
+    namespaces:
+      - meo-stationery
+      - database
+    clusterResourceWhitelist:
+      - group: ""
+        kind: Namespace
+    namespaceResourceWhitelist:
+      - group: "apps"
+        kind: Deployment
+      - group: "apps"
+        kind: StatefulSet
+      - group: ""
+        kind: Service
+      - group: ""
+        kind: ConfigMap
+      - group: ""
+        kind: Secret
+      - group: "networking.k8s.io"
+        kind: Ingress
+      - group: "networking.k8s.io"
+        kind: NetworkPolicy
+      - group: "autoscaling"
+        kind: HorizontalPodAutoscaler
+      - group: "policy"
+        kind: PodDisruptionBudget
+      - group: "batch"
+        kind: Job
+      - group: "argoproj.io"
+        kind: Application

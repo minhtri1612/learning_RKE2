@@ -1,0 +1,24 @@
+{{- range .Values.environments }}
+{{- $cluster := .cluster }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ .name }}
+  namespace: argocd
+spec:
+  description: {{ .name }} environment project
+  sourceRepos:
+    - {{ $.Values.repoURL }}
+  destinations:
+    {{- range .namespaces }}
+    - name: {{ $cluster }}
+      namespace: {{ . }}
+    {{- end }}
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+  clusterResourceWhitelist:
+    {{- toYaml .clusterResourceWhitelist | nindent 4 }}
+  namespaceResourceWhitelist:
+    {{- toYaml .namespaceResourceWhitelist | nindent 4 }}
+---
+{{- end }}
