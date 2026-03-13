@@ -9,7 +9,7 @@ spec:
   project: prod
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: v1.2.4  # PINNED VERSION (includes env-values)
+    targetRevision: v1.2.5  # PINNED VERSION
     path: k8s_helm/backend
     helm:
       valueFiles:
