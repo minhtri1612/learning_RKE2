@@ -21,6 +21,8 @@ environments:
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
+      - group: "storage.k8s.io"
+        kind: StorageClass
     namespaceResourceWhitelist:
       - group: "apps"
         kind: Deployment
