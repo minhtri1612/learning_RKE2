@@ -1,5 +1,5 @@
-# ─── XƯƠNG SỐNG APP (base / "class Animal") ───
-# Định nghĩa app một lần. Env override từ environments/*.yaml.
+# ─── XƯƠNG SỐNG APP (base) + config theo môi trường (DevOps) ───
+# Developer chỉ sửa version trong environments/*.yaml. Phần còn lại ở đây.
 
 apps:
   backend:
@@ -28,6 +28,36 @@ apps:
         annotations:
           nginx.ingress.kubernetes.io/rewrite-target: "/"
           nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    envOverrides:
+      dev:
+        replicaCount: 3
+        ingress:
+          host: meo-stationery-dev.local
+        existingSecret:
+          name: meo-stationery-backend-secrets-dev
+        autoscaling:
+          enabled: true
+          minReplicas: 3
+          maxReplicas: 5
+      prod:
+        replicaCount: 6
+        ingress:
+          host: meo-stationery-prod.local
+        existingSecret:
+          name: meo-stationery-backend-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        autoscaling:
+          enabled: true
+          minReplicas: 6
+          maxReplicas: 12
+        networkPolicy:
+          enabled: true
 
   database:
     name: database
@@ -44,3 +74,13 @@ apps:
         size: 5Gi
         useEBS: false
         provisionStorageClass: false
+    envOverrides:
+      dev:
+        existingSecret:
+          name: meo-stationery-database-secrets-dev
+      prod:
+        existingSecret:
+          name: meo-stationery-database-secrets
+        persistence:
+          size: 10Gi
+          useEBS: true

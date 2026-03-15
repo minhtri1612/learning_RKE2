@@ -9,17 +9,10 @@
 | `dev.yaml` | Dev       |
 | `prod.yaml` | Prod      |
 
-## Version & rollback
+## Developer chỉ cần quan tâm: version
 
-- **version** (trong từng `services.<tên>.version`) = bản đang chạy (branch/tag).
-- **Rollback:** Sửa `version` về bản cũ (vd `v1.2.4`), commit + push. Argo CD sẽ sync.
-
-## Các field thường sửa
-
-- `services.backend.version` – bản backend (rollback đổi ở đây).
-- `services.backend.replicaCount` – số replica.
-- `services.backend.ingress.host` – domain.
-- `services.database.version` – bản database.
-- `services.database.replicas`, `services.database.persistence.size` – tùy env.
+- **version** (trong `services.backend.version` và `services.database.version`) = bản đang chạy (tag/branch).
+- **Deploy / rollback:** Sửa `version` thành tag cần chạy, commit + push. Argo CD sẽ sync.
+- Các config khác (replicaCount, host, secret, resources, …) do DevOps quản lý trong `argocd/stacks/app-base.yaml`.
 
 **Không sửa:** `argocd/`, `k8s_helm/`.

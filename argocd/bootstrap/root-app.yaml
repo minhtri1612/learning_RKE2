@@ -1,0 +1,21 @@
+# Root Application – apply một lần để Argo CD deploy bootstrap chart.
+# Ví dụ: kubectl apply -f argocd/bootstrap/root-app.yaml
+# Sau đó bootstrap chart sẽ render ra argocd-projects + dev-meostation-stack + prod-meostation-stack.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-bootstrap
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: kind
+    path: argocd/bootstrap
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
