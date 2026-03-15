@@ -1,6 +1,7 @@
 # ─── LAYER 1 – DEVELOPER ───
-# Chỉ sửa version để deploy / rollback.
-# PROD: test kỹ trên dev trước khi đổi version ở đây.
+# PROD: dùng tag cố định (vd v1.2.5). Argo CD chỉ sync đúng tag này → merge main không ảnh hưởng prod.
+# Rollback: đổi version về tag cũ (vd v1.2.3) → PR → merge. Hoặc Argo CD UI/CLI: History → Rollback.
+# Promote: git tag v1.2.x && push → sửa version ở đây → PR → 1 người approve → merge → sync.
 
 env: prod
 project: prod
@@ -9,7 +10,7 @@ automated: false
 
 services:
   backend:
-    version: v1.2.5
+    version: v2.0.1  # targetRevision + image tag. Chỉ đổi khi promote version đã test.
 
   database:
-    version: v1.2.4
+    version: v2.0.1  # targetRevision cho chart database

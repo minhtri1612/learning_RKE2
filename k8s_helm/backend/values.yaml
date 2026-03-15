@@ -10,7 +10,8 @@ argocd:
 namespace: ""
 
 workload:
-  image: minhtri1612/meo-stationery-backend:vcl
+  # Default khi chạy chart standalone. Khi deploy qua Argo CD stacks, tag được override từ environments/*.yaml (version).
+  image: minhtri1612/rke2:2.0.1
   resources:
     requests:
       memory: "256Mi"

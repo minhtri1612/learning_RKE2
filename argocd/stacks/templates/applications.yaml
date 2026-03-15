@@ -3,6 +3,12 @@
 {{- $targetRev := $svc.version | default $app.targetRevision }}
 {{- $envOverrides := index $app.envOverrides $.Values.env | default dict }}
 {{- $mergedValues := merge $app.values $envOverrides }}
+{{- /* Pin image tag from version (backend only; database keeps chart default image tag) */}}
+{{- if and $svc.version (eq $name "backend") }}
+{{- $repo := index (splitList ":" $app.values.workload.image) 0 | default $app.values.workload.image }}
+{{- $imageOverride := dict "workload" (dict "image" (printf "%s:%s" $repo $svc.version)) }}
+{{- $mergedValues = merge $mergedValues $imageOverride }}
+{{- end }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

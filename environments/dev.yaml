@@ -1,5 +1,5 @@
 # ─── LAYER 1 – DEVELOPER ───
-# Chỉ sửa version để deploy / rollback.
+# DEV: có thể dùng branch (kind, dev) hoặc tag. Đổi version → deploy/rollback.
 
 env: dev
 project: dev
@@ -8,7 +8,7 @@ automated: true
 
 services:
   backend:
-    version: kind
+    version: kind   # branch hoặc tag → targetRevision + image tag
 
   database:
-    version: kind
+    version: kind   # targetRevision cho chart database
