@@ -1,0 +1,38 @@
+# ─── LAYER 1 – DEVELOPER ───
+# PROD. Version = bản đang chạy. Rollback = đổi version (vd: v1.2.4), commit + push.
+
+env: prod
+project: prod
+cluster: prod
+automated: false
+
+services:
+  backend:
+    version: v1.2.5                    # Version đang chạy (dev sửa để deploy/rollback)
+    replicaCount: 6                    # Số pod ban đầu (prod cần nhiều hơn dev)
+    ingress:
+      host: meo-stationery-prod.local  # Domain production
+    existingSecret:
+      name: meo-stationery-backend-secrets  # Secret name cho prod (khác dev)
+    resources:                         # CPU/Memory cho prod (cao hơn dev)
+      requests:                        # Tối thiểu cần
+        memory: "512Mi"               # 512MB RAM
+        cpu: "250m"                   # 0.25 CPU core
+      limits:                         # Tối đa được dùng
+        memory: "2Gi"                 # 2GB RAM
+        cpu: "1000m"                  # 1 CPU core
+    autoscaling:                      # Tự động scale khi load cao
+      enabled: true
+      minReplicas: 6                  # Tối thiểu 6 pods
+      maxReplicas: 12                 # Tối đa 12 pods
+    networkPolicy:                    # Bảo mật network (chỉ prod cần)
+      enabled: true
+
+  database:
+    version: v1.2.4                   # Version database đang chạy
+    replicas: 1                       # Chỉ 1 database instance
+    existingSecret:
+      name: meo-stationery-database-secrets  # Secret name cho prod
+    persistence:                      # Lưu trữ data
+      size: 10Gi                     # 10GB storage (prod cần nhiều hơn dev)
+      useEBS: true                   # Dùng AWS EBS cho prod

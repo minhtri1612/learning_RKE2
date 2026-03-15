@@ -1,0 +1,46 @@
+# ─── XƯƠNG SỐNG APP (base / "class Animal") ───
+# Định nghĩa app một lần. Env override từ environments/*.yaml.
+
+apps:
+  backend:
+    name: backend
+    path: k8s_helm/backend
+    namespace: meo-stationery
+    targetRevision: main
+    values:
+      replicaCount: 2
+      workload:
+        image: minhtri1612/meo-stationery-backend:vcl
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "128m"
+        limits:
+          memory: "1Gi"
+          cpu: "500m"
+      autoscaling:
+        enabled: false
+        minReplicas: 2
+        maxReplicas: 4
+      ingress:
+        enabled: true
+        host: meo-stationery.local
+        annotations:
+          nginx.ingress.kubernetes.io/rewrite-target: "/"
+          nginx.ingress.kubernetes.io/ssl-redirect: "false"
+
+  database:
+    name: database
+    path: k8s_helm/database
+    namespace: database
+    targetRevision: main
+    values:
+      replicas: 1
+      auth:
+        username: meo_admin
+        database: meo_stationery
+        password: ""
+      persistence:
+        size: 5Gi
+        useEBS: false
+        provisionStorageClass: false

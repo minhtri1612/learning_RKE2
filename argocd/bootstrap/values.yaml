@@ -1,0 +1,16 @@
+# ─── BOOTSTRAP CONFIG ───
+# Quản lý tất cả environments từ 1 nơi
+
+repoURL: https://github.com/minhtri1612/learning_RKE2.git
+targetRevision: kind
+
+# Danh sách environments cần bootstrap
+environments:
+  - name: dev
+    project: dev
+    cluster: dev
+    automated: true
+  - name: prod  
+    project: prod
+    cluster: prod
+    automated: false

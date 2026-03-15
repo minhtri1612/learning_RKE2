@@ -1,0 +1,26 @@
+# ─── LAYER 1 – DEVELOPER ───
+# Dev chỉ sửa file này. Version = bản đang chạy. Rollback = đổi version, commit + push.
+
+env: dev
+project: dev
+cluster: dev
+automated: true
+
+services:
+  backend:
+    version: kind
+    replicaCount: 3
+    ingress:
+      host: meo-stationery-dev.local
+    existingSecret:
+      name: meo-stationery-backend-secrets-dev
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 5
+
+  database:
+    version: kind
+    replicas: 1
+    existingSecret:
+      name: meo-stationery-database-secrets-dev

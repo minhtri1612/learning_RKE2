@@ -8,8 +8,8 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: kind
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
     path: argocd/projects
   destination:
     server: https://kubernetes.default.svc

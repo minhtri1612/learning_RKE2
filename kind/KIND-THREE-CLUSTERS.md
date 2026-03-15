@@ -164,6 +164,8 @@ kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=clust
 
 ## 4. Add repo Git và apply bootstrap (trên management)
 
+Bootstrap giờ là **Helm chart** trong `argocd/bootstrap/`. Chỉ cần apply **một** Root Application để Argo CD deploy chart đó; chart sẽ render ra Application `argocd-projects` + `dev-meostation-stack` + `prod-meostation-stack`.
+
 ```bash
 kubectl config use-context kind-management
 cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
@@ -171,20 +173,17 @@ cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 argocd login localhost:8080 --insecure --username admin --password "<admin_password>"
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
-# Apply projects trước
-kubectl apply -f argocd/projects/
-
-# Apply 2 stack app (dev + prod)
-kubectl apply -n argocd -f argocd/bootstrap/02-stack-app.yaml
-kubectl apply -n argocd -f argocd/bootstrap/03-prod-meostation-stack.yaml
+# Apply Root Application – deploy bootstrap chart (projects + stacks)
+kubectl apply -f argocd/bootstrap/root-app.yaml
 ```
 
-Sau khi 2 stack app sync xong, chúng sẽ tự động sinh ra các service app con:
+Sau khi `argocd-bootstrap` sync xong, nó sẽ tạo:
 
-- `dev-meostation-stack` → `backend-app-dev`, `database-app-dev` (deploy sang cluster **dev**)
-- `prod-meostation-stack` → `backend-app-prod`, `database-app-prod` (deploy sang cluster **prod**)
+- **argocd-projects** (sync-wave 0) → deploy `argocd/projects` → tạo AppProject `dev`, `prod`
+- **dev-meostation-stack** (sync-wave 1) → deploy `argocd/stacks` + env dev → sinh ra `dev-backend-stack`, `dev-database-stack` (deploy sang cluster **dev**)
+- **prod-meostation-stack** (sync-wave 1) → deploy `argocd/stacks` + env prod → sinh ra `prod-backend-stack`, `prod-database-stack` (deploy sang cluster **prod**)
 
-> **Lưu ý:** Đối với app trên môi trường **prod**, chính sách sync được đặt là `Manual`. Bạn cần vào UI Argo CD (hoặc dùng CLI) click Sync thủ công cho từng app prod.
+> **Lưu ý:** Đối với môi trường **prod**, chính sách sync là `Manual`. Cần vào UI Argo CD (hoặc CLI) bấm Sync thủ công cho app prod.
 
 ---
 
@@ -203,7 +202,7 @@ Sau khi 2 stack app sync xong, chúng sẽ tự động sinh ra các service app
 - **Kind trên Linux:** Argo CD phải gọi API dev/prod qua IP host; Kind dùng network gateway **172.18.0.1** (không phải 172.17.0.1). Nếu đăng ký cluster với 172.17.0.1 sẽ bị `dial tcp ... i/o timeout`. Sửa: cập nhật secret cluster sang `server=https://172.18.0.1:30443` / `31443` (xem bước 3.3). **Nếu 172.18.0.1 vẫn timeout** (vd. firewall host): dùng IP container trực tiếp, port **6443** (không dùng host port): `docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'` và tương tự `prod-control-plane` → patch secret `server=https://<IP>:6443`. IP sẽ đổi nếu xóa/tạo lại cluster.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.3.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
-- **database trong database-app-dev/database-app-prod:** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
+- **Database/backend trong các app dev/prod (vd. `dev-database-stack`, `prod-backend-stack`):** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
 
   **Trên `kind-dev`:**
   ```bash
@@ -359,31 +358,30 @@ kubectl --context kind-prod -n meo-stationery create secret generic meo-statione
 
 ### 6.6. Apply lại bootstrap Argo CD
 
+Bootstrap là Helm chart; chỉ cần apply **Root Application** trỏ tới `argocd/bootstrap`:
+
 ```bash
 kubectl config use-context kind-management
 cd ~/Downloads/practice_RKE2
 
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
-# Apply projects
-kubectl apply -f argocd/projects/
-
-# Apply 2 stack app (dev + prod)
-kubectl apply -n argocd -f argocd/bootstrap/02-stack-app.yaml
-kubectl apply -n argocd -f argocd/bootstrap/03-prod-meostation-stack.yaml
+# Apply Root Application – deploy bootstrap chart
+kubectl apply -f argocd/bootstrap/root-app.yaml
 ```
 
-Sau khi 2 stack app sync xong, chúng sẽ tự động sinh ra:
+Sau khi `argocd-bootstrap` sync xong, sẽ có:
 
-- `dev-meostation-stack` → `backend-app-dev`, `database-app-dev`
-- `prod-meostation-stack` → `backend-app-prod`, `database-app-prod`
+- `argocd-projects` → tạo AppProject dev, prod
+- `dev-meostation-stack` → sinh ra `dev-backend-stack`, `dev-database-stack`
+- `prod-meostation-stack` → sinh ra `prod-backend-stack`, `prod-database-stack`
 
-Với môi trường **prod** (sync policy là `Manual`), force sync thủ công:
+Với môi trường **prod** (sync policy `Manual`), force sync thủ công:
 
 ```bash
 argocd app sync argocd/prod-meostation-stack
-argocd app sync argocd/backend-app-prod
-argocd app sync argocd/database-app-prod
+argocd app sync argocd/prod-backend-stack
+argocd app sync argocd/prod-database-stack
 ```
 
 > **Lưu ý:** Nếu ArgoCD CLI báo `permission denied`, login lại trước:

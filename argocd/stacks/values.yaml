@@ -1,82 +1,9 @@
-# ============================================================================
-# BASE APPLICATION CONFIG (Animal class)
-# ============================================================================
-# Đây là config chung cho TẤT CẢ environments (dev, prod, staging...)
-# Các environment sẽ override những phần khác nhau (values-dev.yaml, values-prod.yaml)
-# ============================================================================
+# ─── LAYER 2 – PLATFORM ───
+# Chỉ platform config. App base = app-base.yaml, env override = environments/*.yaml.
 
 repoURL: https://github.com/minhtri1612/learning_RKE2.git
 
-# Variables được override ở values-*.yaml
-env: ""              # base không biết environment
-project: ""          # base không biết project
-cluster: ""          # base không biết cluster
-automated: false     # base: conservative (dev sẽ enabled)
-
-apps:
-  # ============ BACKEND APPLICATION ============
-  backend:
-    name: backend
-    path: k8s_helm/backend
-    namespace: meo-stationery
-    # Note: targetRevision được override ở values-*.yaml (main vs v1.2.5 vs staging...)
-    targetRevision: main
-    values:
-      # COMMON/BASE VALUES cho backend
-      replicaCount: 2                                    # Base: 2 replicas (HA minimal)
-      
-      workload:
-        image: minhtri1612/meo-stationery-backend:vcl   # Base image
-      
-      resources:
-        requests:
-          memory: "256Mi"                                # Base: moderate
-          cpu: "128m"
-        limits:
-          memory: "1Gi"
-          cpu: "500m"
-      
-      autoscaling:
-        enabled: false                                   # Base: disabled (dev/prod sẽ enable)
-        minReplicas: 2
-        maxReplicas: 4
-        targetCPUUtilizationPercentage: 80
-      
-      ingress:
-        enabled: true                                    # Base: always have ingress
-        host: "meo-stationery.local"                     # Base hostname
-        annotations:
-          nginx.ingress.kubernetes.io/rewrite-target: "/"
-          nginx.ingress.kubernetes.io/ssl-redirect: "false"
-      
-      networkPolicy:
-        enabled: false                                   # Base: disabled (prod sẽ enable)
-      
-      # Secret config
-      existingSecret:
-        name: ""                                         # Base: empty (dev/prod cấp tên)
-  
-  # ============ DATABASE APPLICATION ============
-  database:
-    name: database
-    path: k8s_helm/database
-    namespace: database
-    # Note: targetRevision được override ở values-*.yaml (main vs v1.2.4 vs staging...)
-    targetRevision: main
-    values:
-      # COMMON/BASE VALUES cho database
-      replicas: 1                                        # Base: 1 replica (nâng lên nếu HA cần)
-      
-      auth:
-        username: meo_admin
-        database: meo_stationery
-        password: ""                                     # LUÔN để trống, dùng Secret
-      
-      persistence:
-        size: 5Gi                                        # Base: 5Gi (dev/prod sẽ adjust)
-        useEBS: false                                    # Base: false (prod sẽ true)
-        provisionStorageClass: false
-      
-      # Secret config
-      existingSecret:
-        name: ""                                         # Base: empty (dev/prod cấp tên)
+env: ""
+project: ""
+cluster: ""
+automated: false
