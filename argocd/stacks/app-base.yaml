@@ -84,4 +84,6 @@ apps:
           name: meo-stationery-database-secrets
         persistence:
           size: 10Gi
-          useEBS: true
+          # Kind: no EBS CSI → useEBS false (default StorageClass). Trên EKS thật có thể override thành true.
+          useEBS: false
+          provisionStorageClass: false
