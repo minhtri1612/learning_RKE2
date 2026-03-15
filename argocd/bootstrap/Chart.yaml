@@ -1,5 +1,0 @@
-apiVersion: v2
-name: argocd-bootstrap
-description: Bootstrap ArgoCD Applications and Projects
-type: application
-version: 1.0.0

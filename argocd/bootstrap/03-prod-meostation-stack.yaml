@@ -1,32 +1,25 @@
-{{- range .Values.environments }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .name }}-meostation-stack
+  name: prod-meostation-stack
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-  labels:
-    environment: {{ .name }}
 spec:
-  project: {{ .project }}
+  project: prod
   source:
-    repoURL: {{ $.Values.repoURL }}
-    targetRevision: {{ $.Values.targetRevision }}
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: kind
     path: argocd/stacks
     helm:
       valueFiles:
         - values.yaml
         - app-base.yaml
-        - ../../environments/{{ .name }}.yaml
+        - ../../environments/prod.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
   syncPolicy:
-    {{- if .automated }}
     automated:
       prune: true
       selfHeal: true
-    {{- end }}
----
-{{- end }}

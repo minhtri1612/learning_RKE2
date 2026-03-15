@@ -164,7 +164,7 @@ kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=clust
 
 ## 4. Add repo Git và apply bootstrap (trên management)
 
-Bootstrap giờ là **Helm chart** trong `argocd/bootstrap/`. Chỉ cần apply **một** Root Application để Argo CD deploy chart đó; chart sẽ render ra Application `argocd-projects` + `dev-meostation-stack` + `prod-meostation-stack`.
+Bootstrap là **3 file Application** trong `argocd/bootstrap/`. Apply lần lượt để tạo Application `argocd-projects` + `dev-meostation-stack` + `prod-meostation-stack`.
 
 ```bash
 kubectl config use-context kind-management
@@ -173,15 +173,17 @@ cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 argocd login localhost:8080 --insecure --username admin --password "<admin_password>"
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
-# Apply Root Application – deploy bootstrap chart (projects + stacks)
-kubectl apply -f argocd/bootstrap/root-app.yaml
+# Apply projects trước, rồi 2 stack (dev + prod)
+kubectl apply -f argocd/bootstrap/01-projects.yaml
+kubectl apply -f argocd/bootstrap/02-stack-app.yaml
+kubectl apply -f argocd/bootstrap/03-prod-meostation-stack.yaml
 ```
 
-Sau khi `argocd-bootstrap` sync xong, nó sẽ tạo:
+Sau khi sync xong, sẽ có:
 
-- **argocd-projects** (sync-wave 0) → deploy `argocd/projects` → tạo AppProject `dev`, `prod`
-- **dev-meostation-stack** (sync-wave 1) → deploy `argocd/stacks` + env dev → sinh ra `dev-backend-stack`, `dev-database-stack` (deploy sang cluster **dev**)
-- **prod-meostation-stack** (sync-wave 1) → deploy `argocd/stacks` + env prod → sinh ra `prod-backend-stack`, `prod-database-stack` (deploy sang cluster **prod**)
+- **argocd-projects** → deploy `argocd/projects` → tạo AppProject `dev`, `prod`
+- **dev-meostation-stack** → deploy `argocd/stacks` + env dev → sinh ra `dev-backend-stack`, `dev-database-stack` (cluster **dev**)
+- **prod-meostation-stack** → deploy `argocd/stacks` + env prod → sinh ra `prod-backend-stack`, `prod-database-stack` (cluster **prod**)
 
 > **Lưu ý:** Đối với môi trường **prod**, chính sách sync là `Manual`. Cần vào UI Argo CD (hoặc CLI) bấm Sync thủ công cho app prod.
 
@@ -358,7 +360,7 @@ kubectl --context kind-prod -n meo-stationery create secret generic meo-statione
 
 ### 6.6. Apply lại bootstrap Argo CD
 
-Bootstrap là Helm chart; chỉ cần apply **Root Application** trỏ tới `argocd/bootstrap`:
+Bootstrap là 3 file Application; apply lần lượt:
 
 ```bash
 kubectl config use-context kind-management
@@ -366,11 +368,12 @@ cd ~/Downloads/practice_RKE2
 
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
-# Apply Root Application – deploy bootstrap chart
-kubectl apply -f argocd/bootstrap/root-app.yaml
+kubectl apply -f argocd/bootstrap/01-projects.yaml
+kubectl apply -f argocd/bootstrap/02-stack-app.yaml
+kubectl apply -f argocd/bootstrap/03-prod-meostation-stack.yaml
 ```
 
-Sau khi `argocd-bootstrap` sync xong, sẽ có:
+Sau khi sync xong, sẽ có:
 
 - `argocd-projects` → tạo AppProject dev, prod
 - `dev-meostation-stack` → sinh ra `dev-backend-stack`, `dev-database-stack`
