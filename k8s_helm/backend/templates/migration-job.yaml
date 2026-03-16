@@ -122,11 +122,11 @@ spec:
               MAX_PRISMA_RETRIES=15
               PRISMA_RETRY=0
               while [ $PRISMA_RETRY -lt $MAX_PRISMA_RETRIES ]; do
-                if timeout 5 npx prisma migrate status >/dev/null 2>&1; then
+                if timeout 5 npx prisma@6 migrate status >/dev/null 2>&1; then
                   echo "Database is ready for Prisma!"
                   break
                 fi
-                ERROR_OUTPUT=$(timeout 5 npx prisma migrate status 2>&1 || true)
+                ERROR_OUTPUT=$(timeout 5 npx prisma@6 migrate status 2>&1 || true)
                 if echo "$ERROR_OUTPUT" | grep -qE "P1001|P1000|Can't reach|Connection|timeout"; then
                   PRISMA_RETRY=$((PRISMA_RETRY + 1))
                   if [ $((PRISMA_RETRY % 5)) -eq 0 ]; then
@@ -145,14 +145,13 @@ spec:
               fi
               
               echo "Starting database migration..."
-              # Try to use Prisma from node_modules first (if available in image)
-              # This avoids downloading packages and using ephemeral storage
+              # Use Prisma 6 (pin version; npx without version pulls Prisma 7 which breaks schema url)
               if [ -f "/app/node_modules/.bin/prisma" ] || [ -f "/app/node_modules/prisma/cli.js" ]; then
-                echo "Using Prisma from node_modules (no download needed)"
+                echo "Using Prisma from node_modules"
                 PRISMA_CMD="npx prisma"
               else
-                echo "Prisma not in node_modules, will use npx (may download packages)"
-                PRISMA_CMD="npx prisma"
+                echo "Using npx prisma@6 (image has no CLI, avoid Prisma 7)"
+                PRISMA_CMD="npx prisma@6"
               fi
               
               set -e  # Enable strict error handling for migration and seeding
