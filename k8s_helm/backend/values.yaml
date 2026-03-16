@@ -2,15 +2,12 @@ backend:
   name: backend-deployment
   namespace: meo-stationery
 
-# ArgoCD sync wave when chart used as subchart (umbrella); standalone default 0
 argocd:
   syncWave: "0"
 
-# Khi dùng umbrella: set namespace: "meo-stationery" để deploy vào đúng namespace
 namespace: ""
 
 workload:
-  # Default khi chạy chart standalone. Khi deploy qua Argo CD stacks, tag được override từ environments/*.yaml (version).
   image: minhtri1612/rke2:2.0.1
   resources:
     requests:
@@ -30,32 +27,26 @@ service:
 serviceAccount:
   create: false
 
-# Số pod backend chạy tối thiểu trong cluster
 replicaCount: 2
 
-# Configuration for the application
 config:
   nextAuthUrl: "http://meo-stationery.local"
 
-# Values for the database (used when existingSecret not set)
 database:
   fullnameOverride: "postgres"
   namespace: "database"
   auth:
     username: "meo_admin"
     database: "meo_stationery"
-    password: ""   # Only used when existingSecret.name is empty; prefer AWS Secrets Manager + External Secrets
+    password: ""
 
-# Chạy Job migration (prisma migrate + seed) khi deploy. Dev: tắt; Prod: bật.
 migration:
   enabled: true
 
-# When set, chart does not create Secret; deployment/migration use this K8s Secret (synced from AWS Secrets Manager by External Secrets Operator).
 existingSecret:
-  name: ""   # e.g. "meo-stationery-backend-secrets" when using External Secrets
+  name: ""
 
 secret:
-  # nextAuthSecret: only used when existingSecret.name is empty; otherwise use External Secrets
   nextAuthSecret: ""
 
 httpRoute:
@@ -77,9 +68,5 @@ autoscaling:
   maxReplicas: 1
   targetCPUUtilizationPercentage: 80
 
-# NetworkPolicy: giới hạn traffic vào/ra backend pod
-# Bật khi cluster đã cài CNI hỗ trợ NetworkPolicy (Calico, Cilium, Weave)
-# Dev: false (namespace labels chưa được cấu hình đủ)
-# Prod: true
 networkPolicy:
   enabled: false

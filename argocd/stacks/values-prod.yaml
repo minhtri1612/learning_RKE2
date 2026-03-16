@@ -1,0 +1,16 @@
+# ─── LAYER 1 – DEVELOPER ───
+# Prod: tag cố định. Merge main không ảnh hưởng prod.
+# Rollback: đổi version về tag cũ → PR → merge.
+# Promote: git tag vX.X.X && push → sửa version → PR → approve → merge → sync.
+
+env: prod
+project: prod
+cluster: prod
+automated: false
+
+services:
+  backend:
+    version: v2.0.3   # targetRevision + image: minhtri1612/rke2:v2.0.3
+
+  database:
+    version: v2.0.3   # targetRevision cho chart database

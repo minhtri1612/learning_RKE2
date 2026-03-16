@@ -1,11 +1,9 @@
 nameOverride: "postgres"
 fullnameOverride: "postgres"
 
-# ArgoCD sync wave when chart used as subchart (umbrella); standalone default 0
 argocd:
   syncWave: "0"
 
-# Khi dùng umbrella: set namespace: "database" để deploy vào namespace database
 namespace: ""
 
 image:
@@ -23,23 +21,18 @@ serviceAccount:
 auth:
   username: "meo_admin"
   database: "meo_stationery"
-  password: ""   # Only used when existingSecret.name is empty; prefer AWS Secrets Manager + External Secrets
+  password: ""
 
-# When set, chart does not create Secret; StatefulSet uses this K8s Secret (synced from AWS by External Secrets Operator).
 existingSecret:
-  name: ""   # e.g. "postgres" when using External Secrets
+  name: ""
 
-# Replicas: 0 = chỉ test manifest (Kind ~2GB), 1+ = chạy thật
 replicas: 0
 
 persistence:
   size: 1Gi
-  storageClassName: ""  # Empty string = use default storage class (local-path)
-  useEBS: true  # Set to true to use EBS instead of local-path
+  storageClassName: ""
+  useEBS: true
   provisionStorageClass: false
-
-# nodeSelector:
-#   role: db
 
 livenessProbe:
   enabled: true

@@ -14,8 +14,7 @@ spec:
     helm:
       valueFiles:
         - values.yaml
-        - app-base.yaml
-        - ../../environments/dev.yaml
+        - values-dev.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

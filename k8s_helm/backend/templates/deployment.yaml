@@ -19,7 +19,6 @@ spec:
       labels:
         {{- include "backend.selectorLabels" . | nindent 8 }}
     spec:
-      # HA: ưu tiên trải replicas trên nhiều node; nếu ít node hơn replica thì vẫn schedule được (preferred)
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -32,7 +31,6 @@ spec:
                   values:
                   - {{ include "backend.name" . }}
               topologyKey: kubernetes.io/hostname
-      # Graceful shutdown: cho app xử lý xong requests trước khi SIGTERM
       terminationGracePeriodSeconds: 30
       initContainers:
       - name: wait-for-postgres
@@ -49,8 +47,6 @@ spec:
       - name: {{ .Values.backend.name }}
         image: {{ .Values.workload.image }}
         imagePullPolicy: Always
-
-        # Health checks – production critical
         livenessProbe:
           httpGet:
             path: /api/health
@@ -68,22 +64,17 @@ spec:
           timeoutSeconds: 3
           failureThreshold: 3
         startupProbe:
-          # Startup probe tách riêng: cho app thời gian bootstrap (db migration, etc.)
-          # Nếu sau maxFailures × periodSeconds app vẫn chưa healthy → restart
           httpGet:
             path: /api/health
             port: 3000
           failureThreshold: 30
           periodSeconds: 5
-
         envFrom:
         - configMapRef:
             name: {{ include "backend.fullname" . }}-configmap
         - secretRef:
             name: {{ default (printf "%s-secret" (include "backend.fullname" .)) .Values.existingSecret.name }}
-
         env: []
-
         resources:
           requests:
             memory: {{ .Values.workload.resources.requests.memory }}

@@ -12,6 +12,6 @@ spec:
     {{- include "backend.selectorLabels" . | nindent 4 }}
   ports:
     - protocol: TCP
-      port: 80 # Port của Service
-      targetPort: 3000 # Port mà ứng dụng Next.js của bạn đang chạy bên trong container
+      port: 80
+      targetPort: 3000
   type: ClusterIP

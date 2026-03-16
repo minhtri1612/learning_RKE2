@@ -6,7 +6,6 @@ metadata:
   labels:
     {{- include "backend.labels" . | nindent 4 }}
   annotations:
-    # Cùng phase PreSync với migration Job, wave -2 để apply trước Job (wave -1)
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/sync-wave: "-2"
 data:

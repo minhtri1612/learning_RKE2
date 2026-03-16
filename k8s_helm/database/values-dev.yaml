@@ -1,14 +1,10 @@
-# Dev overrides (merged với values.yaml)
-# Dev: dùng secrets từ AWS Secrets Manager qua External Secrets Operator.
-# ExternalSecret dev tạo K8s Secret "meo-stationery-database-secrets-dev" (prod dùng "meo-stationery-database-secrets").
 existingSecret:
   name: "meo-stationery-database-secrets-dev"
 auth:
   username: meo_admin
   database: meo_stationery
-  password: ""  # password lấy từ Secret, không set trong Git
+  password: ""
 
-# Kind/local: không có EBS CSI → dùng default StorageClass (standard / local-path).
 persistence:
   useEBS: false
 
