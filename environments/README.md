@@ -2,6 +2,26 @@
 
 **Dev chỉ sửa trong folder này.**
 
+## Luồng version & image (đọc trước khi sửa)
+
+- **Một version number** (vd `v2.0.1`, `v3.0.1`) dùng cho **cả hai**:
+  1. **Git targetRevision** – Argo CD sync **chart** (k8s_helm/backend, …) từ ref đó (tag/branch).
+  2. **Docker image tag** – workload chạy image `minhtri1612/rke2:<version>`.
+
+- **Không cần nhiều Dockerfile.** Chỉ **một** Dockerfile. Mỗi release: build image với tag mới rồi push:
+  - `docker build -t minhtri1612/rke2:3.0.1 . && docker push minhtri1612/rke2:3.0.1`
+
+- **app-base.yaml** và **k8s_helm/backend/values.yaml** có `image: minhtri1612/rke2:2.0.1` là **default**. Khi deploy prod:
+  - Stacks chart đọc **environments/prod.yaml** → `services.backend.version` (vd `v3.0.1`).
+  - Template **đè (override)** image thành `minhtri1612/rke2:v3.0.1` và set **targetRevision** = v3.0.1.
+  - → Bạn **không** sửa app-base hay backend/values.yaml mỗi lần promote; chỉ sửa **prod.yaml** (hoặc dev.yaml) với version mới.
+
+- **Ví dụ: prod đang 2.0.1, muốn lên 3.0.1**
+  1. Đổi code (tùy ý), build image: `minhtri1612/rke2:3.0.1`, push.
+  2. Git tag: `git tag v3.0.1 && git push origin v3.0.1` (commit đó là bản bạn vừa build).
+  3. Sửa **chỉ** `environments/prod.yaml`: `services.backend.version: v3.0.1` → PR → merge.
+  4. Argo CD sync prod → deploy chart từ ref v3.0.1 và chạy image 3.0.1.
+
 ## File theo môi trường
 
 | File       | Môi trường |
@@ -14,6 +34,7 @@
 - **services.backend.version** = bản đang chạy:
   - **Git:** Argo CD dùng làm `targetRevision` (branch hoặc tag của repo manifest).
   - **Docker:** Dùng làm image tag `minhtri1612/rke2:<version>`. Cần build & push image đúng tag trước khi đổi version.
+- **Đè lên (override):** Giá trị trong `environments/prod.yaml` (hoặc dev.yaml) **đè** lên default trong `app-base.yaml` và `k8s_helm/backend/values.yaml`. Không cần sửa hai file kia mỗi lần đổi version.
 - **services.database.version** = targetRevision cho chart database (image Postgres theo app-base).
 - Các config khác do DevOps trong `argocd/stacks/app-base.yaml`.
 

@@ -1,0 +1,45 @@
+# Dependencies and build output (sẽ build lại trong container)
+node_modules
+.next
+
+# Git
+.git
+.gitignore
+
+# IDE, docs, infra (không cần trong image)
+.vscode
+.cursor
+*.md
+!README.md
+terraform
+ansible
+kind
+argocd
+k8s_helm
+external-secrets
+scripts
+archive
+docs
+.github
+
+# Secrets, config
+.env
+.env.*
+*.ovpn
+*.pem
+kube_config*.yaml
+.kube
+
+# Python, misc
+__pycache__
+*.pyc
+*.tfstate*
+.qodo
+configure.py
+provision.py
+debug-vpn.sh
+openvpn*.service
+*.ovpn
+vpn_log.txt
+cluster_secrets.yaml
+all_secrets.yaml

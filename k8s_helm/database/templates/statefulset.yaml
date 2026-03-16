@@ -77,8 +77,9 @@ spec:
       accessModes: [ "ReadWriteOnce" ]
       {{- if .Values.persistence.useEBS }}
       storageClassName: ebs-sc
-      {{- else if and .Values.persistence.storageClassName (ne .Values.persistence.storageClassName "") }}
-      storageClassName: {{ .Values.persistence.storageClassName | quote }}
+      {{- else }}
+      {{- $sc := .Values.persistence.storageClassName | default "standard" }}
+      storageClassName: {{ $sc | quote }}
       {{- end }}
       resources:
         requests:

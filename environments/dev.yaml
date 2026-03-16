@@ -8,7 +8,7 @@ automated: true
 
 services:
   backend:
-    version: kind   # branch hoặc tag → targetRevision + image tag
+    version: v3.0.1   # branch hoặc tag → targetRevision + image tag
 
   database:
-    version: kind   # targetRevision cho chart database
+    version: v3.0.1   # targetRevision cho chart database
