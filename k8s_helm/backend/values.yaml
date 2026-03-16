@@ -46,6 +46,10 @@ database:
     database: "meo_stationery"
     password: ""   # Only used when existingSecret.name is empty; prefer AWS Secrets Manager + External Secrets
 
+# Chạy Job migration (prisma migrate + seed) khi deploy. Dev: tắt; Prod: bật.
+migration:
+  enabled: true
+
 # When set, chart does not create Secret; deployment/migration use this K8s Secret (synced from AWS Secrets Manager by External Secrets Operator).
 existingSecret:
   name: ""   # e.g. "meo-stationery-backend-secrets" when using External Secrets

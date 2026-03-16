@@ -32,6 +32,8 @@ apps:
     envOverrides:
       dev:
         replicaCount: 3
+        migration:
+          enabled: false   # Dev: không chạy migration job → đơn giản, không kẹt sync
         ingress:
           host: meo-stationery-dev.local
         existingSecret:
