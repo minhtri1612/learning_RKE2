@@ -10,7 +10,7 @@ automated: false
 
 services:
   backend:
-    version: v2.0.2  # targetRevision + image tag (2.0.2 = migration job prisma@6 fix)
+    version: v2.0.3  # chart: skip seed when no seed.ts; image same as 2.0.2
 
   database:
-    version: v2.0.2  # targetRevision cho chart database
+    version: v2.0.3  # targetRevision cho chart database
