@@ -10,7 +10,7 @@ automated: false
 
 services:
   backend:
-    version: v2.0.1  # targetRevision + image tag. Chỉ đổi khi promote version đã test.
+    version: v2.0.2  # targetRevision + image tag (2.0.2 = migration job prisma@6 fix)
 
   database:
-    version: v2.0.1  # targetRevision cho chart database
+    version: v2.0.2  # targetRevision cho chart database
