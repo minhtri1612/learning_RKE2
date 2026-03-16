@@ -196,6 +196,8 @@ spec:
               if [ "$PRODUCT_COUNT" -gt 0 ]; then
                 echo "Database already has $PRODUCT_COUNT products. Skipping seeding."
                 echo "If you want to re-seed, delete products first."
+              elif [ ! -f /app/prisma/seed.ts ]; then
+                echo "No seed.ts found in image, skipping seeding (migration only)."
               else
                 echo "No products found. Running seed..."
                 # The issue: npx prisma db seed tries to run 'tsx' directly which fails
