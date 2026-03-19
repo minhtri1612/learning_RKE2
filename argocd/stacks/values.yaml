@@ -1,28 +1,10 @@
-# ─── LAYER 2 – PLATFORM / DEVOPS ───
-# DevOps quản lý file này. Developer KHÔNG sửa.
+# ─── LAYER 2 – PLATFORM ───
+# Chỉ platform config. App base = app-base.yaml, env override = environments/*.yaml.
 
 repoURL: https://github.com/minhtri1612/learning_RKE2.git
-name: meostation    # project name — dùng trong <env>-<name>-app và labels
+name: meostation      # project name — dùng trong <env>-<name>-<service>-app
+
 env: ""
 project: ""
 cluster: ""
 automated: false
-services: {}
-
-# ── App config per component ───────────────────────────────────────────────
-# Mỗi entry = 1 ArgoCD Application được sinh từ _generic_application.tpl.
-# Thêm service mới = thêm 1 entry ở đây + 1 file <name>-app.yaml trong templates/.
-apps:
-  database:
-    path: k8s_helm/database
-    namespace: database
-    targetRevision: main
-    imageRepo: ""                    # database dùng postgres image trong values.yaml, không override
-    syncWave: "0"                    # database deploy trước
-
-  backend:
-    path: k8s_helm/backend
-    namespace: meo-stationery
-    targetRevision: main
-    imageRepo: minhtri1612/rke2      # image prefix, tag lấy từ services.backend.version
-    syncWave: "1"                    # backend deploy sau khi DB ready

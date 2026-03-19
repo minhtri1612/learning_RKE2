@@ -100,13 +100,13 @@ generators:
 - list:
     elements:
     - app: backend
-      path: k8s_helm/backend
+      path: k8s_helm/generic-app
       namespace: meo-stationery
     - app: database
-      path: k8s_helm/database
+      path: k8s_helm/generic-app
       namespace: database
     - app: frontend        # ← ADD THIS
-      path: k8s_helm/frontend
+      path: k8s_helm/generic-app
       namespace: meo-stationery
       ignoreDifferences:
       - group: apps

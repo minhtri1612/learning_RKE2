@@ -1,2 +1,3 @@
-image:
-  tag: "13"
+workload:
+  image:
+    tag: "13"

@@ -2,10 +2,10 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "backend.fullname" . }}-migration
+  name: {{ include "generic-app.fullname" . }}-migration
   namespace: {{ .Values.namespace | default .Release.Namespace }}
   labels:
-    {{- include "backend.labels" . | nindent 4 }}
+    {{- include "generic-app.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-delete-policy: before-hook-creation
@@ -15,19 +15,26 @@ spec:
   backoffLimit: 3
   template:
     metadata:
-      name: {{ include "backend.fullname" . }}-migration
+      name: {{ include "generic-app.fullname" . }}-migration
       labels:
-        {{- include "backend.selectorLabels" . | nindent 8 }}
+        {{- include "generic-app.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if .Values.initContainer.enabled }}
       initContainers:
       - name: wait-for-postgres
-        image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
+        image: {{ .Values.initContainer.image }}
+        command: ['sh', '-c', 'until nc -z {{ .Values.databaseConnection.host }} {{ .Values.databaseConnection.port }}; do echo waiting for postgres; sleep 2; done;']
+      {{- end }}
       restartPolicy: Never
       containers:
         - name: db-migration
-          image: {{ .Values.workload.image }}
-          imagePullPolicy: Always
+          {{- if kindIs "string" .Values.workload.image }}
+          image: {{ .Values.workload.image | quote }}
+          imagePullPolicy: {{ .Values.workload.imagePullPolicy | default "Always" }}
+          {{- else }}
+          image: "{{ .Values.workload.image.repository }}:{{ .Values.workload.image.tag }}"
+          imagePullPolicy: {{ .Values.workload.image.pullPolicy | default "Always" }}
+          {{- end }}
           resources:
             requests:
               ephemeral-storage: "500Mi"
@@ -35,9 +42,9 @@ spec:
               ephemeral-storage: "1Gi"
           envFrom:
             - configMapRef:
-                name: {{ include "backend.fullname" . }}-configmap
+                name: {{ include "generic-app.fullname" . }}-configmap
             - secretRef:
-                name: {{ default (printf "%s-secret" (include "backend.fullname" .)) .Values.existingSecret.name }}
+                name: {{ default (printf "%s-secret" (include "generic-app.fullname" .)) .Values.existingSecret.name }}
           command: ["/bin/sh", "-c"]
           args:
             - |

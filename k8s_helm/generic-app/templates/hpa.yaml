@@ -1,10 +1,10 @@
-{{- if .Values.autoscaling.enabled }}
+{{- if and .Values.autoscaling.enabled (ne (.Values.workload.kind | default "deployment") "statefulset") }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "backend.fullname" . }}
+  name: {{ include "generic-app.fullname" . }}
   labels:
-    {{- include "backend.labels" . | nindent 4 }}
+    {{- include "generic-app.labels" . | nindent 4 }}
   {{- with .Values.argocd }}
   annotations:
     argocd.argoproj.io/sync-wave: {{ .syncWave | default "0" | quote }}
@@ -14,7 +14,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "backend.fullname" . }}
+    name: {{ include "generic-app.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:

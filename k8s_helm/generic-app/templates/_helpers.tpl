@@ -1,8 +1,8 @@
-{{- define "backend.name" -}}
+{{- define "generic-app.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "backend.fullname" -}}
+{{- define "generic-app.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -15,27 +15,27 @@
 {{- end }}
 {{- end }}
 
-{{- define "backend.chart" -}}
+{{- define "generic-app.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "backend.labels" -}}
-helm.sh/chart: {{ include "backend.chart" . }}
-{{ include "backend.selectorLabels" . }}
+{{- define "generic-app.labels" -}}
+helm.sh/chart: {{ include "generic-app.chart" . }}
+{{ include "generic-app.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{- define "backend.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "backend.name" . }}
+{{- define "generic-app.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "generic-app.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{- define "backend.serviceAccountName" -}}
+{{- define "generic-app.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "backend.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "generic-app.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

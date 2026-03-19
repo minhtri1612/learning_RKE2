@@ -1,0 +1,24 @@
+# ─── XƯƠNG SỐNG APP (base) ───
+# DevOps định nghĩa chartPath, namespace, syncWave, envType mapping.
+# Values nằm trong values/<service>/env-type/ và app-version/.
+
+apps:
+  backend:
+    name: backend
+    chartPath: k8s_helm/generic-app
+    namespace: meo-stationery
+    targetRevision: main
+    syncWave: "1"
+    envType:
+      dev: non-prod
+      prod: prod
+
+  database:
+    name: database
+    chartPath: k8s_helm/generic-app
+    namespace: database
+    targetRevision: main
+    syncWave: "0"
+    envType:
+      dev: non-prod
+      prod: prod

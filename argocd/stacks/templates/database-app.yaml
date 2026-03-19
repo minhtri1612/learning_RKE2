@@ -1,6 +1,1 @@
-{{/*
-ArgoCD Application cho Database.
-"Tách biệt từng mẫu" — file riêng cho database.
-Nộp vào _generic_application.tpl để sinh Application object.
-*/}}
-{{- include "stacks.application" (dict "name" "database" "root" $) }}
+{{- include "stacks.app" (dict "name" "database" "root" $) }}

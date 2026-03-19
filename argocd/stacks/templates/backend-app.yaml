@@ -1,6 +1,1 @@
-{{/*
-ArgoCD Application cho Backend.
-"Tách biệt từng mẫu" — file riêng cho backend.
-Nộp vào _generic_application.tpl để sinh Application object.
-*/}}
-{{- include "stacks.application" (dict "name" "backend" "root" $) }}
+{{- include "stacks.app" (dict "name" "backend" "root" $) }}

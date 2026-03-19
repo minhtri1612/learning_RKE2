@@ -1,3 +1,43 @@
 # ─── DATABASE COMMON VALUES ───
 # Shared across all environments. Chart defaults (values.yaml) apply first,
 # then this file, then env-type/, then app-version/ (last wins).
+
+workload:
+  kind: statefulset
+  image:
+    repository: postgres
+    tag: "13"
+    pullPolicy: IfNotPresent
+
+initContainer:
+  enabled: false
+
+migration:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+ingress:
+  enabled: false
+
+service:
+  type: ClusterIP
+  port: 5432
+  targetPort: 5432
+
+statefulset:
+  containerPort: 5432
+  portName: postgres
+  volumeName: postgres-storage
+  mountPath: /var/lib/postgresql/data
+  subPath: pgdata
+  pgdataPath: /var/lib/postgresql/data/pgdata
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1

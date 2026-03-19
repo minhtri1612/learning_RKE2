@@ -1,0 +1,137 @@
+app:
+  name: ""
+  namespace: ""
+
+argocd:
+  syncWave: "0"
+
+namespace: ""
+
+workload:
+  kind: deployment
+  image:
+    repository: minhtri1612/rke2
+    tag: "2.0.1"
+    pullPolicy: Always
+  imagePullPolicy: Always
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "128m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  ports:
+    - containerPort: 3000
+      name: http
+
+probes:
+  path: /api/health
+  port: 3000
+  liveness:
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  startup:
+    failureThreshold: 30
+    periodSeconds: 5
+
+databaseConnection:
+  host: "postgres.database.svc.cluster.local"
+  port: 5432
+
+initContainer:
+  enabled: true
+  image: busybox:1.28
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+serviceAccount:
+  create: false
+
+replicaCount: 2
+
+config:
+  nextAuthUrl: "http://meo-stationery.local"
+
+database:
+  fullnameOverride: "postgres"
+  namespace: "database"
+  auth:
+    username: "meo_admin"
+    database: "meo_stationery"
+    password: ""
+
+migration:
+  enabled: true
+
+existingSecret:
+  name: ""
+
+secret:
+  nextAuthSecret: ""
+
+httpRoute:
+  enabled: false
+
+ingress:
+  enabled: true
+  host: meo-stationery.local
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  tls:
+    enabled: false
+    secretName: meo-stationery-tls
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 80
+
+networkPolicy:
+  enabled: false
+  ingressNamespace: ingress-nginx
+
+statefulset:
+  fsGroup: 999
+  containerPort: 5432
+  portName: postgres
+  volumeName: app-storage
+  mountPath: /var/lib/postgresql/data
+  subPath: pgdata
+  pgdataPath: /var/lib/postgresql/data/pgdata
+
+persistence:
+  size: 1Gi
+  useEBS: false
+  storageClassName: ""
+
+auth:
+  username: meo_admin
+  database: meo_stationery
+
+livenessProbe:
+  enabled: false
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1

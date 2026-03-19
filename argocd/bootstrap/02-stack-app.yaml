@@ -10,9 +10,11 @@ spec:
   sources:
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: kind
-      path: k8s_helm/backend
+      path: k8s_helm/generic-app
       helm:
         parameters:
+          - name: app.name
+            value: backend
           - name: namespace
             value: meo-stationery
           - name: argocd.syncWave
@@ -25,9 +27,11 @@ spec:
           - $values/values/backend/app-version/dev-values.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: kind
-      path: k8s_helm/database
+      path: k8s_helm/generic-app
       helm:
         parameters:
+          - name: app.name
+            value: database
           - name: namespace
             value: database
           - name: argocd.syncWave

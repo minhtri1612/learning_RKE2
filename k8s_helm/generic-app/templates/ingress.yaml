@@ -2,7 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "backend.fullname" . }}
+  name: {{ include "generic-app.fullname" . }}
   namespace: {{ .Values.namespace | default .Release.Namespace }}
   annotations:
     {{- with .Values.argocd }}
@@ -27,7 +27,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: {{ include "backend.fullname" . }}
+            name: {{ include "generic-app.fullname" . }}
             port:
               number: {{ .Values.service.port }}
 {{- end }}
