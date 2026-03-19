@@ -1,3 +1,4 @@
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -7,44 +8,22 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 spec:
   project: dev
-  sources:
-    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      targetRevision: kind
-      path: k8s_helm/generic-app
-      helm:
-        parameters:
-          - name: app.name
-            value: backend
-          - name: namespace
-            value: meo-stationery
-          - name: argocd.syncWave
-            value: "1"
-          - name: createNamespace
-            value: "true"
-        valueFiles:
-          - $values/values/backend/common-values.yaml
-          - $values/values/backend/env-type/non-prod-values.yaml
-          - $values/values/backend/app-version/dev-values.yaml
-    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      targetRevision: kind
-      path: k8s_helm/generic-app
-      helm:
-        parameters:
-          - name: app.name
-            value: database
-          - name: namespace
-            value: database
-          - name: argocd.syncWave
-            value: "0"
-          - name: createNamespace
-            value: "true"
-        valueFiles:
-          - $values/values/database/common-values.yaml
-          - $values/values/database/env-type/non-prod-values.yaml
-          - $values/values/database/app-version/dev-values.yaml
-    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      targetRevision: kind
-      ref: values
+  source:
+    repoURL: https://github.com/minhtri1612/learning_RKE2.git
+    targetRevision: kind
+    path: argocd/stacks
+    helm:
+      valueFiles:
+        - app-base.yaml
+      parameters:
+        - name: env
+          value: dev
+        - name: project
+          value: dev
+        - name: cluster
+          value: dev
+        - name: automated
+          value: "true"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
