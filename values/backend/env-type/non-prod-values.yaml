@@ -4,7 +4,7 @@ ingress:
   host: meo-stationery-dev.local
 
 databaseConnection:
-  host: dev-meostation-stack-generic-app.database.svc.cluster.local
+  host: dev-meostation-database-app-generic-app.database.svc.cluster.local
 
 migration:
   enabled: false
