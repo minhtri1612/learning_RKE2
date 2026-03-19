@@ -1,0 +1,3 @@
+# ─── DATABASE COMMON VALUES ───
+# Shared across all environments. Chart defaults (values.yaml) apply first,
+# then this file, then env-type/, then app-version/ (last wins).

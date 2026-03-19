@@ -7,14 +7,40 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 spec:
   project: prod
-  source:
-    repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: kind
-    path: argocd/stacks
-    helm:
-      valueFiles:
-        - values.yaml
-        - values-prod.yaml
+  sources:
+    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: kind
+      path: k8s_helm/backend
+      helm:
+        parameters:
+          - name: namespace
+            value: meo-stationery
+          - name: argocd.syncWave
+            value: "1"
+          - name: createNamespace
+            value: "true"
+        valueFiles:
+          - $values/values/backend/common-values.yaml
+          - $values/values/backend/env-type/prod-values.yaml
+          - $values/values/backend/app-version/prod-values.yaml
+    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: kind
+      path: k8s_helm/database
+      helm:
+        parameters:
+          - name: namespace
+            value: database
+          - name: argocd.syncWave
+            value: "0"
+          - name: createNamespace
+            value: "true"
+        valueFiles:
+          - $values/values/database/common-values.yaml
+          - $values/values/database/env-type/prod-values.yaml
+          - $values/values/database/app-version/prod-values.yaml
+    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: kind
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -22,3 +48,5 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

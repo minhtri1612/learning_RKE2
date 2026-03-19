@@ -12,9 +12,14 @@ spec:
     targetRevision: kind
     path: argocd/stacks
     helm:
+      values: |
+        env: dev
+        project: dev
+        cluster: dev
+        automated: true
       valueFiles:
         - values.yaml
-        - values-dev.yaml
+        - app-base.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -22,3 +27,5 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

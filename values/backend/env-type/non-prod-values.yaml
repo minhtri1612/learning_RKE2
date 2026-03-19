@@ -1,0 +1,15 @@
+replicaCount: 3
+
+ingress:
+  host: meo-stationery-dev.local
+
+migration:
+  enabled: false
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 5
+
+existingSecret:
+  name: meo-stationery-backend-secrets-dev

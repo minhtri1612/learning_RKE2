@@ -1,0 +1,2 @@
+workload:
+  image: minhtri1612/rke2:v3.0.1

@@ -1,0 +1,24 @@
+replicaCount: 6
+
+ingress:
+  host: meo-stationery-prod.local
+
+workload:
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+autoscaling:
+  enabled: true
+  minReplicas: 6
+  maxReplicas: 12
+
+networkPolicy:
+  enabled: true
+
+existingSecret:
+  name: meo-stationery-backend-secrets
