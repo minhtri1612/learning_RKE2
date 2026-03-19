@@ -13,8 +13,10 @@ spec:
     {{- range .namespaces }}
     - name: {{ $cluster }}
       namespace: {{ . }}
+    - server: {{ $.Values.defaultServer | default "https://kubernetes.default.svc" }}
+      namespace: {{ . }}
     {{- end }}
-    - server: https://kubernetes.default.svc
+    - server: {{ $.Values.defaultServer | default "https://kubernetes.default.svc" }}
       namespace: argocd
   clusterResourceWhitelist:
     {{- toYaml .clusterResourceWhitelist | nindent 4 }}

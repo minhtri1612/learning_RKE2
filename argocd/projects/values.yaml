@@ -1,4 +1,5 @@
 repoURL: https://github.com/minhtri1612/learning_RKE2.git
+defaultServer: https://kubernetes.default.svc
 
 environments:
   - name: dev
