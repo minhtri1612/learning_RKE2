@@ -3,6 +3,9 @@ replicaCount: 3
 ingress:
   host: meo-stationery-dev.local
 
+databaseConnection:
+  host: dev-meostation-stack-generic-app.database.svc.cluster.local
+
 migration:
   enabled: false
 
