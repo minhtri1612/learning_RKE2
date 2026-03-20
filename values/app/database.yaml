@@ -1,4 +1,5 @@
 # Shared database baseline for all environments.
+namespace: database
 workload:
   kind: statefulset
   image:

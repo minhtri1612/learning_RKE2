@@ -1,4 +1,5 @@
 replicaCount: 1
+namespace: meo-stationery
 
 migration:
   enabled: false

@@ -4,7 +4,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: dev-backend-generic-app-pdb
-  namespace: default
+  namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
@@ -25,7 +25,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: dev-backend-generic-app-configmap
-  namespace: default
+  namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
@@ -44,7 +44,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: dev-backend-generic-app
-  namespace: default
+  namespace: meo-stationery
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
@@ -62,7 +62,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dev-backend-generic-app
-  namespace: default
+  namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
@@ -163,7 +163,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "0"
-  namespace: default
+  namespace: meo-stationery
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -184,7 +184,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: dev-backend-generic-app
-  namespace: default
+  namespace: meo-stationery
   annotations:
     argocd.argoproj.io/sync-wave: "0"
     nginx.ingress.kubernetes.io/rewrite-target: /
