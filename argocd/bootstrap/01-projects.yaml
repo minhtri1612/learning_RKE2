@@ -9,7 +9,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: kind
+    targetRevision: main
     path: argocd/projects
   destination:
     server: https://kubernetes.default.svc

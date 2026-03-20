@@ -7,12 +7,12 @@ apps:
     name: backend
     chartPath: k8s_helm/generic-app
     namespace: meo-stationery
-    targetRevision: kind
+    targetRevision: main
     syncWave: "1"
 
   database:
     name: database
     chartPath: k8s_helm/generic-app
     namespace: database
-    targetRevision: kind
+    targetRevision: main
     syncWave: "0"

@@ -28,21 +28,10 @@ metadata:
 spec:
   revisionHistoryLimit: 5
   project: {{ $root.Values.project }}
-  sources:
-    - repoURL: {{ $root.Values.repoURL }}
-      targetRevision: {{ $app.targetRevision | default "main" }}
-      path: {{ $app.chartPath }}
-      helm:
-        values: |
-          app:
-            name: {{ $name }}
-            namespace: {{ $app.namespace }}
-        valueFiles:
-          - $values/values/app/{{ $name }}.yaml
-          - $values/values/env/{{ $root.Values.env }}/{{ $name }}.yaml
-    - repoURL: {{ $root.Values.repoURL }}
-      targetRevision: {{ $app.targetRevision | default "main" }}
-      ref: values
+  source:
+    repoURL: {{ $root.Values.repoURL }}
+    targetRevision: {{ $app.targetRevision | default "main" }}
+    path: .manifest/{{ $root.Values.env }}/{{ $name }}
   destination:
     name: {{ $root.Values.cluster }}
     namespace: {{ $app.namespace }}

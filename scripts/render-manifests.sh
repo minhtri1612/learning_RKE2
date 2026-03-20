@@ -18,7 +18,7 @@ fi
 ENV=$1
 APP_NAME=$2
 VALUES_DIR=${3:-"./values"}
-MANIFEST_OUT_DIR="manifests/${ENV}/${APP_NAME}"
+MANIFEST_OUT_DIR=".manifest/${ENV}/${APP_NAME}"
 
 # Chart location (single generic chart for all apps)
 CHART_DIR="./k8s_helm/generic-app"

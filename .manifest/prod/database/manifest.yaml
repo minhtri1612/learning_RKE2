@@ -1,0 +1,139 @@
+---
+# Source: generic-app/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: prod-database-generic-app-pdb
+  namespace: default
+  labels:
+    helm.sh/chart: generic-app-0.1.0
+    app.kubernetes.io/name: generic-app
+    app.kubernetes.io/instance: prod-database
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: generic-app
+      app.kubernetes.io/instance: prod-database
+---
+# Source: generic-app/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prod-database-generic-app-configmap
+  namespace: default
+  labels:
+    helm.sh/chart: generic-app-0.1.0
+    app.kubernetes.io/name: generic-app
+    app.kubernetes.io/instance: prod-database
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-2"
+data:
+  NEXTAUTH_URL: "http://meo-stationery.local"
+  NODE_ENV: "production"
+---
+# Source: generic-app/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: prod-database-generic-app
+  namespace: default
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  selector:
+    app.kubernetes.io/name: generic-app
+    app.kubernetes.io/instance: prod-database
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+  type: ClusterIP
+---
+# Source: generic-app/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prod-database-generic-app
+  namespace: default
+  labels:
+    helm.sh/chart: generic-app-0.1.0
+    app.kubernetes.io/name: generic-app
+    app.kubernetes.io/instance: prod-database
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  serviceName: prod-database-generic-app
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: generic-app
+      app.kubernetes.io/instance: prod-database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: generic-app
+        app.kubernetes.io/instance: prod-database
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: database
+        image: "postgres:13"
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5432
+          name: postgres
+        livenessProbe:
+          exec:
+            command:
+              - "pg_isready"
+              - "-U"
+              - "meo_admin"
+              - "-d"
+              - "meo_stationery"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 6
+        env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: meo-stationery-database-secrets
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: meo-stationery-database-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: meo-stationery-database-secrets
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+          subPath: pgdata
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
