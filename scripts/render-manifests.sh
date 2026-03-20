@@ -23,13 +23,6 @@ MANIFEST_OUT_DIR="manifests/${ENV}/${APP_NAME}"
 # Chart location (single generic chart for all apps)
 CHART_DIR="./k8s_helm/generic-app"
 
-# Determine envType (e.g. non-prod for dev/staging, prod for prod)
-if [ "$ENV" == "prod" ]; then
-    ENV_TYPE="prod"
-else
-    ENV_TYPE="non-prod"
-fi
-
 echo "=========================================="
 echo "Rendering manifests for $APP_NAME in $ENV"
 echo "Target Chart: $CHART_DIR"
@@ -46,22 +39,19 @@ if [ ! -d "$CHART_DIR" ]; then
 fi
 
 # Build the helm template command with applicable value files
-# The value files hierarchy mirrors the old ArgoCD _app.tpl logic
+# Value hierarchy:
+#   1) values/app/<app>.yaml
+#   2) values/env/<env>/<app>.yaml
 CMD="helm template ${ENV}-${APP_NAME} ${CHART_DIR} --set app.name=${APP_NAME}"
 
-COMMON_FILE="${VALUES_DIR}/${APP_NAME}/common-values.yaml"
-if [ -f "$COMMON_FILE" ]; then
-    CMD="$CMD -f $COMMON_FILE"
+BASE_FILE="${VALUES_DIR}/app/${APP_NAME}.yaml"
+if [ -f "$BASE_FILE" ]; then
+    CMD="$CMD -f $BASE_FILE"
 fi
 
-ENV_TYPE_FILE="${VALUES_DIR}/${APP_NAME}/env-type/${ENV_TYPE}-values.yaml"
-if [ -f "$ENV_TYPE_FILE" ]; then
-    CMD="$CMD -f $ENV_TYPE_FILE"
-fi
-
-APP_VER_FILE="${VALUES_DIR}/${APP_NAME}/app-version/${ENV}-values.yaml"
-if [ -f "$APP_VER_FILE" ]; then
-    CMD="$CMD -f $APP_VER_FILE"
+ENV_FILE="${VALUES_DIR}/env/${ENV}/${APP_NAME}.yaml"
+if [ -f "$ENV_FILE" ]; then
+    CMD="$CMD -f $ENV_FILE"
 fi
 
 # Also allow for a direct env file as a fallback

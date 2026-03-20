@@ -1,7 +1,4 @@
-# ─── DATABASE COMMON VALUES ───
-# Shared across all environments. Chart defaults (values.yaml) apply first,
-# then this file, then env-type/, then app-version/ (last wins).
-
+# Shared database baseline for all environments.
 workload:
   kind: statefulset
   image:
@@ -41,3 +38,12 @@ livenessProbe:
   timeoutSeconds: 5
   failureThreshold: 6
   successThreshold: 1
+
+replicas: 1
+
+persistence:
+  useEBS: false
+
+auth:
+  username: meo_admin
+  database: meo_stationery

@@ -1,5 +1,0 @@
-workload:
-  image:
-    repository: minhtri1612/rke2
-    tag: "2.0.1"
-    pullPolicy: IfNotPresent

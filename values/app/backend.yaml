@@ -1,0 +1,11 @@
+replicaCount: 1
+
+migration:
+  enabled: false
+
+autoscaling:
+  enabled: true
+
+workload:
+  image:
+    repository: minhtri1612/rke2

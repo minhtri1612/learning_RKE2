@@ -7,15 +7,13 @@ Usage:
 
 Value hierarchy (last wins):
   1. Chart values.yaml          ← chart defaults
-  2. common-values.yaml         ← shared overrides
-  3. env-type/<type>-values.yaml ← non-prod hoặc prod
-  4. app-version/<env>-values.yaml ← image tag theo môi trường
+  2. values/app/<app>.yaml      ← app baseline
+  3. values/env/<env>/<app>.yaml ← env-specific overrides
 */}}
 {{- define "stacks.app" -}}
 {{- $name    := .name -}}
 {{- $root    := .root -}}
 {{- $app     := index $root.Values.apps $name -}}
-{{- $envType := index ($app.envType | default dict) $root.Values.env | default "non-prod" -}}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -40,9 +38,8 @@ spec:
             name: {{ $name }}
             namespace: {{ $app.namespace }}
         valueFiles:
-          - $values/values/{{ $name }}/common-values.yaml
-          - $values/values/{{ $name }}/env-type/{{ $envType }}-values.yaml
-          - $values/values/{{ $name }}/app-version/{{ $root.Values.env }}-values.yaml
+          - $values/values/app/{{ $name }}.yaml
+          - $values/values/env/{{ $root.Values.env }}/{{ $name }}.yaml
     - repoURL: {{ $root.Values.repoURL }}
       targetRevision: {{ $app.targetRevision | default "main" }}
       ref: values

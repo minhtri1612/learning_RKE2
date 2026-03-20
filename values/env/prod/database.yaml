@@ -1,13 +1,6 @@
-replicas: 1
-
 persistence:
   size: 10Gi
-  useEBS: false
   provisionStorageClass: false
 
 existingSecret:
   name: meo-stationery-database-secrets
-
-auth:
-  username: meo_admin
-  database: meo_stationery

@@ -1,5 +1,0 @@
-workload:
-  image:
-    repository: minhtri1612/rke2
-    tag: "3.0.1"
-    pullPolicy: Always

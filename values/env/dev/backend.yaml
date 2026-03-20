@@ -6,13 +6,14 @@ ingress:
 databaseConnection:
   host: dev-meostation-database-app-generic-app.database.svc.cluster.local
 
-migration:
-  enabled: false
-
 autoscaling:
-  enabled: true
   minReplicas: 3
   maxReplicas: 5
 
 existingSecret:
   name: meo-stationery-backend-secrets-dev
+
+workload:
+  image:
+    tag: "3.0.1"
+    pullPolicy: Always
