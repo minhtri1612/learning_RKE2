@@ -178,27 +178,3 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
----
-# Source: generic-app/templates/ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: dev-backend-generic-app
-  namespace: meo-stationery
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: "meo-stationery-dev.local"
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: dev-backend-generic-app
-            port:
-              number: 80
