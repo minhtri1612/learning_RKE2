@@ -164,7 +164,7 @@ kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=clust
 
 ## 4. Add repo Git và apply bootstrap (trên management)
 
-Bootstrap là **3 file Application** trong `argocd/bootstrap/`. Apply lần lượt để tạo Application `argocd-projects` + `dev-meostation-stack` + `prod-meostation-stack`.
+Bootstrap là **3 file Application** trong `argocd/bootstrap/`. Apply lần lượt để tạo Application `argocd-projects` + `dev-meostation` + `prod-meostation`.
 
 ```bash
 kubectl config use-context kind-management
@@ -182,8 +182,8 @@ kubectl apply -f argocd/bootstrap/03-prod-meostation-stack.yaml
 Sau khi sync xong, sẽ có:
 
 - **argocd-projects** → deploy `argocd/projects` → tạo AppProject `dev`, `prod`
-- **dev-meostation-stack** → deploy `argocd/stacks` + env dev → sinh ra `dev-backend-stack`, `dev-database-stack` (cluster **dev**)
-- **prod-meostation-stack** → deploy `argocd/stacks` + env prod → sinh ra `prod-backend-stack`, `prod-database-stack` (cluster **prod**)
+- **dev-meostation** → deploy `argocd/meo-station` + env dev → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app` (cluster **dev**)
+- **prod-meostation** → deploy `argocd/meo-station` + env prod → sinh ra `prod-meostation-backend-app`, `prod-meostation-database-app` (cluster **prod**)
 
 > **Lưu ý:** Đối với môi trường **prod**, chính sách sync là `Manual`. Cần vào UI Argo CD (hoặc CLI) bấm Sync thủ công cho app prod.
 
@@ -204,7 +204,7 @@ Sau khi sync xong, sẽ có:
 - **Kind trên Linux:** Argo CD phải gọi API dev/prod qua IP host; Kind dùng network gateway **172.18.0.1** (không phải 172.17.0.1). Nếu đăng ký cluster với 172.17.0.1 sẽ bị `dial tcp ... i/o timeout`. Sửa: cập nhật secret cluster sang `server=https://172.18.0.1:30443` / `31443` (xem bước 3.3). **Nếu 172.18.0.1 vẫn timeout** (vd. firewall host): dùng IP container trực tiếp, port **6443** (không dùng host port): `docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'` và tương tự `prod-control-plane` → patch secret `server=https://<IP>:6443`. IP sẽ đổi nếu xóa/tạo lại cluster.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.3.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
-- **Database/backend trong các app dev/prod (vd. `dev-database-stack`, `prod-backend-stack`):** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
+- **Database/backend trong các app dev/prod (vd. `dev-meostation-database-app`, `prod-meostation-backend-app`):** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
 
   **Trên `kind-dev`:**
   ```bash
@@ -376,15 +376,15 @@ kubectl apply -f argocd/bootstrap/03-prod-meostation-stack.yaml
 Sau khi sync xong, sẽ có:
 
 - `argocd-projects` → tạo AppProject dev, prod
-- `dev-meostation-stack` → sinh ra `dev-backend-stack`, `dev-database-stack`
-- `prod-meostation-stack` → sinh ra `prod-backend-stack`, `prod-database-stack`
+- `dev-meostation` → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app`
+- `prod-meostation` → sinh ra `prod-meostation-backend-app`, `prod-meostation-database-app`
 
 Với môi trường **prod** (sync policy `Manual`), force sync thủ công:
 
 ```bash
-argocd app sync argocd/prod-meostation-stack
-argocd app sync argocd/prod-backend-stack
-argocd app sync argocd/prod-database-stack
+argocd app sync argocd/prod-meostation
+argocd app sync argocd/prod-meostation-backend-app
+argocd app sync argocd/prod-meostation-database-app
 ```
 
 > **Lưu ý:** Nếu ArgoCD CLI báo `permission denied`, login lại trước:

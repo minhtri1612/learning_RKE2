@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: prod-meostation-stack
+  name: prod-meostation
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: main
-    path: argocd/stacks
+    path: argocd/meo-station
     helm:
       valueFiles:
         - app-base.yaml

@@ -2,15 +2,15 @@
 Sinh 1 ArgoCD Application cho 1 service cụ thể.
 
 Usage:
-  {{- include "stacks.app" (dict "name" "backend" "root" $) }}
-  {{- include "stacks.app" (dict "name" "database" "root" $) }}
+  {{- include "meo-station.app" (dict "name" "backend" "root" $) }}
+  {{- include "meo-station.app" (dict "name" "database" "root" $) }}
 
 Value hierarchy (last wins):
   1. Chart values.yaml          ← chart defaults
   2. values/app/<app>.yaml      ← app baseline
   3. values/env/<env>/<app>.yaml ← env-specific overrides
 */}}
-{{- define "stacks.app" -}}
+{{- define "meo-station.app" -}}
 {{- $name    := .name -}}
 {{- $root    := .root -}}
 {{- $app     := index $root.Values.apps $name -}}

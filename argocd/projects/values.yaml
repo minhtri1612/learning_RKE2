@@ -47,5 +47,3 @@ environments:
         kind: PodDisruptionBudget
       - group: "batch"
         kind: Job
-      - group: "argoproj.io"
-        kind: Application
