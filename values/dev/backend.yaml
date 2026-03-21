@@ -1,0 +1,4 @@
+workload:
+  image:
+    tag: "3.0.1"
+    pullPolicy: Always

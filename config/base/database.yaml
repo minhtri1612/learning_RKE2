@@ -1,11 +1,10 @@
-# Shared database baseline for all environments.
+# Shared database baseline managed by DevOps.
 namespace: database
+
 workload:
   kind: statefulset
   image:
     repository: postgres
-    tag: "13"
-    pullPolicy: IfNotPresent
 
 initContainer:
   enabled: false

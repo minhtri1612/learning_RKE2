@@ -1,0 +1,4 @@
+workload:
+  image:
+    tag: "2.0.1"
+    pullPolicy: IfNotPresent

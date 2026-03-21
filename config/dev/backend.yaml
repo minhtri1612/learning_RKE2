@@ -12,8 +12,3 @@ autoscaling:
 
 existingSecret:
   name: meo-stationery-backend-secrets-dev
-
-workload:
-  image:
-    tag: "3.0.1"
-    pullPolicy: Always
