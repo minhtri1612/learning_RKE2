@@ -4,7 +4,7 @@ ingress:
   host: meo-stationery-dev.local
 
 databaseConnection:
-  host: dev-meostation-database-app-generic-app.database.svc.cluster.local
+  host: dev-database-generic-app.database.svc.cluster.local
 
 autoscaling:
   minReplicas: 3

@@ -4,7 +4,8 @@ ingress:
   host: meo-stationery-prod.local
 
 databaseConnection:
-  host: prod-meostation-database-app-generic-app.database.svc.cluster.local
+  host: prod-database-generic-app.database.svc.cluster.local
+
 
 workload:
   resources:
