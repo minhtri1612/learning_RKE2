@@ -9,3 +9,6 @@ autoscaling:
 workload:
   image:
     repository: minhtri1612/rke2
+
+ingress:
+  enabled: false
