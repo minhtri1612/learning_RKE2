@@ -17,8 +17,8 @@ workload:
       cpu: "1000m"
 
 autoscaling:
-  minReplicas: 6
-  maxReplicas: 12
+  minReplicas: 10
+  maxReplicas: 15
 
 networkPolicy:
   enabled: true
