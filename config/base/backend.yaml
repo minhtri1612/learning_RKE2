@@ -4,7 +4,7 @@ migration:
   enabled: false
 
 autoscaling:
-  enabled: true
+  enabled: false
 
 workload:
   image:
