@@ -169,8 +169,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: dev-backend-generic-app
-  minReplicas: 3
-  maxReplicas: 5
+  minReplicas: 5
+  maxReplicas: 8
   metrics:
     - type: Resource
       resource:

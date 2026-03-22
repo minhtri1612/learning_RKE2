@@ -7,8 +7,8 @@ databaseConnection:
   host: dev-database-generic-app.database.svc.cluster.local
 
 autoscaling:
-  minReplicas: 3
-  maxReplicas: 5
+  minReplicas: 5
+  maxReplicas: 8
 
 existingSecret:
   name: meo-stationery-backend-secrets-dev
