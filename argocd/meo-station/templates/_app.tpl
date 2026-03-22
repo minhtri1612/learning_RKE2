@@ -49,9 +49,10 @@ spec:
         factor: 2
     syncOptions:
       - CreateNamespace=true
+  # HPA owns Deployment.spec.replicas. Without this, Argo selfHeal fights HPA → pods flap (scale up/down loop).
   ignoreDifferences:
-    - group: autoscaling
-      kind: HorizontalPodAutoscaler
+    - group: apps
+      kind: Deployment
       jsonPointers:
         - /spec/replicas
 {{- end -}}
