@@ -1,12 +1,9 @@
 replicaCount: 10
-
 ingress:
+  enabled: true
   host: meo-stationery-prod.local
-
 databaseConnection:
   host: prod-database-generic-app.database.svc.cluster.local
-
-
 workload:
   resources:
     requests:
@@ -15,14 +12,11 @@ workload:
     limits:
       memory: "2Gi"
       cpu: "1000m"
-
 autoscaling:
   enabled: true
   minReplicas: 10
   maxReplicas: 15
-
 networkPolicy:
   enabled: true
-
 existingSecret:
   name: meo-stationery-backend-secrets

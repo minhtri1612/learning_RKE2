@@ -1,6 +1,5 @@
 persistence:
   size: 10Gi
   provisionStorageClass: false
-
 existingSecret:
   name: meo-stationery-database-secrets

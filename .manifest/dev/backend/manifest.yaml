@@ -3,12 +3,12 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: dev-backend-generic-app-pdb
+  name: backend-generic-app-pdb
   namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-backend
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -18,18 +18,18 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: generic-app
-      app.kubernetes.io/instance: dev-backend
+      app.kubernetes.io/instance: backend
 ---
 # Source: generic-app/templates/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: dev-backend-generic-app-configmap
+  name: backend-generic-app-configmap
   namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-backend
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -43,14 +43,14 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: dev-backend-generic-app
+  name: backend-generic-app
   namespace: meo-stationery
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   selector:
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-backend
+    app.kubernetes.io/instance: backend
   ports:
     - protocol: TCP
       port: 80
@@ -61,12 +61,12 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dev-backend-generic-app
+  name: backend-generic-app
   namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-backend
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -76,12 +76,12 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: generic-app
-      app.kubernetes.io/instance: dev-backend
+      app.kubernetes.io/instance: backend
   template:
     metadata:
       labels:
         app.kubernetes.io/name: generic-app
-        app.kubernetes.io/instance: dev-backend
+        app.kubernetes.io/instance: backend
     spec:
       affinity:
         podAntiAffinity:
@@ -108,7 +108,7 @@ spec:
             cpu: 10m
             memory: 16Mi
       containers:
-      - name: backend
+      - name: 
         image: "minhtri1612/rke2:3.0.1"
         imagePullPolicy: Always
         livenessProbe:
@@ -135,7 +135,7 @@ spec:
           periodSeconds: 5
         envFrom:
         - configMapRef:
-            name: dev-backend-generic-app-configmap
+            name: backend-generic-app-configmap
         - secretRef:
             name: meo-stationery-backend-secrets-dev
         env: []
@@ -154,11 +154,11 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: dev-backend-generic-app
+  name: backend-generic-app
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-backend
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -168,7 +168,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: dev-backend-generic-app
+    name: backend-generic-app
   minReplicas: 5
   maxReplicas: 8
   metrics:
@@ -178,3 +178,27 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
+---
+# Source: generic-app/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend-generic-app
+  namespace: meo-stationery
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: "meo-stationery-dev.local"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-generic-app
+            port:
+              number: 80
