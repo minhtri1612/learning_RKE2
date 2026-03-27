@@ -24,7 +24,7 @@ spec:
       securityContext:
         fsGroup: {{ .Values.statefulset.fsGroup | default 999 }}
       containers:
-      - name: {{ .Values.app.name | default .Chart.Name }}
+      - name: {{ .Values.app_name | default .Chart.Name }}
         {{- if kindIs "string" .Values.workload.image }}
         image: {{ .Values.workload.image | quote }}
         imagePullPolicy: {{ .Values.workload.imagePullPolicy | default "Always" }}

@@ -42,7 +42,7 @@ spec:
           {{- toYaml .Values.initContainer.resources | nindent 10 }}
       {{- end }}
       containers:
-      - name: {{ .Values.app.name }}
+      - name: {{ .Values.app_name | default .Chart.Name }}
         {{- if kindIs "string" .Values.workload.image }}
         image: {{ .Values.workload.image | quote }}
         imagePullPolicy: {{ .Values.workload.imagePullPolicy | default "Always" }}
