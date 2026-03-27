@@ -38,6 +38,9 @@ type: Opaque
 stringData:
   DATABASE_URL: "postgresql://meo_admin:@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public"
   NEXTAUTH_SECRET: ""
+  POSTGRES_DB: "meo_stationery"
+  POSTGRES_USER: "meo_admin"
+  POSTGRES_PASSWORD: "postgres"
 ---
 # Source: generic-app/templates/configmap.yaml
 apiVersion: v1
