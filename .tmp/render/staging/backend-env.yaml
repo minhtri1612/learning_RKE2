@@ -1,0 +1,4 @@
+tier: "small"
+workload:
+  image:
+    tag: "stg-1.0.0"

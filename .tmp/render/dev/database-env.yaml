@@ -1,0 +1,4 @@
+db_tier: "dev-basic"
+workload:
+  image:
+    tag: "15-alpine"

@@ -2,6 +2,7 @@ app_name: "backend"
 app_type: "api"
 
 workload:
+  kind: deployment
   image:
     repository: "minhtri1612/rke2"
-    tag: "latest" # Overridden by CI/CD or env if needed
+    pullPolicy: Always

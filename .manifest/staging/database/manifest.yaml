@@ -117,9 +117,9 @@ spec:
           name: postgres
         resources:
           limits:
-            memory: "16Gi"
+            memory: "4Gi"
           requests:
-            memory: "16Gi"
+            memory: "4Gi"
         env:
         - name: PGDATA
           value: /var/lib/postgresql/data/pgdata
@@ -150,7 +150,7 @@ spec:
       - ReadWriteOnce
       resources:
         requests:
-          storage: 200Gi
+          storage: 50Gi
 ---
 # Source: generic-app/templates/ingress.yaml
 apiVersion: networking.k8s.io/v1
@@ -166,10 +166,10 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - "database.api.meo-stationery.com"
+    - "database.staging.api.meo-stationery.com"
     secretName: database-tls
   rules:
-  - host: "database.api.meo-stationery.com"
+  - host: "database.staging.api.meo-stationery.com"
     http:
       paths:
       - path: /

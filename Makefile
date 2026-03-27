@@ -1,41 +1,50 @@
-# Makefile updated for Base + Env Layout
-.PHONY: render-all render-dev render-prod clean
+CHART_DIR := 1-platform-engine/generic-app
+MANIFEST_DIR := .manifest
+TMP_DIR := .tmp/render
+GUARDRAILS_BASE := 2-platform-guardrails/base/baseline.yaml
+GUARDRAILS_ENV_DIR := 2-platform-guardrails/env
+WORKSPACE_BASE_DIR := 3-developer-workspace/base
+WORKSPACE_ENV_DIR := 3-developer-workspace/env
 
-render-all: render-dev render-prod
+.PHONY: render-all render-dev render-staging render-prod clean
+
+render-all: render-dev render-staging render-prod
 
 render-dev:
-	@echo "==> Rendering Dev manifests..."
-	@mkdir -p .manifest/dev/backend
-	@helm template backend 1-platform-engine/generic-app \
-		--namespace meo-stationery \
-		-f 2-platform-guardrails/dev-baseline.yaml \
-		-f 3-developer-workspace/base/be.yaml \
-		-f 3-developer-workspace/env/dev.yaml > .manifest/dev/backend/manifest.yaml
-	@mkdir -p .manifest/dev/database
-	@helm template database 1-platform-engine/generic-app \
-		--namespace database \
-		-f 2-platform-guardrails/dev-baseline.yaml \
-		-f 3-developer-workspace/base/db.yaml \
-		-f 3-developer-workspace/env/dev.yaml > .manifest/dev/database/manifest.yaml
-	@echo "✅ Done (Dev)!"
+	@$(MAKE) render ENV=dev
+
+render-staging:
+	@$(MAKE) render ENV=staging
 
 render-prod:
-	@echo "==> Rendering Prod manifests..."
-	@mkdir -p .manifest/prod/backend
-	@helm template backend 1-platform-engine/generic-app \
+	@$(MAKE) render ENV=prod
+
+render:
+	@echo "==> Rendering $(ENV) manifests..."
+	@test -n "$(ENV)" || (echo "ENV is required"; exit 1)
+	@test -f "$(GUARDRAILS_BASE)" || (echo "Missing $(GUARDRAILS_BASE)"; exit 1)
+	@test -f "$(GUARDRAILS_ENV_DIR)/$(ENV).yaml" || (echo "Missing $(GUARDRAILS_ENV_DIR)/$(ENV).yaml"; exit 1)
+	@test -f "$(WORKSPACE_ENV_DIR)/$(ENV).yaml" || (echo "Missing $(WORKSPACE_ENV_DIR)/$(ENV).yaml"; exit 1)
+	@mkdir -p "$(TMP_DIR)/$(ENV)" "$(MANIFEST_DIR)/$(ENV)/backend" "$(MANIFEST_DIR)/$(ENV)/database"
+	@yq eval '.backend' "$(WORKSPACE_ENV_DIR)/$(ENV).yaml" > "$(TMP_DIR)/$(ENV)/backend-env.yaml"
+	@yq eval '.database' "$(WORKSPACE_ENV_DIR)/$(ENV).yaml" > "$(TMP_DIR)/$(ENV)/database-env.yaml"
+	@helm template backend "$(CHART_DIR)" \
 		--namespace meo-stationery \
-		-f 2-platform-guardrails/prod-baseline.yaml \
-		-f 3-developer-workspace/base/be.yaml \
-		-f 3-developer-workspace/env/prod.yaml > .manifest/prod/backend/manifest.yaml
-	@mkdir -p .manifest/prod/database
-	@helm template database 1-platform-engine/generic-app \
+		-f "$(GUARDRAILS_BASE)" \
+		-f "$(GUARDRAILS_ENV_DIR)/$(ENV).yaml" \
+		-f "$(WORKSPACE_BASE_DIR)/be.yaml" \
+		-f "$(TMP_DIR)/$(ENV)/backend-env.yaml" \
+		> "$(MANIFEST_DIR)/$(ENV)/backend/manifest.yaml"
+	@helm template database "$(CHART_DIR)" \
 		--namespace database \
-		-f 2-platform-guardrails/prod-baseline.yaml \
-		-f 3-developer-workspace/base/db.yaml \
-		-f 3-developer-workspace/env/prod.yaml > .manifest/prod/database/manifest.yaml
-	@echo "✅ Done (Prod)!"
+		-f "$(GUARDRAILS_BASE)" \
+		-f "$(GUARDRAILS_ENV_DIR)/$(ENV).yaml" \
+		-f "$(WORKSPACE_BASE_DIR)/db.yaml" \
+		-f "$(TMP_DIR)/$(ENV)/database-env.yaml" \
+		> "$(MANIFEST_DIR)/$(ENV)/database/manifest.yaml"
+	@echo "✅ Done ($(ENV))!"
 
 clean:
-	@echo "==> Cleaning up .manifest folder..."
-	@rm -rf .manifest/*
+	@echo "==> Cleaning rendered manifests and temp files..."
+	@rm -rf "$(MANIFEST_DIR)"/* "$(TMP_DIR)"
 	@echo "✅ Done!"

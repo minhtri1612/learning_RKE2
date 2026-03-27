@@ -111,7 +111,7 @@ spec:
       containers:
       - name: database
         image: "postgres:15-alpine"
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5432
           name: postgres
@@ -210,7 +210,7 @@ spec:
       containers:
         - name: db-migration
           image: "postgres:15-alpine"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           resources:
             requests:
               ephemeral-storage: "500Mi"

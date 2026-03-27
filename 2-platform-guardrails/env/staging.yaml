@@ -1,0 +1,32 @@
+global:
+  environment: "staging"
+  cluster_name: "rke2-staging"
+
+platform_network:
+  base_domain: "staging.api.meo-stationery.com"
+  enable_tls: true
+
+app_tiers:
+  default_tier: "small"
+  allowed_tiers: ["small", "medium"]
+  profiles:
+    small:
+      replicas: 2
+      cpu_limit: "500m"
+      ram_limit: "1Gi"
+    medium:
+      replicas: 3
+      cpu_limit: "1000m"
+      ram_limit: "2Gi"
+
+db_tiers:
+  default_tier: "dev-heavy"
+  profiles:
+    dev-basic:
+      storage_class: "longhorn"
+      storage_size: "20Gi"
+      ram_limit: "2Gi"
+    dev-heavy:
+      storage_class: "longhorn"
+      storage_size: "50Gi"
+      ram_limit: "4Gi"

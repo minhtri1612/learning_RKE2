@@ -131,7 +131,7 @@ spec:
             memory: 16Mi
       containers:
       - name: backend
-        image: "minhtri1612/rke2:latest"
+        image: "minhtri1612/rke2:3.0.1"
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -229,7 +229,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: db-migration
-          image: "minhtri1612/rke2:latest"
+          image: "minhtri1612/rke2:3.0.1"
           imagePullPolicy: Always
           resources:
             requests:

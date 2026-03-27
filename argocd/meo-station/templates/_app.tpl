@@ -6,9 +6,11 @@ Usage:
   {{- include "meo-station.app" (dict "name" "database" "root" $) }}
 
 Value hierarchy (last wins) - IDP Pattern:
-  1. 1-platform-engine/generic-app      ← Engine
-  2. 2-platform-guardrails/<env>.yaml   ← DevOps Env rules
-  3. 3-developer-workspace/<env>/<app>  ← Dev Spec
+  1. 1-platform-engine/generic-app/values.yaml        ← Engine defaults
+  2. 2-platform-guardrails/base/baseline.yaml         ← Shared platform policy
+  3. 2-platform-guardrails/env/<env>.yaml             ← Env platform overrides
+  4. 3-developer-workspace/base/<be|db>.yaml          ← App base spec
+  5. 3-developer-workspace/env/<env>.yaml.<component> ← App env overrides
 */}}
 {{- define "meo-station.app" -}}
 {{- $name    := .name -}}

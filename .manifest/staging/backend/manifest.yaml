@@ -3,12 +3,12 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: database-generic-app-pdb
-  namespace: database
+  name: backend-generic-app-pdb
+  namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: database
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -18,18 +18,18 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: generic-app
-      app.kubernetes.io/instance: database
+      app.kubernetes.io/instance: backend
 ---
 # Source: generic-app/templates/secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: database-generic-app-secret
-  namespace: database
+  name: backend-generic-app-secret
+  namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: database
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -46,12 +46,12 @@ stringData:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: database-generic-app-configmap
-  namespace: database
+  name: backend-generic-app-configmap
+  namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: database
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -65,99 +65,119 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: database-generic-app
-  namespace: database
+  name: backend-generic-app
+  namespace: meo-stationery
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   selector:
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: database
+    app.kubernetes.io/instance: backend
   ports:
     - protocol: TCP
       port: 80
       targetPort: 3000
   type: ClusterIP
 ---
-# Source: generic-app/templates/statefulset.yaml
+# Source: generic-app/templates/deployment.yaml
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
-  name: database-generic-app
-  namespace: database
+  name: backend-generic-app
+  namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: database
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  serviceName: database-generic-app
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: generic-app
-      app.kubernetes.io/instance: database
+      app.kubernetes.io/instance: backend
   template:
     metadata:
       labels:
         app.kubernetes.io/name: generic-app
-        app.kubernetes.io/instance: database
+        app.kubernetes.io/instance: backend
     spec:
-      securityContext:
-        fsGroup: 999
-      containers:
-      - name: database
-        image: "postgres:15-alpine"
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 5432
-          name: postgres
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - generic-app
+              topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 30
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
         resources:
           limits:
-            memory: "16Gi"
+            cpu: 50m
+            memory: 32Mi
           requests:
-            memory: "16Gi"
-        env:
-        - name: PGDATA
-          value: /var/lib/postgresql/data/pgdata
-        - name: POSTGRES_DB
-          valueFrom:
-            secretKeyRef:
-              name: database-generic-app-secret
-              key: POSTGRES_DB
-        - name: POSTGRES_USER
-          valueFrom:
-            secretKeyRef:
-              name: database-generic-app-secret
-              key: POSTGRES_USER
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: database-generic-app-secret
-              key: POSTGRES_PASSWORD
-        volumeMounts:
-        - name: app-storage
-          mountPath: /var/lib/postgresql/data
-          subPath: pgdata
-  volumeClaimTemplates:
-  - metadata:
-      name: app-storage
-    spec:
-      accessModes:
-      - ReadWriteOnce
-      resources:
-        requests:
-          storage: 200Gi
+            cpu: 10m
+            memory: 16Mi
+      containers:
+      - name: backend
+        image: "minhtri1612/rke2:stg-1.0.0"
+        imagePullPolicy: Always
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          failureThreshold: 30
+          periodSeconds: 5
+        envFrom:
+        - configMapRef:
+            name: backend-generic-app-configmap
+        - secretRef:
+            name: backend-generic-app-secret
+        env: []
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        ports:
+        - containerPort: 3000
+          name: http
 ---
 # Source: generic-app/templates/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: database-generic-app
-  namespace: database
+  name: backend-generic-app
+  namespace: meo-stationery
   annotations:
     argocd.argoproj.io/sync-wave: "0"
     nginx.ingress.kubernetes.io/rewrite-target: /
@@ -166,17 +186,17 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - "database.api.meo-stationery.com"
-    secretName: database-tls
+    - "backend.staging.api.meo-stationery.com"
+    secretName: backend-tls
   rules:
-  - host: "database.api.meo-stationery.com"
+  - host: "backend.staging.api.meo-stationery.com"
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: database-generic-app
+            name: backend-generic-app
             port:
               number: 80
 ---
@@ -184,12 +204,12 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: database-generic-app-migration
-  namespace: database
+  name: backend-generic-app-migration
+  namespace: meo-stationery
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: database
+    app.kubernetes.io/instance: backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -201,10 +221,10 @@ spec:
   backoffLimit: 3
   template:
     metadata:
-      name: database-generic-app-migration
+      name: backend-generic-app-migration
       labels:
         app.kubernetes.io/name: generic-app
-        app.kubernetes.io/instance: database
+        app.kubernetes.io/instance: backend
     spec:
       initContainers:
       - name: wait-for-postgres
@@ -213,8 +233,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: db-migration
-          image: "postgres:15-alpine"
-          imagePullPolicy: IfNotPresent
+          image: "minhtri1612/rke2:stg-1.0.0"
+          imagePullPolicy: Always
           resources:
             requests:
               ephemeral-storage: "500Mi"
@@ -222,9 +242,9 @@ spec:
               ephemeral-storage: "1Gi"
           envFrom:
             - configMapRef:
-                name: database-generic-app-configmap
+                name: backend-generic-app-configmap
             - secretRef:
-                name: database-generic-app-secret
+                name: backend-generic-app-secret
           command: ["/bin/sh", "-c"]
           args:
             - |

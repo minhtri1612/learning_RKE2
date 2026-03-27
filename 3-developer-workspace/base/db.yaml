@@ -5,4 +5,4 @@ workload:
   kind: statefulset
   image:
     repository: "postgres"
-    tag: "15-alpine"
+    pullPolicy: IfNotPresent

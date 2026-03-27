@@ -1,0 +1,4 @@
+tier: "medium"
+workload:
+  image:
+    tag: "prod-1.0.0"
