@@ -1,0 +1,8 @@
+app_name: "database"
+app_type: "database"
+db_tier: "dev-basic"
+
+workload:
+  image:
+    repository: "postgres"
+    tag: "15-alpine"

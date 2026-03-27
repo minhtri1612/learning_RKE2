@@ -1,0 +1,49 @@
+# ==========================================
+# KHUNG TIÊU CHUẨN CHO MÔI TRƯỜNG: DEVELOPMENT
+# Chú ý: Cấm Developer sửa file này.
+# ==========================================
+global:
+  environment: "dev"
+  cluster_name: "rke2-dev-local"
+
+# ------------------------------------------
+# 1. LUẬT MẠNG (Network Defaults)
+# ------------------------------------------
+platform_network:
+  base_domain: "dev.meo-stationery.internal"
+  enable_tls: false
+
+# ------------------------------------------
+# 2. LUẬT TÀI NGUYÊN CHO WEB/API (Dành cho Backend)
+# ------------------------------------------
+app_tiers:
+  default_tier: "micro" 
+  allowed_tiers: ["micro", "small", "medium"] 
+  profiles:
+    micro:
+      replicas: 1
+      cpu_limit: "100m"
+      ram_limit: "128Mi"
+    small:
+      replicas: 1
+      cpu_limit: "250m"
+      ram_limit: "256Mi"
+    medium:
+      replicas: 2
+      cpu_limit: "500m"
+      ram_limit: "512Mi"
+
+# ------------------------------------------
+# 3. LUẬT TÀI NGUYÊN CHO STATEFUL (Dành cho Database)
+# ------------------------------------------
+db_tiers:
+  default_tier: "dev-basic"
+  profiles:
+    dev-basic:
+      storage_class: "local-path"
+      storage_size: "5Gi"
+      ram_limit: "512Mi"
+    dev-heavy:
+      storage_class: "local-path"
+      storage_size: "20Gi"
+      ram_limit: "2Gi"

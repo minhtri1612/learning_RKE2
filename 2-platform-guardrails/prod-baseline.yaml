@@ -1,0 +1,49 @@
+# ==========================================
+# KHUNG TIÊU CHUẨN CHO MÔI TRƯỜNG: PRODUCTION
+# Chú ý: Cấm Developer sửa file này.
+# ==========================================
+global:
+  environment: "prod"
+  cluster_name: "rke2-prod"
+
+# ------------------------------------------
+# 1. LUẬT MẠNG (Network Defaults)
+# ------------------------------------------
+platform_network:
+  base_domain: "api.meo-stationery.com"
+  enable_tls: true
+
+# ------------------------------------------
+# 2. LUẬT TÀI NGUYÊN CHO WEB/API (Dành cho Backend)
+# ------------------------------------------
+app_tiers:
+  default_tier: "small" 
+  allowed_tiers: ["small", "medium", "xlarge"] 
+  profiles:
+    small:
+      replicas: 2
+      cpu_limit: "500m"
+      ram_limit: "1Gi"
+    medium:
+      replicas: 5
+      cpu_limit: "1000m"
+      ram_limit: "2Gi"
+    xlarge:
+      replicas: 10
+      cpu_limit: "4000m"
+      ram_limit: "8Gi"
+
+# ------------------------------------------
+# 3. LUẬT TÀI NGUYÊN CHO STATEFUL (Dành cho Database)
+# ------------------------------------------
+db_tiers:
+  default_tier: "prod-basic"
+  profiles:
+    prod-basic:
+      storage_class: "longhorn"
+      storage_size: "50Gi"
+      ram_limit: "4Gi"
+    prod-heavy:
+      storage_class: "longhorn"
+      storage_size: "200Gi"
+      ram_limit: "16Gi"

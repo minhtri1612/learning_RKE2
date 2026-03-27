@@ -1,0 +1,8 @@
+app_name: "backend"
+app_type: "api"
+tier: "medium"
+
+workload:
+  image:
+    repository: "minhtri1612/rke2"
+    tag: "prod-1.0.0"

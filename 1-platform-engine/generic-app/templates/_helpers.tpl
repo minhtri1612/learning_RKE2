@@ -40,3 +40,28 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Map Resource Tier for Deployments / StatefulSets
+*/}}
+{{- define "generic-app.resources" -}}
+{{- if eq (.Values.app_type | default "api") "database" -}}
+{{- $tier := .Values.db_tier | default "dev-basic" -}}
+{{- $config := index .Values.db_tiers.profiles $tier -}}
+resources:
+  limits:
+    memory: {{ $config.ram_limit | quote }}
+  requests:
+    memory: {{ $config.ram_limit | quote }}
+{{- else -}}
+{{- $tier := .Values.tier | default "micro" -}}
+{{- $config := index .Values.app_tiers.profiles $tier -}}
+resources:
+  limits:
+    cpu: {{ $config.cpu_limit | quote }}
+    memory: {{ $config.ram_limit | quote }}
+  requests:
+    cpu: {{ $config.cpu_limit | quote }}
+    memory: {{ $config.ram_limit | quote }}
+{{- end -}}
+{{- end -}}

@@ -13,14 +13,14 @@ metadata:
     {{- end }}
 spec:
   ingressClassName: nginx
-  {{- if .Values.ingress.tls.enabled }}
+  {{- if .Values.platform_network.enable_tls }}
   tls:
   - hosts:
-    - {{ .Values.ingress.host | quote }}
-    secretName: {{ .Values.ingress.tls.secretName }}
+    - {{ printf "%s.%s" .Values.app_name .Values.platform_network.base_domain | quote }}
+    secretName: {{ printf "%s-tls" .Values.app_name }}
   {{- end }}
   rules:
-  - host: {{ .Values.ingress.host | quote }}
+  - host: {{ printf "%s.%s" .Values.app_name .Values.platform_network.base_domain | quote }}
     http:
       paths:
       - path: /
