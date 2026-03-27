@@ -4,7 +4,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: backend-generic-app-pdb
-  namespace: meo-stationery
+  namespace: default
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
@@ -20,12 +20,31 @@ spec:
       app.kubernetes.io/name: generic-app
       app.kubernetes.io/instance: backend
 ---
+# Source: generic-app/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-generic-app-secret
+  namespace: default
+  labels:
+    helm.sh/chart: generic-app-0.1.0
+    app.kubernetes.io/name: generic-app
+    app.kubernetes.io/instance: backend
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://meo_admin:@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public"
+  NEXTAUTH_SECRET: ""
+---
 # Source: generic-app/templates/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: backend-generic-app-configmap
-  namespace: meo-stationery
+  namespace: default
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
@@ -44,7 +63,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: backend-generic-app
-  namespace: meo-stationery
+  namespace: default
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
@@ -62,7 +81,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend-generic-app
-  namespace: meo-stationery
+  namespace: default
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
@@ -72,7 +91,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: generic-app
@@ -99,7 +118,7 @@ spec:
       initContainers:
       - name: wait-for-postgres
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z dev-database-generic-app.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
         resources:
           limits:
             cpu: 50m
@@ -137,54 +156,25 @@ spec:
         - configMapRef:
             name: backend-generic-app-configmap
         - secretRef:
-            name: meo-stationery-backend-secrets-dev
+            name: backend-generic-app-secret
         env: []
         resources:
-          requests:
-            memory: 256Mi
-            cpu: 128m
           limits:
-            memory: 2Gi
-            cpu: 1000m
+            cpu: "250m"
+            memory: "256Mi"
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
         ports:
         - containerPort: 3000
           name: http
----
-# Source: generic-app/templates/hpa.yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: backend-generic-app
-  labels:
-    helm.sh/chart: generic-app-0.1.0
-    app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: backend
-    app.kubernetes.io/version: "1.16.0"
-    app.kubernetes.io/managed-by: Helm
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-  namespace: meo-stationery
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: backend-generic-app
-  minReplicas: 5
-  maxReplicas: 8
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 80
 ---
 # Source: generic-app/templates/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: backend-generic-app
-  namespace: meo-stationery
+  namespace: default
   annotations:
     argocd.argoproj.io/sync-wave: "0"
     nginx.ingress.kubernetes.io/rewrite-target: /
@@ -192,7 +182,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: "meo-stationery-dev.local"
+  - host: "backend.dev.meo-stationery.internal"
     http:
       paths:
       - path: /
@@ -202,3 +192,110 @@ spec:
             name: backend-generic-app
             port:
               number: 80
+---
+# Source: generic-app/templates/migration-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backend-generic-app-migration
+  namespace: default
+  labels:
+    helm.sh/chart: generic-app-0.1.0
+    app.kubernetes.io/name: generic-app
+    app.kubernetes.io/instance: backend
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    helm.sh/hook-weight: "5"
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 3
+  template:
+    metadata:
+      name: backend-generic-app-migration
+      labels:
+        app.kubernetes.io/name: generic-app
+        app.kubernetes.io/instance: backend
+    spec:
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
+      restartPolicy: Never
+      containers:
+        - name: db-migration
+          image: "minhtri1612/rke2:3.0.1"
+          imagePullPolicy: Always
+          resources:
+            requests:
+              ephemeral-storage: "500Mi"
+            limits:
+              ephemeral-storage: "1Gi"
+          envFrom:
+            - configMapRef:
+                name: backend-generic-app-configmap
+            - secretRef:
+                name: backend-generic-app-secret
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set +e
+              echo "=== Migration Job Started ==="
+
+              DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+              DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+              DB_PORT=${DB_PORT:-5432}
+
+              MAX_RETRIES=30
+              RETRY_COUNT=0
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                if command -v nc >/dev/null 2>&1; then
+                  nc -z -w 2 "$DB_HOST" "$DB_PORT" 2>/dev/null && break
+                else
+                  timeout 2 bash -c "echo > /dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null && break
+                fi
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                [ $((RETRY_COUNT % 5)) -eq 0 ] && echo "Waiting for DB... ($RETRY_COUNT/$MAX_RETRIES)"
+                sleep 2
+              done
+
+              [ $RETRY_COUNT -ge $MAX_RETRIES ] && echo "ERROR: DB timeout" && exit 1
+              sleep 3
+
+              if [ -f "/app/node_modules/.bin/prisma" ]; then
+                PRISMA_CMD="npx prisma"
+              else
+                PRISMA_CMD="npx prisma@6"
+              fi
+
+              set -e
+              $PRISMA_CMD migrate deploy
+              echo "Migration completed!"
+
+              if [ ! -f /app/prisma/seed.ts ]; then
+                echo "No seed.ts found, skipping."
+                exit 0
+              fi
+
+              PRODUCT_COUNT=$(timeout 10 node -e "
+                try {
+                  const { PrismaClient } = require('@prisma/client');
+                  const prisma = new PrismaClient();
+                  prisma.product.count().then(n => { console.log(n); process.exit(0); })
+                    .catch(() => process.exit(1));
+                } catch(e) { console.log('0'); process.exit(0); }
+              " 2>/dev/null | tr -d '\n' || echo "0")
+
+              if [ "$PRODUCT_COUNT" -gt 0 ]; then
+                echo "Already seeded ($PRODUCT_COUNT products). Skipping."
+                exit 0
+              fi
+
+              if ! timeout 180 npx --yes tsx /app/prisma/seed.ts; then
+                npm install -g tsx 2>/dev/null || true
+                timeout 180 tsx /app/prisma/seed.ts
+              fi
+
+              echo "=== Migration & Seed completed ==="

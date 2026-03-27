@@ -1,18 +1,18 @@
 # ─── XƯƠNG SỐNG APP (base) ───
 # DevOps định nghĩa chartPath, namespace, syncWave.
-# Values nằm trong values/app/<service>.yaml và values/env/<env>/<service>.yaml.
+# Cấu trúc đã được chuyển qua mô hình IDP 3 Layer.
 
 apps:
   backend:
     name: backend
-    chartPath: k8s_helm/generic-app
+    chartPath: 1-platform-engine/generic-app
     namespace: meo-stationery
     targetRevision: main
     syncWave: "1"
 
   database:
     name: database
-    chartPath: k8s_helm/generic-app
+    chartPath: 1-platform-engine/generic-app
     namespace: database
     targetRevision: main
     syncWave: "0"

@@ -3,12 +3,12 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: dev-database-generic-app-pdb
-  namespace: database
+  name: database-generic-app-pdb
+  namespace: default
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-database
+    app.kubernetes.io/instance: database
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -18,18 +18,37 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: generic-app
-      app.kubernetes.io/instance: dev-database
+      app.kubernetes.io/instance: database
+---
+# Source: generic-app/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: database-generic-app-secret
+  namespace: default
+  labels:
+    helm.sh/chart: generic-app-0.1.0
+    app.kubernetes.io/name: generic-app
+    app.kubernetes.io/instance: database
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://meo_admin:@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public"
+  NEXTAUTH_SECRET: ""
 ---
 # Source: generic-app/templates/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: dev-database-generic-app-configmap
-  namespace: database
+  name: database-generic-app-configmap
+  namespace: default
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-database
+    app.kubernetes.io/instance: database
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
@@ -43,97 +62,220 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: dev-database-generic-app
-  namespace: database
+  name: database-generic-app
+  namespace: default
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   selector:
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-database
+    app.kubernetes.io/instance: database
   ports:
     - protocol: TCP
-      port: 5432
-      targetPort: 5432
+      port: 80
+      targetPort: 3000
   type: ClusterIP
 ---
 # Source: generic-app/templates/statefulset.yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: dev-database-generic-app
-  namespace: database
+  name: database-generic-app
+  namespace: default
   labels:
     helm.sh/chart: generic-app-0.1.0
     app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: dev-database
+    app.kubernetes.io/instance: database
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  serviceName: dev-database-generic-app
+  serviceName: database-generic-app
   replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: generic-app
-      app.kubernetes.io/instance: dev-database
+      app.kubernetes.io/instance: database
   template:
     metadata:
       labels:
         app.kubernetes.io/name: generic-app
-        app.kubernetes.io/instance: dev-database
+        app.kubernetes.io/instance: database
     spec:
       securityContext:
         fsGroup: 999
       containers:
-      - name: database
-        image: "postgres:13"
-        imagePullPolicy: IfNotPresent
+      - name: generic-app
+        image: "postgres:15-alpine"
+        imagePullPolicy: Always
         ports:
         - containerPort: 5432
           name: postgres
-        livenessProbe:
-          exec:
-            command:
-              - "pg_isready"
-              - "-U"
-              - "meo_admin"
-              - "-d"
-              - "meo_stationery"
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          successThreshold: 1
-          failureThreshold: 6
+        resources:
+          limits:
+            memory: "512Mi"
+          requests:
+            memory: "512Mi"
         env:
         - name: PGDATA
           value: /var/lib/postgresql/data/pgdata
         - name: POSTGRES_DB
           valueFrom:
             secretKeyRef:
-              name: meo-stationery-database-secrets-dev
+              name: database-generic-app
               key: POSTGRES_DB
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
-              name: meo-stationery-database-secrets-dev
+              name: database-generic-app
               key: POSTGRES_USER
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: meo-stationery-database-secrets-dev
+              name: database-generic-app
               key: POSTGRES_PASSWORD
         volumeMounts:
-        - name: postgres-storage
+        - name: app-storage
           mountPath: /var/lib/postgresql/data
           subPath: pgdata
   volumeClaimTemplates:
   - metadata:
-      name: postgres-storage
+      name: app-storage
     spec:
       accessModes:
       - ReadWriteOnce
       resources:
         requests:
-          storage: 1Gi
+          storage: 5Gi
+---
+# Source: generic-app/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: database-generic-app
+  namespace: default
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: "database.dev.meo-stationery.internal"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: database-generic-app
+            port:
+              number: 80
+---
+# Source: generic-app/templates/migration-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-generic-app-migration
+  namespace: default
+  labels:
+    helm.sh/chart: generic-app-0.1.0
+    app.kubernetes.io/name: generic-app
+    app.kubernetes.io/instance: database
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    helm.sh/hook-weight: "5"
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 3
+  template:
+    metadata:
+      name: database-generic-app-migration
+      labels:
+        app.kubernetes.io/name: generic-app
+        app.kubernetes.io/instance: database
+    spec:
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
+      restartPolicy: Never
+      containers:
+        - name: db-migration
+          image: "postgres:15-alpine"
+          imagePullPolicy: Always
+          resources:
+            requests:
+              ephemeral-storage: "500Mi"
+            limits:
+              ephemeral-storage: "1Gi"
+          envFrom:
+            - configMapRef:
+                name: database-generic-app-configmap
+            - secretRef:
+                name: database-generic-app-secret
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set +e
+              echo "=== Migration Job Started ==="
+
+              DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+              DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+              DB_PORT=${DB_PORT:-5432}
+
+              MAX_RETRIES=30
+              RETRY_COUNT=0
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                if command -v nc >/dev/null 2>&1; then
+                  nc -z -w 2 "$DB_HOST" "$DB_PORT" 2>/dev/null && break
+                else
+                  timeout 2 bash -c "echo > /dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null && break
+                fi
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                [ $((RETRY_COUNT % 5)) -eq 0 ] && echo "Waiting for DB... ($RETRY_COUNT/$MAX_RETRIES)"
+                sleep 2
+              done
+
+              [ $RETRY_COUNT -ge $MAX_RETRIES ] && echo "ERROR: DB timeout" && exit 1
+              sleep 3
+
+              if [ -f "/app/node_modules/.bin/prisma" ]; then
+                PRISMA_CMD="npx prisma"
+              else
+                PRISMA_CMD="npx prisma@6"
+              fi
+
+              set -e
+              $PRISMA_CMD migrate deploy
+              echo "Migration completed!"
+
+              if [ ! -f /app/prisma/seed.ts ]; then
+                echo "No seed.ts found, skipping."
+                exit 0
+              fi
+
+              PRODUCT_COUNT=$(timeout 10 node -e "
+                try {
+                  const { PrismaClient } = require('@prisma/client');
+                  const prisma = new PrismaClient();
+                  prisma.product.count().then(n => { console.log(n); process.exit(0); })
+                    .catch(() => process.exit(1));
+                } catch(e) { console.log('0'); process.exit(0); }
+              " 2>/dev/null | tr -d '\n' || echo "0")
+
+              if [ "$PRODUCT_COUNT" -gt 0 ]; then
+                echo "Already seeded ($PRODUCT_COUNT products). Skipping."
+                exit 0
+              fi
+
+              if ! timeout 180 npx --yes tsx /app/prisma/seed.ts; then
+                npm install -g tsx 2>/dev/null || true
+                timeout 180 tsx /app/prisma/seed.ts
+              fi
+
+              echo "=== Migration & Seed completed ==="

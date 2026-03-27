@@ -5,10 +5,10 @@ Usage:
   {{- include "meo-station.app" (dict "name" "backend" "root" $) }}
   {{- include "meo-station.app" (dict "name" "database" "root" $) }}
 
-Value hierarchy (last wins):
-  1. Chart values.yaml          ← chart defaults
-  2. values/app/<app>.yaml      ← app baseline
-  3. values/env/<env>/<app>.yaml ← env-specific overrides
+Value hierarchy (last wins) - IDP Pattern:
+  1. 1-platform-engine/generic-app      ← Engine
+  2. 2-platform-guardrails/<env>.yaml   ← DevOps Env rules
+  3. 3-developer-workspace/<env>/<app>  ← Dev Spec
 */}}
 {{- define "meo-station.app" -}}
 {{- $name    := .name -}}

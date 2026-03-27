@@ -3,6 +3,7 @@ app_type: "database"
 db_tier: "prod-heavy"
 
 workload:
+  kind: statefulset
   image:
     repository: "postgres"
     tag: "15-alpine"
