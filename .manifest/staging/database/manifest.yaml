@@ -152,34 +152,6 @@ spec:
         requests:
           storage: 50Gi
 ---
-# Source: generic-app/templates/ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: database-generic-app
-  namespace: database
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  tls:
-  - hosts:
-    - "database.staging.api.meo-stationery.com"
-    secretName: database-tls
-  rules:
-  - host: "database.staging.api.meo-stationery.com"
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: database-generic-app
-            port:
-              number: 80
----
 # Source: generic-app/templates/migration-job.yaml
 apiVersion: batch/v1
 kind: Job

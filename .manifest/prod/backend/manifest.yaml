@@ -121,7 +121,7 @@ spec:
       initContainers:
       - name: wait-for-postgres
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z database-generic-app.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
         resources:
           limits:
             cpu: 50m
@@ -229,7 +229,7 @@ spec:
       initContainers:
       - name: wait-for-postgres
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z postgres.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z database-generic-app.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
       restartPolicy: Never
       containers:
         - name: db-migration

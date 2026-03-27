@@ -1,6 +1,10 @@
 app_name: "backend"
 app_type: "api"
 
+databaseConnection:
+  host: "database-generic-app.database.svc.cluster.local"
+  port: 5432
+
 workload:
   kind: deployment
   image:
