@@ -1,5 +1,4 @@
-# Mọi thao tác sinh manifest được gom lệnh vào đây cho nhàn
-
+# Makefile updated for Base + Env Layout
 .PHONY: render-all render-dev render-prod clean
 
 render-all: render-dev render-prod
@@ -10,12 +9,14 @@ render-dev:
 	@helm template backend 1-platform-engine/generic-app \
 		--namespace meo-stationery \
 		-f 2-platform-guardrails/dev-baseline.yaml \
-		-f 3-developer-workspace/dev/backend.yaml > .manifest/dev/backend/manifest.yaml
+		-f 3-developer-workspace/base/be.yaml \
+		-f 3-developer-workspace/env/dev.yaml > .manifest/dev/backend/manifest.yaml
 	@mkdir -p .manifest/dev/database
 	@helm template database 1-platform-engine/generic-app \
 		--namespace database \
 		-f 2-platform-guardrails/dev-baseline.yaml \
-		-f 3-developer-workspace/dev/database.yaml > .manifest/dev/database/manifest.yaml
+		-f 3-developer-workspace/base/db.yaml \
+		-f 3-developer-workspace/env/dev.yaml > .manifest/dev/database/manifest.yaml
 	@echo "✅ Done (Dev)!"
 
 render-prod:
@@ -24,12 +25,14 @@ render-prod:
 	@helm template backend 1-platform-engine/generic-app \
 		--namespace meo-stationery \
 		-f 2-platform-guardrails/prod-baseline.yaml \
-		-f 3-developer-workspace/prod/backend.yaml > .manifest/prod/backend/manifest.yaml
+		-f 3-developer-workspace/base/be.yaml \
+		-f 3-developer-workspace/env/prod.yaml > .manifest/prod/backend/manifest.yaml
 	@mkdir -p .manifest/prod/database
 	@helm template database 1-platform-engine/generic-app \
 		--namespace database \
 		-f 2-platform-guardrails/prod-baseline.yaml \
-		-f 3-developer-workspace/prod/database.yaml > .manifest/prod/database/manifest.yaml
+		-f 3-developer-workspace/base/db.yaml \
+		-f 3-developer-workspace/env/prod.yaml > .manifest/prod/database/manifest.yaml
 	@echo "✅ Done (Prod)!"
 
 clean:

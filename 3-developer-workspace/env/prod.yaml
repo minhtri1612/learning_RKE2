@@ -1,0 +1,3 @@
+# Environment Wide Configurations cho môi trường Prod
+tier: "medium"
+db_tier: "prod-heavy"

@@ -1,0 +1,3 @@
+# Environment Wide Configurations cho môi trường Staging
+tier: "small"
+db_tier: "dev-heavy"

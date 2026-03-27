@@ -1,0 +1,7 @@
+# Environment Wide Configurations cho môi trường Dev
+tier: "small"         # Dành cho các app hệ API
+db_tier: "dev-basic"  # Dành cho các hệ Database
+
+# Chú ý: Vì file này dùng chung cho cả BE và DB khi render
+# Không nên gõ workload.image.tag ở đây vì nó sẽ đè tag của cả Postgres.
+# Tag của BE có thể truyền qua CI/CD bằng --set workload.image.tag=...

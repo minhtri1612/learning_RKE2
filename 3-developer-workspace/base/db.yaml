@@ -1,6 +1,5 @@
 app_name: "database"
 app_type: "database"
-db_tier: "prod-heavy"
 
 workload:
   kind: statefulset
