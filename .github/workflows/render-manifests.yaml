@@ -45,11 +45,6 @@ jobs:
               helm template $FOLDER ./template \
                 -f app/$app.yaml \
                 -f env/$env.yaml \
-                --show-only templates/serviceaccount.yaml \
-                --show-only templates/service.yaml \
-                --show-only templates/deployment.yaml \
-                --show-only templates/statefulset.yaml \
-                --show-only templates/service-headless.yaml \
                 > .manifest/$env/$FOLDER/manifest.yaml
             done
           done
