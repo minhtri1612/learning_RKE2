@@ -39,6 +39,8 @@ environments:
     namespaceResourceWhitelist:
       - group: "argoproj.io"
         kind: Application
+      - group: ""
+        kind: ServiceAccount
       - group: "apps"
         kind: Deployment
       - group: "apps"

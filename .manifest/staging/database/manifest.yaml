@@ -71,7 +71,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 spec:
   serviceName: staging-database-hl
-  replicas: 3
+  replicas: 5
   selector:
     matchLabels:
       app.kubernetes.io/name: database
