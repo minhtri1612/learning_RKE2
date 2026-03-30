@@ -10,6 +10,7 @@ database:
     tag: "16"
   replicaCount: 4
 redis:
+  profile: stateful
   image:
     tag: "7.4.1"
   replicaCount: 3
