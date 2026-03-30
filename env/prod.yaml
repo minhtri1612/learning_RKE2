@@ -1,0 +1,10 @@
+# Chỉ tag phiên bản image — team developer.
+# helm ... -f app/be.yaml|db.yaml -f env/prod.yaml
+
+backend:
+  image:
+    tag: "2.0.1"
+
+database:
+  image:
+    tag: "16"

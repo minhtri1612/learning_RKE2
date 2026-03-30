@@ -1,0 +1,10 @@
+# Chỉ tag phiên bản image — team developer chỉnh ở đây cho từng môi trường.
+# Merge: helm ... -f app/be.yaml|db.yaml -f env/dev.yaml
+
+backend:
+  image:
+    tag: "2.0.1-dev"
+
+database:
+  image:
+    tag: "16"

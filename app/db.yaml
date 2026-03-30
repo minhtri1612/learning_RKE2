@@ -1,0 +1,60 @@
+# Đè lên chart template/ (Workload + K8s). Tag Postgres: env/<env>.yaml (database.image.tag).
+# helm template database ./template -f app/db.yaml -f env/dev.yaml
+# Production: thay database.password bằng existingSecret trỏ tới Secret trong cluster.
+
+nameOverride: database
+workloadKind: statefulset
+
+image:
+  repository: postgres
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 5432
+  targetPort: postgres
+  containerPort: 5432
+  portName: postgres
+
+replicaCount: 1
+
+autoscaling:
+  enabled: false
+
+ingress:
+  enabled: false
+
+httpRoute:
+  enabled: false
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "1Gi"
+    cpu: "500m"
+
+persistence:
+  enabled: true
+  size: 10Gi
+
+database:
+  username: meo_admin
+  name: meo_stationery
+  password: "dev-only-change-me"
+
+statefulset:
+  mountPath: /var/lib/postgresql/data
+  livenessProbe:
+    exec:
+      command: ["pg_isready", "-U", "meo_admin", "-d", "meo_stationery"]
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    exec:
+      command: ["pg_isready", "-U", "meo_admin", "-d", "meo_stationery"]
+    initialDelaySeconds: 5
+    periodSeconds: 5

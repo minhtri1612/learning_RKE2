@@ -1,0 +1,32 @@
+# Đè lên chart template/ (Workload + K8s). Tag phiên bản: env/<env>.yaml (backend.image.tag).
+# helm template backend ./template -f app/be.yaml -f env/dev.yaml
+
+nameOverride: backend
+
+image:
+  repository: minhtri1612/rke2
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: http
+  containerPort: 3000
+  portName: http
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "128m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
