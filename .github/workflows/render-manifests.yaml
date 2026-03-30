@@ -1,0 +1,60 @@
+name: Auto Render Manifests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'env/**'
+      - 'template/**'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Cho phép bot commit ngược lại repo
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Render All Manifests
+        run: |
+          # 1. Định nghĩa các môi trường dựa trên file trong env/
+          ENVS=$(ls env/*.yaml | xargs -n 1 basename | sed 's/.yaml//')
+          
+          # 2. Định nghĩa các apps dựa trên file trong app/
+          APPS=$(ls app/*.yaml | xargs -n 1 basename | sed 's/.yaml//')
+
+          for env in $ENVS; do
+            for app in $APPS; do
+              # Lấy tên folder từ nameOverride trong app yaml (be.yaml -> backend, db.yaml -> database)
+              FOLDER=$(grep '^nameOverride:' app/$app.yaml | awk '{print $2}')
+              FOLDER=${FOLDER:-$app}
+
+              echo "--- Rendering $app -> .manifest/$env/$FOLDER ---"
+              mkdir -p .manifest/$env/$FOLDER
+              
+              helm template $FOLDER ./template \
+                -f app/$app.yaml \
+                -f env/$env.yaml \
+                --show-only templates/serviceaccount.yaml \
+                --show-only templates/service.yaml \
+                --show-only templates/deployment.yaml \
+                --show-only templates/statefulset.yaml \
+                --show-only templates/service-headless.yaml \
+                > .manifest/$env/$FOLDER/manifest.yaml
+            done
+          done
+
+      - name: Commit and Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: auto-render manifests [skip ci]"
+          file_pattern: '.manifest/**'
