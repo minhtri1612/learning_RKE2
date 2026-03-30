@@ -1,0 +1,12 @@
+# Kind cluster: staging (giống VPC dev, nhưng API server expose host port khác)
+# Argo CD sẽ gọi API server của cluster staging.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.28.0
+    extraPortMappings:
+      - containerPort: 6443
+        hostPort: 32443
+        protocol: TCP

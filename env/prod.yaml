@@ -4,7 +4,7 @@
 backend:
   image:
     tag: "3.0.1"
-  replicaCount: 10
+  replicaCount: 8
 database:
   image:
     tag: "16"
