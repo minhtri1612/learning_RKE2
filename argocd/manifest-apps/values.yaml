@@ -1,9 +1,14 @@
-# Parent chart: render ra các Application CR trỏ vào chart Helm template/ + app/ + env/
-
 repoURL: https://github.com/minhtri1612/learning_RKE2.git
 name: meostation
-
 env: ""
 project: ""
 cluster: ""
 automated: false
+
+apps:
+  backend:
+    namespace: meo-stationery
+    syncWave: "1"
+  database:
+    namespace: database
+    syncWave: "0"

@@ -1,0 +1,44 @@
+{{- range $appName, $app := .Values.apps }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $.Values.env }}-{{ $.Values.name }}-{{ $appName }}-app
+  namespace: argocd
+  labels:
+    project: {{ $.Values.name }}
+    env: {{ $.Values.env }}
+    component: {{ $appName }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ $app.syncWave | default "0" | quote }}
+spec:
+  project: {{ $.Values.project }}
+  source:
+    repoURL: {{ $.Values.repoURL }}
+    targetRevision: main
+    path: {{ printf ".manifest/%s/%s" $.Values.env $appName }}
+    directory:
+      recurse: true
+  destination:
+    name: {{ $.Values.cluster }}
+    namespace: {{ $app.namespace }}
+  syncPolicy:
+    {{- if eq (toString $.Values.automated) "true" }}
+    automated:
+      prune: true
+      selfHeal: true
+    {{- end }}
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        maxDuration: 5m
+        factor: 2
+    syncOptions:
+      - CreateNamespace=true
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+{{- end }}

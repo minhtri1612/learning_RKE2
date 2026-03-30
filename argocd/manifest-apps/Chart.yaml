@@ -1,0 +1,6 @@
+apiVersion: v2
+name: manifest-apps
+description: App-of-Apps chart — sinh ArgoCD Application con trỏ vào .manifest/<env>/<component>
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

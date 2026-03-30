@@ -11,10 +11,8 @@ spec:
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
     targetRevision: main
-    path: argocd/meo-station
+    path: argocd/manifest-apps
     helm:
-      valueFiles:
-        - app-base.yaml
       parameters:
         - name: env
           value: dev
