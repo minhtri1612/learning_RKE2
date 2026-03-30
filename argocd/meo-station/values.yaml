@@ -1,8 +1,7 @@
-# ─── LAYER 2 – PLATFORM ───
-# Chỉ platform config. App base = app-base.yaml, env override = environments/*.yaml.
+# Parent chart: render ra các Application CR trỏ vào chart Helm template/ + app/ + env/
 
 repoURL: https://github.com/minhtri1612/learning_RKE2.git
-name: meostation      # project name — dùng trong <env>-<name>-<service>-app
+name: meostation
 
 env: ""
 project: ""

@@ -1,21 +1,15 @@
 {{/*
-Sinh 1 ArgoCD Application cho 1 service cụ thể.
+Một Argo CD Application = một Helm release (chart template/ + app overlay + env tag overlay).
 
-Usage:
-  {{- include "meo-station.app" (dict "name" "backend" "root" $) }}
-  {{- include "meo-station.app" (dict "name" "database" "root" $) }}
-
-Value hierarchy (last wins) - IDP Pattern:
-  1. 1-platform-engine/generic-app/values.yaml        ← Engine defaults
-  2. 2-platform-guardrails/base/baseline.yaml         ← Shared platform policy
-  3. 2-platform-guardrails/env/<env>.yaml             ← Env platform overrides
-  4. 3-developer-workspace/base/<be|db>.yaml          ← App base spec
-  5. 3-developer-workspace/env/<env>.yaml.<component> ← App env overrides
+Merge values (Helm -f theo thứ tự):
+  1. template/values.yaml        (gốc trong chart)
+  2. app/be.yaml | app/db.yaml   (literal theo service)
+  3. env/<env>.yaml              (backend.image.tag, database.image.tag — dev team)
 */}}
 {{- define "meo-station.app" -}}
-{{- $name    := .name -}}
-{{- $root    := .root -}}
-{{- $app     := index $root.Values.apps $name -}}
+{{- $name := .name -}}
+{{- $root := .root -}}
+{{- $app := index $root.Values.apps $name -}}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -33,7 +27,12 @@ spec:
   source:
     repoURL: {{ $root.Values.repoURL }}
     targetRevision: {{ $app.targetRevision | default "main" }}
-    path: .manifest/{{ $root.Values.env }}/{{ $name }}
+    path: template
+    helm:
+      releaseName: {{ $app.releaseName | default (printf "%s-%s" $root.Values.env $name) }}
+      valueFiles:
+        - {{ $app.valueFile | quote }}
+        - {{ printf "../env/%s.yaml" $root.Values.env | quote }}
   destination:
     name: {{ $root.Values.cluster }}
     namespace: {{ $app.namespace }}
@@ -51,7 +50,6 @@ spec:
         factor: 2
     syncOptions:
       - CreateNamespace=true
-  # HPA owns Deployment.spec.replicas. Without this, Argo selfHeal fights HPA → pods flap (scale up/down loop).
   ignoreDifferences:
     - group: apps
       kind: Deployment

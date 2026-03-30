@@ -173,16 +173,18 @@ cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 argocd login localhost:8080 --insecure --username admin --password "<admin_password>"
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
-# Apply projects trước, rồi 2 stack (dev + prod)
+# Apply projects trước, rồi stack (dev / staging / prod tùy nhu cầu)
 kubectl apply -f argocd/bootstrap/01-projects.yaml
-kubectl apply -f argocd/bootstrap/02-stack-app.yaml
-kubectl apply -f argocd/bootstrap/03-prod-meostation-stack.yaml
+kubectl apply -f argocd/bootstrap/02-dev-meostation-stack.yaml
+kubectl apply -f argocd/bootstrap/03-staging-meostation-stack.yaml
+kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
 ```
 
 Sau khi sync xong, sẽ có:
 
-- **argocd-projects** → deploy `argocd/projects` → tạo AppProject `dev`, `prod`
+- **argocd-projects** → deploy `argocd/projects` → tạo AppProject `dev`, `staging`, `prod`
 - **dev-meostation** → deploy `argocd/meo-station` + env dev → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app` (cluster **dev**)
+- **staging-meostation** → tương tự, `env/staging.yaml` + cluster **staging**
 - **prod-meostation** → deploy `argocd/meo-station` + env prod → sinh ra `prod-meostation-backend-app`, `prod-meostation-database-app` (cluster **prod**)
 
 > **Lưu ý:** Đối với môi trường **prod**, chính sách sync là `Manual`. Cần vào UI Argo CD (hoặc CLI) bấm Sync thủ công cho app prod.
@@ -369,14 +371,16 @@ cd ~/Downloads/practice_RKE2
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
 kubectl apply -f argocd/bootstrap/01-projects.yaml
-kubectl apply -f argocd/bootstrap/02-stack-app.yaml
-kubectl apply -f argocd/bootstrap/03-prod-meostation-stack.yaml
+kubectl apply -f argocd/bootstrap/02-dev-meostation-stack.yaml
+kubectl apply -f argocd/bootstrap/03-staging-meostation-stack.yaml
+kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
 ```
 
 Sau khi sync xong, sẽ có:
 
-- `argocd-projects` → tạo AppProject dev, prod
+- `argocd-projects` → tạo AppProject dev, staging, prod
 - `dev-meostation` → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app`
+- `staging-meostation` → sinh ra `staging-meostation-*-app`
 - `prod-meostation` → sinh ra `prod-meostation-backend-app`, `prod-meostation-database-app`
 
 Với môi trường **prod** (sync policy `Manual`), force sync thủ công:

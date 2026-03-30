@@ -1,16 +1,15 @@
-# ─── XƯƠNG SỐNG APP (base) ───
-# DevOps định nghĩa namespace/syncWave/targetRevision.
-# Ứng dụng sync từ rendered manifests tại .manifest/<env>/<app>.
+# Cấu hình chung cho chart meostation-apps (Argo sinh Application).
+# valueFile: đường dẫn tương đối từ thư mục template/ (path Argo source).
 
 apps:
   backend:
-    name: backend
     namespace: meo-stationery
     targetRevision: main
     syncWave: "1"
+    valueFile: ../app/be.yaml
 
   database:
-    name: database
     namespace: database
     targetRevision: main
     syncWave: "0"
+    valueFile: ../app/db.yaml

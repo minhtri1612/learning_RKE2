@@ -14,6 +14,18 @@ environments:
       - group: "*"
         kind: "*"          # dev: thoải mái, dễ debug
 
+  - name: staging
+    cluster: staging
+    namespaces:
+      - meo-stationery
+      - database
+    clusterResourceWhitelist:
+      - group: ""
+        kind: Namespace
+    namespaceResourceWhitelist:
+      - group: "*"
+        kind: "*"
+
   - name: prod
     cluster: prod
     namespaces:

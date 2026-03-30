@@ -1,308 +1,107 @@
 ---
-# Source: generic-app/templates/pdb.yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: backend-generic-app-pdb
-  namespace: meo-stationery
-  labels:
-    helm.sh/chart: generic-app-0.1.0
-    app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: backend
-    app.kubernetes.io/version: "1.16.0"
-    app.kubernetes.io/managed-by: Helm
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: generic-app
-      app.kubernetes.io/instance: backend
----
-# Source: generic-app/templates/secret.yaml
+# Source: template/templates/serviceaccount.yaml
 apiVersion: v1
-kind: Secret
+kind: ServiceAccount
 metadata:
-  name: backend-generic-app-secret
-  namespace: meo-stationery
+  name: staging-backend
   labels:
-    helm.sh/chart: generic-app-0.1.0
-    app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: backend
+    helm.sh/chart: template-0.1.0
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/instance: staging-backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-type: Opaque
-stringData:
-  DATABASE_URL: "postgresql://meo_admin:@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public"
-  NEXTAUTH_SECRET: ""
-  POSTGRES_DB: "meo_stationery"
-  POSTGRES_USER: "meo_admin"
-  POSTGRES_PASSWORD: "postgres"
+automountServiceAccountToken: true
 ---
-# Source: generic-app/templates/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: backend-generic-app-configmap
-  namespace: meo-stationery
-  labels:
-    helm.sh/chart: generic-app-0.1.0
-    app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: backend
-    app.kubernetes.io/version: "1.16.0"
-    app.kubernetes.io/managed-by: Helm
-  annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/sync-wave: "-2"
-data:
-  NEXTAUTH_URL: "http://meo-stationery.local"
-  NODE_ENV: "production"
----
-# Source: generic-app/templates/service.yaml
+# Source: template/templates/service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: backend-generic-app
-  namespace: meo-stationery
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
+  name: staging-backend
+  labels:
+    helm.sh/chart: template-0.1.0
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/instance: staging-backend
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
 spec:
-  selector:
-    app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: backend
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 3000
   type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/instance: staging-backend
 ---
-# Source: generic-app/templates/deployment.yaml
+# Source: template/templates/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend-generic-app
-  namespace: meo-stationery
+  name: staging-backend
   labels:
-    helm.sh/chart: generic-app-0.1.0
-    app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: backend
+    helm.sh/chart: template-0.1.0
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/instance: staging-backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: generic-app
-      app.kubernetes.io/instance: backend
+      app.kubernetes.io/name: backend
+      app.kubernetes.io/instance: staging-backend
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: generic-app
-        app.kubernetes.io/instance: backend
+        helm.sh/chart: template-0.1.0
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/instance: staging-backend
+        app.kubernetes.io/version: "1.16.0"
+        app.kubernetes.io/managed-by: Helm
     spec:
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app.kubernetes.io/name
-                  operator: In
-                  values:
-                  - generic-app
-              topologyKey: kubernetes.io/hostname
-      terminationGracePeriodSeconds: 30
-      initContainers:
-      - name: wait-for-postgres
-        image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z database-generic-app.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
-        resources:
-          limits:
-            cpu: 50m
-            memory: 32Mi
-          requests:
-            cpu: 10m
-            memory: 16Mi
+      serviceAccountName: staging-backend
       containers:
-      - name: backend
-        image: "minhtri1612/rke2:stg-1.0.0"
-        imagePullPolicy: Always
-        livenessProbe:
-          httpGet:
-            path: /api/health
-            port: 3000
-          initialDelaySeconds: 30
-          periodSeconds: 20
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /api/health
-            port: 3000
-          initialDelaySeconds: 15
-          periodSeconds: 10
-          timeoutSeconds: 3
-          failureThreshold: 3
-        startupProbe:
-          httpGet:
-            path: /api/health
-            port: 3000
-          failureThreshold: 30
-          periodSeconds: 5
-        envFrom:
-        - configMapRef:
-            name: backend-generic-app-configmap
-        - secretRef:
-            name: backend-generic-app-secret
-        env: []
-        resources:
-          limits:
-            cpu: "500m"
-            memory: "1Gi"
-          requests:
-            cpu: "500m"
-            memory: "1Gi"
-        ports:
-        - containerPort: 3000
-          name: http
+        - name: template
+          image: "minhtri1612/rke2:3.0.1"
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 128m
+              memory: 256Mi
 ---
-# Source: generic-app/templates/ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# Source: template/templates/tests/test-connection.yaml
+apiVersion: v1
+kind: Pod
 metadata:
-  name: backend-generic-app
-  namespace: meo-stationery
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  tls:
-  - hosts:
-    - "backend.staging.api.meo-stationery.com"
-    secretName: backend-tls
-  rules:
-  - host: "backend.staging.api.meo-stationery.com"
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: backend-generic-app
-            port:
-              number: 80
----
-# Source: generic-app/templates/migration-job.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: backend-generic-app-migration
-  namespace: meo-stationery
+  name: "staging-backend-test-connection"
   labels:
-    helm.sh/chart: generic-app-0.1.0
-    app.kubernetes.io/name: generic-app
-    app.kubernetes.io/instance: backend
+    helm.sh/chart: template-0.1.0
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/instance: staging-backend
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
-    helm.sh/hook: post-install,post-upgrade
-    helm.sh/hook-delete-policy: before-hook-creation
-    helm.sh/hook-weight: "5"
+    "helm.sh/hook": test
 spec:
-  activeDeadlineSeconds: 900
-  backoffLimit: 3
-  template:
-    metadata:
-      name: backend-generic-app-migration
-      labels:
-        app.kubernetes.io/name: generic-app
-        app.kubernetes.io/instance: backend
-    spec:
-      initContainers:
-      - name: wait-for-postgres
-        image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z database-generic-app.database.svc.cluster.local 5432; do echo waiting for postgres; sleep 2; done;']
-      restartPolicy: Never
-      containers:
-        - name: db-migration
-          image: "minhtri1612/rke2:stg-1.0.0"
-          imagePullPolicy: Always
-          resources:
-            requests:
-              ephemeral-storage: "500Mi"
-            limits:
-              ephemeral-storage: "1Gi"
-          envFrom:
-            - configMapRef:
-                name: backend-generic-app-configmap
-            - secretRef:
-                name: backend-generic-app-secret
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              set +e
-              echo "=== Migration Job Started ==="
-
-              DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
-              DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
-              DB_PORT=${DB_PORT:-5432}
-
-              MAX_RETRIES=30
-              RETRY_COUNT=0
-              while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-                if command -v nc >/dev/null 2>&1; then
-                  nc -z -w 2 "$DB_HOST" "$DB_PORT" 2>/dev/null && break
-                else
-                  timeout 2 bash -c "echo > /dev/tcp/$DB_HOST/$DB_PORT" 2>/dev/null && break
-                fi
-                RETRY_COUNT=$((RETRY_COUNT + 1))
-                [ $((RETRY_COUNT % 5)) -eq 0 ] && echo "Waiting for DB... ($RETRY_COUNT/$MAX_RETRIES)"
-                sleep 2
-              done
-
-              [ $RETRY_COUNT -ge $MAX_RETRIES ] && echo "ERROR: DB timeout" && exit 1
-              sleep 3
-
-              if [ -f "/app/node_modules/.bin/prisma" ]; then
-                PRISMA_CMD="npx prisma"
-              else
-                PRISMA_CMD="npx prisma@6"
-              fi
-
-              set -e
-              $PRISMA_CMD migrate deploy
-              echo "Migration completed!"
-
-              if [ ! -f /app/prisma/seed.ts ]; then
-                echo "No seed.ts found, skipping."
-                exit 0
-              fi
-
-              PRODUCT_COUNT=$(timeout 10 node -e "
-                try {
-                  const { PrismaClient } = require('@prisma/client');
-                  const prisma = new PrismaClient();
-                  prisma.product.count().then(n => { console.log(n); process.exit(0); })
-                    .catch(() => process.exit(1));
-                } catch(e) { console.log('0'); process.exit(0); }
-              " 2>/dev/null | tr -d '\n' || echo "0")
-
-              if [ "$PRODUCT_COUNT" -gt 0 ]; then
-                echo "Already seeded ($PRODUCT_COUNT products). Skipping."
-                exit 0
-              fi
-
-              if ! timeout 180 npx --yes tsx /app/prisma/seed.ts; then
-                npm install -g tsx 2>/dev/null || true
-                timeout 180 tsx /app/prisma/seed.ts
-              fi
-
-              echo "=== Migration & Seed completed ==="
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['staging-backend:80']
+  restartPolicy: Never
