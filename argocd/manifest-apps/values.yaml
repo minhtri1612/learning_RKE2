@@ -12,3 +12,6 @@ apps:
   database:
     namespace: database
     syncWave: "0"
+  frontend:
+    namespace: meo-stationery
+    syncWave: "2"

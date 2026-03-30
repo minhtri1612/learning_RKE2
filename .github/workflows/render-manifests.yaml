@@ -68,8 +68,38 @@ jobs:
             done
           done
 
+          # Auto-generate argocd/manifest-apps/values.yaml from env keys
+          # so App-of-Apps will create child apps for new services automatically.
+          ALL_SERVICES=$(awk '/^[a-zA-Z0-9_-]+:$/ {print substr($1,1,length($1)-1)}' env/*.yaml | sort -u)
+          {
+            echo "repoURL: https://github.com/minhtri1612/learning_RKE2.git"
+            echo "name: meostation"
+            echo "env: \"\""
+            echo "project: \"\""
+            echo "cluster: \"\""
+            echo "automated: false"
+            echo
+            echo "apps:"
+            for svc in $ALL_SERVICES; do
+              if [ "$svc" = "database" ]; then
+                ns="database"
+                wave="0"
+              elif [ "$svc" = "frontend" ]; then
+                ns="meo-stationery"
+                wave="2"
+              else
+                ns="meo-stationery"
+                wave="1"
+              fi
+
+              echo "  $svc:"
+              echo "    namespace: $ns"
+              echo "    syncWave: \"$wave\""
+            done
+          } > argocd/manifest-apps/values.yaml
+
       - name: Commit and Push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: auto-render manifests [skip ci]"
-          file_pattern: '.manifest/**'
+          commit_message: "chore: auto-render manifests and app list [skip ci]"
+          file_pattern: '.manifest/** argocd/manifest-apps/values.yaml'
