@@ -1,10 +1,10 @@
-# Ba cluster Kind (management + dev + prod) – giống cloud
+# (Hiện tại) 4 cluster Kind (management + dev + staging + prod) – giống cloud
 
-Argo CD cài **chỉ** trên **cluster management**. Deploy app dev sang cluster **dev**, app prod sang cluster **prod**. Cần expose API server của dev và prod ra host để Argo CD (chạy trong management) gọi được.
+Argo CD cài **chỉ** trên **cluster management**. Deploy app dev sang cluster **dev**, app staging sang cluster **staging**, app prod sang cluster **prod**. Cần expose API server của dev/staging/prod ra host để Argo CD (chạy trong management) gọi được.
 
 ---
 
-## 1. Tạo 3 cluster Kind
+## 1. Tạo 4 cluster Kind
 
 **Bắt buộc chạy từ thư mục gốc repo** (nếu đang ở `~` sẽ lỗi `open kind/management-kind-config.yaml: no such file or directory`):
 
@@ -13,11 +13,13 @@ cd ~/Downloads/practice_RKE2   # hoặc cd /path/to/practice_RKE2
 
 kind create cluster --name management --config kind/management-kind-config.yaml
 kind create cluster --name dev        --config kind/dev-kind-config.yaml
+kind create cluster --name staging    --config kind/staging-kind-config.yaml
 kind create cluster --name prod       --config kind/prod-kind-config.yaml
 ```
 
 - **management**: API server trên host tại `127.0.0.1:33443` (Argo CD chạy ở đây)
 - **dev**: API server trên host tại `127.0.0.1:30443`
+- **staging**: API server trên host tại `127.0.0.1:32443`
 - **prod**: API server trên host tại `127.0.0.1:31443`
 
 Kiểm tra:
@@ -34,6 +36,7 @@ kubectl config get-contexts
 ```bash
 kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
 kubectl config set-cluster kind-dev --server=https://127.0.0.1:30443
+kubectl config set-cluster kind-staging --server=https://127.0.0.1:32443
 kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
 ```
 
@@ -74,19 +77,19 @@ argocd login localhost:8080 --insecure --username admin --password "$PASS"
 
 ---
 
-## 3. Đăng ký cluster "dev" và "prod" với Argo CD (trên management)
+## 3. Đăng ký cluster "dev", "staging" và "prod" với Argo CD (trên management)
 
 Argo CD chạy **trong** cluster management.
 
 - **Cluster management**: Argo CD tự deploy vào chính cluster này qua `https://kubernetes.default.svc` (không cần "register" gì thêm).
-- **Cluster dev/prod**: để Argo CD deploy sang 2 cluster này, cần **đăng ký** credentials cho dev/prod.
+- **Cluster dev/staging/prod**: để Argo CD deploy sang 3 cluster này, cần **đăng ký** credentials cho dev/staging/prod.
 
 Để Argo CD (chạy trong management) gọi được API server của dev/prod, từ pod trong management, địa chỉ "máy host" là:
 
 - **Mac/Windows (Docker Desktop):** `host.docker.internal`
 - **Linux (Kind):** dùng **`172.18.0.1`** — Kind tạo network `kind` với gateway 172.18.0.1; từ pod trong management phải dùng IP này để ra host (port 30443/31443). Nếu dùng `172.17.0.1` sẽ bị **dial tcp ... i/o timeout**.
 
-Dev API = `https://<host>:30443`, Prod API = `https://<host>:31443`.
+Dev API = `https://<host>:30443`, Staging API = `https://<host>:32443`, Prod API = `https://<host>:31443`.
 
 ### 3.1. Tạo ServiceAccount và token trên cluster dev
 
@@ -95,7 +98,7 @@ kubectl --context kind-dev apply -f kind/dev-argocd-manager.yaml
 sleep 5
 ```
 
-Lấy token dev (giữ nguyên terminal để dùng biến `$DEV_TOKEN` ở bước 3.3):
+Lấy token dev (giữ nguyên terminal để dùng biến `$DEV_TOKEN` ở bước 3.4):
 
 ```bash
 DEV_TOKEN=$(kubectl --context kind-dev get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
@@ -109,16 +112,30 @@ kubectl --context kind-prod apply -f kind/prod-argocd-manager.yaml
 sleep 5
 ```
 
-Lấy token prod (giữ nguyên terminal để dùng biến `$PROD_TOKEN` ở bước 3.3):
+Lấy token prod (giữ nguyên terminal để dùng biến `$PROD_TOKEN` ở bước 3.4):
 
 ```bash
 PROD_TOKEN=$(kubectl --context kind-prod get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
 echo "$PROD_TOKEN"
 ```
 
-### 3.3. Tạo Secret cluster "dev" và "prod" trong Argo CD (trên management)
+### 3.3. Tạo ServiceAccount và token trên cluster staging
 
-Chạy **cùng shell** sau khi đã chạy 3.1 và 3.2 (để có biến `$DEV_TOKEN`, `$PROD_TOKEN`).
+```bash
+kubectl --context kind-staging apply -f kind/dev-argocd-manager.yaml
+sleep 5
+```
+
+Lấy token staging (giữ nguyên terminal để dùng biến `$STAGING_TOKEN` ở bước 3.4):
+
+```bash
+STAGING_TOKEN=$(kubectl --context kind-staging get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
+echo "$STAGING_TOKEN"
+```
+
+### 3.4. Tạo Secret cluster "dev", "staging" và "prod" trong Argo CD (trên management)
+
+Chạy **cùng shell** sau khi đã chạy 3.1, 3.2 và 3.3 (để có biến `$DEV_TOKEN`, `$STAGING_TOKEN`, `$PROD_TOKEN`).
 
 **Trên Mac/Windows:**
 
@@ -138,6 +155,13 @@ kubectl create secret generic cluster-prod \
   --from-literal=server=https://host.docker.internal:31443 \
   --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
 kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
+
+kubectl create secret generic cluster-staging \
+  -n argocd \
+  --from-literal=name=staging \
+  --from-literal=server=https://host.docker.internal:32443 \
+  --from-literal=config="{\"bearerToken\":\"$STAGING_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
+kubectl label secret cluster-staging -n argocd argocd.argoproj.io/secret-type=cluster
 ```
 
 **Trên Linux** (Kind dùng network gateway **172.18.0.1**; nếu timeout thử `ip addr show docker0` hoặc `docker network inspect kind` xem Gateway):
@@ -158,6 +182,13 @@ kubectl create secret generic cluster-prod \
   --from-literal=server=https://172.18.0.1:31443 \
   --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
 kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
+
+kubectl create secret generic cluster-staging \
+  -n argocd \
+  --from-literal=name=staging \
+  --from-literal=server=https://172.18.0.1:32443 \
+  --from-literal=config="{\"bearerToken\":\"$STAGING_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
+kubectl label secret cluster-staging -n argocd argocd.argoproj.io/secret-type=cluster
 ```
 
 ---
@@ -193,9 +224,10 @@ Sau khi sync xong, sẽ có:
 
 ## 5. Kiểm tra
 
-- UI: https://localhost:8080 → Applications: `dev-*` trỏ cluster **dev**, `prod-*` trỏ cluster **prod**.
+- UI: https://localhost:8080 → Applications: `dev-*` trỏ cluster **dev**, `staging-*` trỏ cluster **staging**, `prod-*` trỏ cluster **prod**.
 - Management: `kubectl --context kind-management get pods -n argocd`
 - Dev: `kubectl --context kind-dev get pods -A`
+- Staging: `kubectl --context kind-staging get pods -A`
 - Prod: `kubectl --context kind-prod get pods -A`
 
 ---
@@ -203,8 +235,8 @@ Sau khi sync xong, sẽ có:
 ## Lưu ý
 
 - Replica đã set 0 trong values (chỉ test manifest); không có pod workload chạy, tiết kiệm RAM.
-- **Kind trên Linux:** Argo CD phải gọi API dev/prod qua IP host; Kind dùng network gateway **172.18.0.1** (không phải 172.17.0.1). Nếu đăng ký cluster với 172.17.0.1 sẽ bị `dial tcp ... i/o timeout`. Sửa: cập nhật secret cluster sang `server=https://172.18.0.1:30443` / `31443` (xem bước 3.3). **Nếu 172.18.0.1 vẫn timeout** (vd. firewall host): dùng IP container trực tiếp, port **6443** (không dùng host port): `docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'` và tương tự `prod-control-plane` → patch secret `server=https://<IP>:6443`. IP sẽ đổi nếu xóa/tạo lại cluster.
-- Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.3.
+- **Kind trên Linux:** Argo CD phải gọi API dev/staging/prod qua IP host; Kind dùng network gateway **172.18.0.1** (không phải 172.17.0.1). Nếu đăng ký cluster với 172.17.0.1 sẽ bị `dial tcp ... i/o timeout`. Sửa: cập nhật secret cluster sang `server=https://172.18.0.1:30443` / `32443` / `31443` (xem bước 3.4). **Nếu 172.18.0.1 vẫn timeout** (vd. firewall host): dùng IP container trực tiếp, port **6443** (không dùng host port): `docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'` và tương tự `prod-control-plane` → patch secret `server=https://<IP>:6443`. IP sẽ đổi nếu xóa/tạo lại cluster.
+- Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.4.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
 - **Database/backend trong các app dev/prod (vd. `dev-meostation-database-app`, `prod-meostation-backend-app`):** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
 
@@ -228,26 +260,28 @@ Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại
 
 Giả sử đang ở branch `kind` của repo này.
 
-### 6.1. Xóa 3 cluster cũ (nếu còn)
+### 6.1. Xóa 4 cluster cũ (nếu còn)
 
 ```bash
 kind delete cluster --name management
 kind delete cluster --name dev
+kind delete cluster --name staging
 kind delete cluster --name prod
 ```
 
 Không sao cả: mọi config cho Kind đã nằm trong Git (branch `kind`).
 
-### 6.2. Tạo lại 3 cluster Kind
+### 6.2. Tạo lại 4 cluster Kind
 
 ```bash
 cd ~/Downloads/practice_RKE2   # bắt buộc từ thư mục repo
 
 kind create cluster --name management --config kind/management-kind-config.yaml
 kind create cluster --name dev        --config kind/dev-kind-config.yaml
+kind create cluster --name staging    --config kind/staging-kind-config.yaml
 kind create cluster --name prod       --config kind/prod-kind-config.yaml
 
-kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-prod
+kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-staging, kind-prod
 ```
 
 **Nếu kubectl báo lỗi TLS** (x509: certificate ... not 0.0.0.0), chạy ngay:
@@ -255,6 +289,7 @@ kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-pr
 ```bash
 kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
 kubectl config set-cluster kind-dev --server=https://127.0.0.1:30443
+kubectl config set-cluster kind-staging --server=https://127.0.0.1:32443
 kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
 ```
 
@@ -286,16 +321,18 @@ PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-adm
 argocd login localhost:8080 --insecure --username admin --password "$PASS"
 ```
 
-### 6.4. Đăng ký lại cluster `dev` + `prod` cho Argo CD
+### 6.4. Đăng ký lại cluster `dev` + `staging` + `prod` cho Argo CD
 
-Trên `kind-dev` và `kind-prod`:
+Trên `kind-dev`, `kind-staging` và `kind-prod`:
 
 ```bash
 kubectl --context kind-dev  apply -f kind/dev-argocd-manager.yaml
+kubectl --context kind-staging apply -f kind/dev-argocd-manager.yaml
 kubectl --context kind-prod apply -f kind/prod-argocd-manager.yaml
 sleep 5
 
 DEV_TOKEN=$(kubectl --context kind-dev  get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
+STAGING_TOKEN=$(kubectl --context kind-staging get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
 PROD_TOKEN=$(kubectl --context kind-prod get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
 ```
 
