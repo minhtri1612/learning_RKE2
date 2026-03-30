@@ -71,7 +71,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 spec:
   serviceName: dev-database-hl
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app.kubernetes.io/name: database

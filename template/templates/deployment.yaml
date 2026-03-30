@@ -7,7 +7,8 @@ metadata:
     {{- include "template.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
+  {{ $b := .Values.backend | default dict }}
+  replicas: {{ $b.replicaCount | default .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:

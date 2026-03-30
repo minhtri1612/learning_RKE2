@@ -1,6 +1,7 @@
 {{- if eq (.Values.workloadKind | default "deployment") "statefulset" }}
 {{- $p := .Values.persistence | default dict }}
 {{- $st := .Values.statefulset | default dict }}
+{{ $d := .Values.database | default dict }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -9,7 +10,7 @@ metadata:
     {{- include "template.labels" . | nindent 4 }}
 spec:
   serviceName: {{ include "template.fullname" . }}-hl
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ $d.replicaCount | default .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "template.selectorLabels" . | nindent 6 }}
