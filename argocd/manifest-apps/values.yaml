@@ -5,13 +5,28 @@ project: ""
 cluster: ""
 automated: false
 
-apps:
-  backend:
-    namespace: meo-stationery
-    syncWave: "1"
-  database:
-    namespace: database
-    syncWave: "0"
-  frontend:
-    namespace: meo-stationery
-    syncWave: "2"
+appsByEnv:
+  dev:
+    backend:
+      namespace: meo-stationery
+      syncWave: "1"
+    database:
+      namespace: database
+      syncWave: "0"
+    frontend:
+      namespace: meo-stationery
+      syncWave: "2"
+  prod:
+    backend:
+      namespace: meo-stationery
+      syncWave: "1"
+    database:
+      namespace: database
+      syncWave: "0"
+  staging:
+    backend:
+      namespace: meo-stationery
+      syncWave: "1"
+    database:
+      namespace: database
+      syncWave: "0"

@@ -1,4 +1,5 @@
-{{- range $appName, $app := .Values.apps }}
+{{- $apps := (index .Values.appsByEnv .Values.env) | default .Values.apps }}
+{{- range $appName, $app := $apps }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

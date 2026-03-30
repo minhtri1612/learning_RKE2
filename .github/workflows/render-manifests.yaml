@@ -68,9 +68,8 @@ jobs:
             done
           done
 
-          # Auto-generate argocd/manifest-apps/values.yaml from env keys
-          # so App-of-Apps will create child apps for new services automatically.
-          ALL_SERVICES=$(awk '/^[a-zA-Z0-9_-]+:$/ {print substr($1,1,length($1)-1)}' env/*.yaml | sort -u)
+          # Auto-generate argocd/manifest-apps/values.yaml from env keys (per-env app list)
+          # so App-of-Apps only creates services that exist in each environment.
           {
             echo "repoURL: https://github.com/minhtri1612/learning_RKE2.git"
             echo "name: meostation"
@@ -79,22 +78,26 @@ jobs:
             echo "cluster: \"\""
             echo "automated: false"
             echo
-            echo "apps:"
-            for svc in $ALL_SERVICES; do
-              if [ "$svc" = "database" ]; then
-                ns="database"
-                wave="0"
-              elif [ "$svc" = "frontend" ]; then
-                ns="meo-stationery"
-                wave="2"
-              else
-                ns="meo-stationery"
-                wave="1"
-              fi
+            echo "appsByEnv:"
+            for env in $ENVS; do
+              echo "  $env:"
+              SERVICES=$(awk '/^[a-zA-Z0-9_-]+:$/ {print substr($1,1,length($1)-1)}' "env/$env.yaml")
+              for svc in $SERVICES; do
+                if [ "$svc" = "database" ]; then
+                  ns="database"
+                  wave="0"
+                elif [ "$svc" = "frontend" ]; then
+                  ns="meo-stationery"
+                  wave="2"
+                else
+                  ns="meo-stationery"
+                  wave="1"
+                fi
 
-              echo "  $svc:"
-              echo "    namespace: $ns"
-              echo "    syncWave: \"$wave\""
+                echo "    $svc:"
+                echo "      namespace: $ns"
+                echo "      syncWave: \"$wave\""
+              done
             done
           } > argocd/manifest-apps/values.yaml
 
