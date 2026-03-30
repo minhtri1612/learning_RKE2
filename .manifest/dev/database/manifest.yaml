@@ -101,28 +101,6 @@ spec:
               value: "meo_stationery"
             - name: POSTGRES_PASSWORD
               value: "dev-only-change-me"
-          livenessProbe:
-            exec:
-              command:
-              - pg_isready
-              - -U
-              - meo_admin
-              - -d
-              - meo_stationery
-            failureThreshold: 6
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-          readinessProbe:
-            exec:
-              command:
-              - pg_isready
-              - -U
-              - meo_admin
-              - -d
-              - meo_stationery
-            initialDelaySeconds: 5
-            periodSeconds: 5
           resources:
             limits:
               cpu: 500m
