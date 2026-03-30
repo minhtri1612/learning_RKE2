@@ -27,25 +27,44 @@ jobs:
 
       - name: Render All Manifests
         run: |
-          # 1. Định nghĩa các môi trường dựa trên file trong env/
+          # Môi trường lấy từ env/*.yaml
           ENVS=$(ls env/*.yaml | xargs -n 1 basename | sed 's/.yaml//')
-          
-          # 2. Định nghĩa các apps dựa trên file trong app/
-          APPS=$(ls app/*.yaml | xargs -n 1 basename | sed 's/.yaml//')
 
           for env in $ENVS; do
-            for app in $APPS; do
-              # Lấy tên folder từ nameOverride trong app yaml (be.yaml -> backend, db.yaml -> database)
-              FOLDER=$(grep '^nameOverride:' app/$app.yaml | awk '{print $2}')
-              FOLDER=${FOLDER:-$app}
+            echo "--- Rendering env: $env ---"
+            rm -rf ".manifest/$env"
+            mkdir -p ".manifest/$env"
 
-              echo "--- Rendering $app -> .manifest/$env/$FOLDER ---"
-              mkdir -p .manifest/$env/$FOLDER
-              
-              helm template $FOLDER ./template \
-                -f app/$app.yaml \
-                -f env/$env.yaml \
-                > .manifest/$env/$FOLDER/manifest.yaml
+            # Top-level keys trong env/<env>.yaml là tên service (backend, database, frontend, ...)
+            SERVICES=$(awk '/^[a-zA-Z0-9_-]+:$/ {print substr($1,1,length($1)-1)}' "env/$env.yaml")
+
+            for svc in $SERVICES; do
+              # Quy ước profile:
+              # - profile: stateful trong env -> app/db.yaml
+              # - service "database" -> app/db.yaml (backward compatible)
+              # - còn lại -> app/be.yaml
+              PROFILE_FILE="app/be.yaml"
+              PROFILE=$(awk -v svc="$svc" '
+                BEGIN { in_svc=0; profile="" }
+                $0 ~ "^[[:space:]]*"svc":[[:space:]]*$" { in_svc=1; next }
+                in_svc && $0 ~ "^[^[:space:]]" { in_svc=0 }
+                in_svc && $0 ~ "^[[:space:]]+profile:[[:space:]]*stateful[[:space:]]*$" { profile="stateful" }
+                END { print profile }
+              ' "env/$env.yaml")
+
+              if [ "$svc" = "database" ] || [ "$PROFILE" = "stateful" ]; then
+                PROFILE_FILE="app/db.yaml"
+              fi
+
+              echo "Render $svc from $PROFILE_FILE -> .manifest/$env/$svc/manifest.yaml"
+              mkdir -p ".manifest/$env/$svc"
+
+              helm template "$svc" ./template \
+                -f "$PROFILE_FILE" \
+                -f "env/$env.yaml" \
+                --set "nameOverride=$svc" \
+                --set "currentService=$svc" \
+                > ".manifest/$env/$svc/manifest.yaml"
             done
           done
 

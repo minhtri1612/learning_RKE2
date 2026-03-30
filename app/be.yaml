@@ -1,6 +1,6 @@
-# Đè lên template/values.yaml — giữ nguyên khung + comment gốc, chỉ chèn giá trị backend.
-# Tag: env/<env>.yaml → backend.image.tag
-# helm template backend ./template -f app/be.yaml -f env/dev.yaml
+# Stateless profile dùng chung (backend/frontend/worker...).
+# Tag/replica sẽ lấy theo service key trong env/<env>.yaml (vd: backend, frontend...).
+# nameOverride được set động từ pipeline qua --set nameOverride=<service>.
 
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
@@ -16,7 +16,7 @@ image:
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
 # This is to override the chart name.
-nameOverride: backend
+nameOverride: ""
 fullnameOverride: ""
 
 # This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/

@@ -28,6 +28,7 @@ Kiểm tra:
 kubectl config get-contexts
 # kind-management  kind-management  ...
 # kind-dev         kind-dev         ...
+# kind-staging     kind-staging     ...
 # kind-prod        kind-prod        ...
 ```
 
@@ -84,12 +85,10 @@ Argo CD chạy **trong** cluster management.
 - **Cluster management**: Argo CD tự deploy vào chính cluster này qua `https://kubernetes.default.svc` (không cần "register" gì thêm).
 - **Cluster dev/staging/prod**: để Argo CD deploy sang 3 cluster này, cần **đăng ký** credentials cho dev/staging/prod.
 
-Để Argo CD (chạy trong management) gọi được API server của dev/prod, từ pod trong management, địa chỉ "máy host" là:
+Để Argo CD (chạy trong management) gọi được API server của dev/staging/prod, cần biết địa chỉ mạng:
 
-- **Mac/Windows (Docker Desktop):** `host.docker.internal`
-- **Linux (Kind):** dùng **`172.18.0.1`** — Kind tạo network `kind` với gateway 172.18.0.1; từ pod trong management phải dùng IP này để ra host (port 30443/31443). Nếu dùng `172.17.0.1` sẽ bị **dial tcp ... i/o timeout**.
-
-Dev API = `https://<host>:30443`, Staging API = `https://<host>:32443`, Prod API = `https://<host>:31443`.
+- **Mac/Windows (Docker Desktop):** `host.docker.internal:<host-port>` (30443/32443/31443)
+- **Linux (Kind) — khuyến nghị:** dùng **container IP trực tiếp + port 6443**. Lấy IP bằng `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. Cách này ổn định nhất, tránh lỗi `host.docker.internal` không resolve hoặc gateway timeout. IP sẽ thay đổi khi xóa/tạo lại cluster.
 
 ### 3.1. Tạo ServiceAccount và token trên cluster dev
 
@@ -164,32 +163,35 @@ kubectl create secret generic cluster-staging \
 kubectl label secret cluster-staging -n argocd argocd.argoproj.io/secret-type=cluster
 ```
 
-**Trên Linux** (Kind dùng network gateway **172.18.0.1**; nếu timeout thử `ip addr show docker0` hoặc `docker network inspect kind` xem Gateway):
+**Trên Linux** (dùng **container IP trực tiếp** + port **6443** — cách ổn định nhất, tránh lỗi `host.docker.internal` không resolve hoặc `172.18.0.1` timeout):
 
 ```bash
 kubectl config use-context kind-management
 
-kubectl create secret generic cluster-dev \
-  -n argocd \
+DEV_IP=$(docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+STAGING_IP=$(docker inspect staging-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+PROD_IP=$(docker inspect prod-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+
+kubectl create secret generic cluster-dev -n argocd \
   --from-literal=name=dev \
-  --from-literal=server=https://172.18.0.1:30443 \
+  --from-literal=server=https://$DEV_IP:6443 \
   --from-literal=config="{\"bearerToken\":\"$DEV_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
 kubectl label secret cluster-dev -n argocd argocd.argoproj.io/secret-type=cluster
 
-kubectl create secret generic cluster-prod \
-  -n argocd \
-  --from-literal=name=prod \
-  --from-literal=server=https://172.18.0.1:31443 \
-  --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
-kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
-
-kubectl create secret generic cluster-staging \
-  -n argocd \
+kubectl create secret generic cluster-staging -n argocd \
   --from-literal=name=staging \
-  --from-literal=server=https://172.18.0.1:32443 \
+  --from-literal=server=https://$STAGING_IP:6443 \
   --from-literal=config="{\"bearerToken\":\"$STAGING_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
 kubectl label secret cluster-staging -n argocd argocd.argoproj.io/secret-type=cluster
+
+kubectl create secret generic cluster-prod -n argocd \
+  --from-literal=name=prod \
+  --from-literal=server=https://$PROD_IP:6443 \
+  --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
+kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
 ```
+
+> **Lưu ý:** Container IP sẽ thay đổi mỗi lần xóa/tạo lại cluster Kind. Luôn chạy `docker inspect` để lấy IP mới.
 
 ---
 
@@ -214,9 +216,9 @@ kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
 Sau khi sync xong, sẽ có:
 
 - **argocd-projects** → deploy `argocd/projects` → tạo AppProject `dev`, `staging`, `prod`
-- **dev-meostation** → deploy `argocd/meo-station` + env dev → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app` (cluster **dev**)
-- **staging-meostation** → tương tự, `env/staging.yaml` + cluster **staging**
-- **prod-meostation** → deploy `argocd/meo-station` + env prod → sinh ra `prod-meostation-backend-app`, `prod-meostation-database-app` (cluster **prod**)
+- **dev-meostation** → render chart `argocd/manifest-apps` (env=dev) → sinh ra `dev-meostation-backend-app` (trỏ `.manifest/dev/backend`), `dev-meostation-database-app` (trỏ `.manifest/dev/database`) → deploy lên cluster **dev**
+- **staging-meostation** → tương tự, env=staging → deploy lên cluster **staging**
+- **prod-meostation** → tương tự, env=prod → deploy lên cluster **prod**
 
 > **Lưu ý:** Đối với môi trường **prod**, chính sách sync là `Manual`. Cần vào UI Argo CD (hoặc CLI) bấm Sync thủ công cho app prod.
 
@@ -234,21 +236,11 @@ Sau khi sync xong, sẽ có:
 
 ## Lưu ý
 
-- Replica đã set 0 trong values (chỉ test manifest); không có pod workload chạy, tiết kiệm RAM.
-- **Kind trên Linux:** Argo CD phải gọi API dev/staging/prod qua IP host; Kind dùng network gateway **172.18.0.1** (không phải 172.17.0.1). Nếu đăng ký cluster với 172.17.0.1 sẽ bị `dial tcp ... i/o timeout`. Sửa: cập nhật secret cluster sang `server=https://172.18.0.1:30443` / `32443` / `31443` (xem bước 3.4). **Nếu 172.18.0.1 vẫn timeout** (vd. firewall host): dùng IP container trực tiếp, port **6443** (không dùng host port): `docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'` và tương tự `prod-control-plane` → patch secret `server=https://<IP>:6443`. IP sẽ đổi nếu xóa/tạo lại cluster.
+- Replica count được cấu hình trong `env/*.yaml` cho từng môi trường (dev/staging/prod). File `.manifest/` được render tự động qua GitHub Actions khi push thay đổi vào `app/`, `env/`, hoặc `template/`.
+- **Kind trên Linux:** Argo CD gọi API dev/staging/prod qua **container IP + port 6443** (xem bước 3.4). Lấy IP: `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. **KHÔNG dùng** `host.docker.internal` (không resolve trên Linux) hay gateway `172.18.0.1` (có thể timeout). IP container sẽ thay đổi khi xóa/tạo lại cluster → phải tạo lại secret.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.4.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
-- **Database/backend trong các app dev/prod (vd. `dev-meostation-database-app`, `prod-meostation-backend-app`):** Chart dev đã set `useEBS: false` để chạy trên Kind (default StorageClass `local-path`). Trên Kind không có External Secrets Operator → Secret `meo-stationery-database-secrets-dev` / `meo-stationery-database-secrets` và `meo-stationery-backend-secrets-dev` / `meo-stationery-backend-secrets` không tồn tại → Pod database/backend không start. Tạo tay trên từng cluster theo mục 6.5. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster (vd. management).
-
-  **Trên `kind-dev`:**
-  ```bash
-  kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
-  kubectl --context kind-dev -n database create secret generic meo-stationery-database-secrets-dev \
-    --from-literal=POSTGRES_USER=meo_admin \
-    --from-literal=POSTGRES_DB=meo_stationery \
-    --from-literal=POSTGRES_PASSWORD=localdev
-  ```
-  **Trên `kind-prod`:** đổi context và tên secret (xem mục 6.5). Sau đó bấm **SYNC** lại app trong Argo CD.
+- **Database/backend trên Kind:** Trên Kind không có External Secrets Operator → Secret phải tạo tay trên từng cluster (dev/staging/prod) theo **mục 6.5**. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster.
 
 ---
 
@@ -256,7 +248,7 @@ Sau khi sync xong, sẽ có:
 
 Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại **không có lệnh "start lại nguyên cụm" đơn giản**. Cách an toàn, ít lỗi nhất:
 
-> **Xóa cụm cũ nếu còn → tạo lại 3 cluster Kind → cài lại Argo CD → đăng ký dev/prod → tạo lại secrets local → sync lại app.**
+> **Xóa cụm cũ nếu còn → tạo lại 4 cluster Kind → cài lại Argo CD → đăng ký dev/staging/prod → tạo lại secrets local → sync lại app.**
 
 Giả sử đang ở branch `kind` của repo này.
 
@@ -336,12 +328,13 @@ STAGING_TOKEN=$(kubectl --context kind-staging get secret argocd-manager-long-li
 PROD_TOKEN=$(kubectl --context kind-prod get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
 ```
 
-Ví dụ dùng **IP container trực tiếp** (dev/prod control-plane) và port 6443:
+Dùng **IP container trực tiếp** + port **6443** (cách ổn định nhất trên Linux):
 
 ```bash
 kubectl config use-context kind-management
 
 DEV_IP=$(docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+STAGING_IP=$(docker inspect staging-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
 PROD_IP=$(docker inspect prod-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
 
 kubectl create secret generic cluster-dev -n argocd \
@@ -350,14 +343,18 @@ kubectl create secret generic cluster-dev -n argocd \
   --from-literal=config="{\"bearerToken\":\"$DEV_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
 kubectl label secret cluster-dev -n argocd argocd.argoproj.io/secret-type=cluster
 
+kubectl create secret generic cluster-staging -n argocd \
+  --from-literal=name=staging \
+  --from-literal=server=https://$STAGING_IP:6443 \
+  --from-literal=config="{\"bearerToken\":\"$STAGING_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
+kubectl label secret cluster-staging -n argocd argocd.argoproj.io/secret-type=cluster
+
 kubectl create secret generic cluster-prod -n argocd \
   --from-literal=name=prod \
   --from-literal=server=https://$PROD_IP:6443 \
   --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
 kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
 ```
-
-(Hoặc dùng gateway `172.18.0.1:<host-port>` như phần 3.3 nếu phù hợp máy của bạn.)
 
 ### 6.5. Tạo lại secrets local cho database + backend (giả ESO)
 
@@ -380,7 +377,24 @@ kubectl --context kind-dev -n meo-stationery create secret generic meo-stationer
   --from-literal=NEXTAUTH_SECRET='kind-dev-nextauth'
 ```
 
-**Trên `kind-prod`:** tương tự nhưng dùng secret prod (và **phải** có `--context kind-prod` ở cả hai bên pipe):
+**Trên `kind-staging`:**
+
+```bash
+# DB
+kubectl --context kind-staging create namespace database --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+kubectl --context kind-staging -n database create secret generic meo-stationery-database-secrets-staging \
+  --from-literal=POSTGRES_USER=meo_admin \
+  --from-literal=POSTGRES_DB=meo_stationery \
+  --from-literal=POSTGRES_PASSWORD=localstaging
+
+# Backend
+kubectl --context kind-staging create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+kubectl --context kind-staging -n meo-stationery create secret generic meo-stationery-backend-secrets-staging \
+  --from-literal=DATABASE_URL='postgresql://meo_admin:localstaging@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
+  --from-literal=NEXTAUTH_SECRET='kind-staging-nextauth'
+```
+
+**Trên `kind-prod`:** (**phải** có `--context kind-prod` ở cả hai bên pipe):
 
 ```bash
 # DB
@@ -416,8 +430,8 @@ kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
 Sau khi sync xong, sẽ có:
 
 - `argocd-projects` → tạo AppProject dev, staging, prod
-- `dev-meostation` → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app`
-- `staging-meostation` → sinh ra `staging-meostation-*-app`
+- `dev-meostation` → render `argocd/manifest-apps` → sinh ra `dev-meostation-backend-app` (`.manifest/dev/backend`), `dev-meostation-database-app` (`.manifest/dev/database`)
+- `staging-meostation` → sinh ra `staging-meostation-backend-app`, `staging-meostation-database-app`
 - `prod-meostation` → sinh ra `prod-meostation-backend-app`, `prod-meostation-database-app`
 
 Với môi trường **prod** (sync policy `Manual`), force sync thủ công:

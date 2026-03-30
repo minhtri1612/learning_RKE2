@@ -1,7 +1,12 @@
 {{- if eq (.Values.workloadKind | default "deployment") "statefulset" }}
 {{- $p := .Values.persistence | default dict }}
 {{- $st := .Values.statefulset | default dict }}
-{{ $d := .Values.database | default dict }}
+{{- $svcName := .Values.currentService | default "database" }}
+{{- $svc := (index .Values $svcName) | default dict }}
+{{- $svcSt := (index $svc "statefulset") | default dict }}
+{{- $lProbe := (index $svcSt "livenessProbe") | default (index $st "livenessProbe") }}
+{{- $rProbe := (index $svcSt "readinessProbe") | default (index $st "readinessProbe") }}
+{{- $mountPath := (index $svcSt "mountPath") | default (index $st "mountPath") | default "/var/lib/postgresql/data" }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -10,7 +15,7 @@ metadata:
     {{- include "template.labels" . | nindent 4 }}
 spec:
   serviceName: {{ include "template.fullname" . }}-hl
-  replicas: {{ $d.replicaCount | default .Values.replicaCount }}
+  replicas: {{ $svc.replicaCount | default .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "template.selectorLabels" . | nindent 6 }}
@@ -41,15 +46,15 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.image.repository }}:{{ include "template.imageTagDatabase" . }}"
+          image: "{{ include "template.imageRepositoryCurrent" . }}:{{ include "template.imageTagDatabase" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: {{ .Values.service.portName | default "http" }}
               containerPort: {{ .Values.service.containerPort | default .Values.service.port }}
               protocol: TCP
-          {{- if or .Values.database .Values.extraEnv }}
+          {{- if or (and (eq $svcName "database") .Values.database) .Values.extraEnv }}
           env:
-            {{- if .Values.database }}
+            {{- if and (eq $svcName "database") .Values.database }}
             - name: POSTGRES_USER
               value: {{ .Values.database.username | default "postgres" | quote }}
             - name: POSTGRES_DB
@@ -69,11 +74,11 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-          {{- with $st.livenessProbe }}
+          {{- with $lProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $st.readinessProbe }}
+          {{- with $rProbe }}
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -83,7 +88,7 @@ spec:
           {{- end }}
           volumeMounts:
             - name: data
-              mountPath: {{ $st.mountPath | default "/var/lib/postgresql/data" }}
+              mountPath: {{ $mountPath }}
               {{- with $st.subPath }}
               subPath: {{ . | quote }}
               {{- end }}

@@ -1,7 +1,7 @@
-# Đè lên template/values.yaml — giữ nguyên khung + comment gốc, chèn giá trị PostgreSQL / StatefulSet.
-# Tag: env/<env>.yaml → database.image.tag (merge vào khóa database.image cùng user/db/password bên dưới)
-# helm template database ./template -f app/db.yaml -f env/dev.yaml
-# Production: thay database.password bằng existingSecret.
+# Stateful profile dùng chung (database/cache/queue...).
+# Tag/replica sẽ lấy theo service key trong env/<env>.yaml.
+# nameOverride được set động từ pipeline qua --set nameOverride=<service>.
+# Với service database (Postgres), dùng block `database:` bên dưới.
 
 # --- chart mở rộng: StatefulSet thay cho Deployment ---
 workloadKind: statefulset
@@ -20,7 +20,7 @@ image:
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
 # This is to override the chart name.
-nameOverride: database
+nameOverride: ""
 fullnameOverride: ""
 
 # This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
@@ -157,21 +157,19 @@ database:
   name: meo_stationery
   password: "dev-only-change-me"
 
-# --- chart mở rộng: mount + probe exec cho StatefulSet ---
+# --- chart mở rộng: mount + probe cho StatefulSet ---
 statefulset:
   mountPath: /var/lib/postgresql/data
-  livenessProbe:
-    exec:
-      command: ["pg_isready", "-U", "meo_admin", "-d", "meo_stationery"]
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 6
-  readinessProbe:
-    exec:
-      command: ["pg_isready", "-U", "meo_admin", "-d", "meo_stationery"]
-    initialDelaySeconds: 5
-    periodSeconds: 5
+  # livenessProbe:
+  #   tcpSocket:
+  #     port: 5432
+  #   initialDelaySeconds: 30
+  #   periodSeconds: 10
+  # readinessProbe:
+  #   tcpSocket:
+  #     port: 5432
+  #   initialDelaySeconds: 5
+  #   periodSeconds: 5
 
 # Additional volumes on the output Deployment definition.
 volumes: []

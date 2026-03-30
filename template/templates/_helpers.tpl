@@ -54,15 +54,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Image tag: env/*.yaml đặt backend.image.tag / database.image.tag; fallback image.tag rồi appVersion.
 */}}
 {{- define "template.imageTagBackend" -}}
-{{- $b := .Values.backend | default dict -}}
-{{- $i := $b.image | default dict -}}
+{{- $svcName := .Values.currentService | default "backend" -}}
+{{- $svc := (index .Values $svcName) | default dict -}}
+{{- $i := $svc.image | default dict -}}
 {{- $i.tag | default .Values.image.tag | default .Chart.AppVersion -}}
 {{- end }}
 
 {{- define "template.imageTagDatabase" -}}
-{{- $d := .Values.database | default dict -}}
-{{- $i := $d.image | default dict -}}
+{{- $svcName := .Values.currentService | default "database" -}}
+{{- $svc := (index .Values $svcName) | default dict -}}
+{{- $i := $svc.image | default dict -}}
 {{- $i.tag | default .Values.image.tag | default .Chart.AppVersion -}}
+{{- end }}
+
+{{- define "template.imageRepositoryCurrent" -}}
+{{- $svcName := .Values.currentService | default "backend" -}}
+{{- $svc := (index .Values $svcName) | default dict -}}
+{{- $i := $svc.image | default dict -}}
+{{- $i.repository | default .Values.image.repository -}}
 {{- end }}
 
 {{/*

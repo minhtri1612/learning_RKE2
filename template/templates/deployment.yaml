@@ -7,8 +7,9 @@ metadata:
     {{- include "template.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
-  {{ $b := .Values.backend | default dict }}
-  replicas: {{ $b.replicaCount | default .Values.replicaCount }}
+  {{- $svcName := .Values.currentService | default "backend" }}
+  {{- $svc := (index .Values $svcName) | default dict }}
+  replicas: {{ $svc.replicaCount | default .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
@@ -40,7 +41,7 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.image.repository }}:{{ include "template.imageTagBackend" . }}"
+          image: "{{ include "template.imageRepositoryCurrent" . }}:{{ include "template.imageTagBackend" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: {{ .Values.service.portName | default "http" }}
