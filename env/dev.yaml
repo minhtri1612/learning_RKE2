@@ -8,3 +8,4 @@ backend:
 database:
   image:
     tag: "16"
+replicaCount: 2
