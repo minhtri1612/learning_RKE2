@@ -8,6 +8,8 @@ on:
       - 'app/**'
       - 'env/**'
       - 'template/**'
+      - 'argocd/manifest-apps/**'
+      - '.github/workflows/render-manifests.yaml'
   workflow_dispatch:
 
 jobs:
