@@ -3,7 +3,7 @@
 
 backend:
   image:
-    tag: "2.0.1-rc"
+    tag: "3.0.1"
 
 database:
   image:
