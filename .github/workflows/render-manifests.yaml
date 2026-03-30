@@ -8,6 +8,7 @@ on:
       - 'app/**'
       - 'env/**'
       - 'template/**'
+  workflow_dispatch:
 
 jobs:
   render:
