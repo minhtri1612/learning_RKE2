@@ -47,7 +47,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 spec:
   
-  replicas: 3
+  replicas: 4
   selector:
     matchLabels:
       app.kubernetes.io/name: backend
@@ -85,24 +85,3 @@ spec:
             requests:
               cpu: 128m
               memory: 256Mi
----
-# Source: template/templates/tests/test-connection.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: "dev-backend-test-connection"
-  labels:
-    helm.sh/chart: template-0.1.0
-    app.kubernetes.io/name: backend
-    app.kubernetes.io/instance: dev-backend
-    app.kubernetes.io/version: "1.16.0"
-    app.kubernetes.io/managed-by: Helm
-  annotations:
-    "helm.sh/hook": test
-spec:
-  containers:
-    - name: wget
-      image: busybox
-      command: ['wget']
-      args: ['dev-backend:80']
-  restartPolicy: Never
