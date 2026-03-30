@@ -12,6 +12,30 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: true
 ---
+# Source: template/templates/service-headless.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-hl
+  labels:
+    helm.sh/chart: template-0.1.0
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: redis
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: postgres
+      protocol: TCP
+      name: postgres
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: redis
+---
 # Source: template/templates/service.yaml
 apiVersion: v1
 kind: Service
@@ -26,17 +50,17 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 80
-      targetPort: http
+    - port: 5432
+      targetPort: postgres
       protocol: TCP
-      name: http
+      name: postgres
   selector:
     app.kubernetes.io/name: redis
     app.kubernetes.io/instance: redis
 ---
-# Source: template/templates/deployment.yaml
+# Source: template/templates/statefulset.yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: redis
   labels:
@@ -46,6 +70,7 @@ metadata:
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 spec:
+  serviceName: redis-hl
   replicas: 3
   selector:
     matchLabels:
@@ -63,24 +88,28 @@ spec:
       serviceAccountName: redis
       containers:
         - name: template
-          image: "minhtri1612/rke2:7.4.1"
-          imagePullPolicy: Always
+          image: "postgres:7.4.1"
+          imagePullPolicy: IfNotPresent
           ports:
-            - name: http
-              containerPort: 3000
+            - name: postgres
+              containerPort: 5432
               protocol: TCP
-          livenessProbe:
-            httpGet:
-              path: /api/health
-              port: http
-          readinessProbe:
-            httpGet:
-              path: /api/health
-              port: http
           resources:
             limits:
-              cpu: 1000m
-              memory: 2Gi
+              cpu: 500m
+              memory: 1Gi
             requests:
-              cpu: 128m
+              cpu: 100m
               memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: "10Gi"
