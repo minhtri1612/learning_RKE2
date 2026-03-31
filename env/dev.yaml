@@ -10,7 +10,3 @@ database:
     tag: "16"
   replicaCount: 3
 
-frontend:
-  image:
-    tag: "3.0.1"
-  replicaCount: 2
