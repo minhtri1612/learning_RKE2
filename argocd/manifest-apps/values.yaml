@@ -23,9 +23,6 @@ appsByEnv:
     database:
       namespace: database
       syncWave: "0"
-    redis:
-      namespace: meo-stationery
-      syncWave: "1"
   staging:
     backend:
       namespace: meo-stationery
