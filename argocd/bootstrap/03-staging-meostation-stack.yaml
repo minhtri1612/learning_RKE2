@@ -13,6 +13,8 @@ spec:
     targetRevision: main
     path: argocd/manifest-apps
     helm:
+      valueFiles:
+        - ../../env/staging.yaml
       parameters:
         - name: env
           value: staging

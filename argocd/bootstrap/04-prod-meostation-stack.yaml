@@ -13,6 +13,8 @@ spec:
     targetRevision: main
     path: argocd/manifest-apps
     helm:
+      valueFiles:
+        - ../../env/prod.yaml
       parameters:
         - name: env
           value: prod

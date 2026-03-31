@@ -4,29 +4,3 @@ env: ""
 project: ""
 cluster: ""
 automated: false
-
-appsByEnv:
-  dev:
-    backend:
-      namespace: meo-stationery
-      syncWave: "1"
-    database:
-      namespace: database
-      syncWave: "0"
-  prod:
-    backend:
-      namespace: meo-stationery
-      syncWave: "1"
-    database:
-      namespace: database
-      syncWave: "0"
-    kafka:
-      namespace: meo-stationery
-      syncWave: "1"
-  staging:
-    backend:
-      namespace: meo-stationery
-      syncWave: "1"
-    database:
-      namespace: database
-      syncWave: "0"

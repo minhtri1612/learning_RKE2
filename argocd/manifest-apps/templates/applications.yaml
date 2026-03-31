@@ -1,5 +1,9 @@
-{{- $apps := (index .Values.appsByEnv .Values.env) | default .Values.apps }}
-{{- range $appName, $app := $apps }}
+{{- range $appName, $appConfig := .Values }}
+  {{- /* Only process maps (service configs), ignore metadata params */ -}}
+  {{- if and (ne $appName "appsByEnv") (typeIs "map[string]interface {}" $appConfig) }}
+  {{- $profile := index $appConfig "profile" | default (eq $appName "database" | ternary "db" "be") }}
+  {{- $namespace := index $appConfig "namespace" | default (eq $appName "database" | ternary "database" "meo-stationery") }}
+  {{- $syncWave := index $appConfig "syncWave" | default (eq $appName "database" | ternary "0" "1") }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -11,18 +15,25 @@ metadata:
     env: {{ $.Values.env }}
     component: {{ $appName }}
   annotations:
-    argocd.argoproj.io/sync-wave: {{ $app.syncWave | default "0" | quote }}
+    argocd.argoproj.io/sync-wave: {{ quote $syncWave }}
 spec:
   project: {{ $.Values.project }}
   source:
     repoURL: {{ $.Values.repoURL }}
     targetRevision: main
-    path: {{ printf ".manifest/%s/%s" $.Values.env $appName }}
-    directory:
-      recurse: true
+    path: template
+    helm:
+      valueFiles:
+        - ../app/{{ $profile }}.yaml
+        - ../env/{{ $.Values.env }}.yaml
+      parameters:
+        - name: currentService
+          value: {{ $appName }}
+        - name: nameOverride
+          value: {{ $appName }}
   destination:
     name: {{ $.Values.cluster }}
-    namespace: {{ $app.namespace }}
+    namespace: {{ $namespace }}
   syncPolicy:
     {{- if eq (toString $.Values.automated) "true" }}
     automated:
@@ -42,4 +53,5 @@ spec:
       kind: Deployment
       jsonPointers:
         - /spec/replicas
+  {{- end }}
 {{- end }}
