@@ -82,4 +82,8 @@ cluster_secrets.yaml
 
 vpn_log.txt
 
-management_state.json
+management_state.json.local-test-manifests/
+
+*.json
+*.tfstate
+*.tfstate.backup

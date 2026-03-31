@@ -1,50 +1,51 @@
-CHART_DIR := 1-platform-engine/generic-app
-MANIFEST_DIR := .manifest
-TMP_DIR := .tmp/render
-GUARDRAILS_BASE := 2-platform-guardrails/base/baseline.yaml
-GUARDRAILS_ENV_DIR := 2-platform-guardrails/env
-WORKSPACE_BASE_DIR := 3-developer-workspace/base
-WORKSPACE_ENV_DIR := 3-developer-workspace/env
+# ==============================================================================
+# LOCAL TESTING MAKEFILE
+# This Makefile is STRICTLY for local development and debugging.
+# It simulates what ArgoCD does on the cluster to let you inspect the YAMLs.
+# DO NOT COMMIT THE OUTPUT FILES TO GIT.
+# ==============================================================================
 
-.PHONY: render-all render-dev render-staging render-prod clean
+ENV ?= dev
+APP_DIR := app
+ENV_DIR := env
+TEMPLATE_DIR := template
+TEST_OUT_DIR := .local-test-manifests
 
-render-all: render-dev render-staging render-prod
+.PHONY: test check-env clean
 
-render-dev:
-	@$(MAKE) render ENV=dev
+check-env:
+	@test -f "$(ENV_DIR)/$(ENV).yaml" || (echo "File $(ENV_DIR)/$(ENV).yaml does not exist!"; exit 1)
 
-render-staging:
-	@$(MAKE) render ENV=staging
-
-render-prod:
-	@$(MAKE) render ENV=prod
-
-render:
-	@echo "==> Rendering $(ENV) manifests..."
-	@test -n "$(ENV)" || (echo "ENV is required"; exit 1)
-	@test -f "$(GUARDRAILS_BASE)" || (echo "Missing $(GUARDRAILS_BASE)"; exit 1)
-	@test -f "$(GUARDRAILS_ENV_DIR)/$(ENV).yaml" || (echo "Missing $(GUARDRAILS_ENV_DIR)/$(ENV).yaml"; exit 1)
-	@test -f "$(WORKSPACE_ENV_DIR)/$(ENV).yaml" || (echo "Missing $(WORKSPACE_ENV_DIR)/$(ENV).yaml"; exit 1)
-	@mkdir -p "$(TMP_DIR)/$(ENV)" "$(MANIFEST_DIR)/$(ENV)/backend" "$(MANIFEST_DIR)/$(ENV)/database"
-	@yq eval '.backend' "$(WORKSPACE_ENV_DIR)/$(ENV).yaml" > "$(TMP_DIR)/$(ENV)/backend-env.yaml"
-	@yq eval '.database' "$(WORKSPACE_ENV_DIR)/$(ENV).yaml" > "$(TMP_DIR)/$(ENV)/database-env.yaml"
-	@helm template backend "$(CHART_DIR)" \
-		--namespace meo-stationery \
-		-f "$(GUARDRAILS_BASE)" \
-		-f "$(GUARDRAILS_ENV_DIR)/$(ENV).yaml" \
-		-f "$(WORKSPACE_BASE_DIR)/be.yaml" \
-		-f "$(TMP_DIR)/$(ENV)/backend-env.yaml" \
-		> "$(MANIFEST_DIR)/$(ENV)/backend/manifest.yaml"
-	@helm template database "$(CHART_DIR)" \
-		--namespace database \
-		-f "$(GUARDRAILS_BASE)" \
-		-f "$(GUARDRAILS_ENV_DIR)/$(ENV).yaml" \
-		-f "$(WORKSPACE_BASE_DIR)/db.yaml" \
-		-f "$(TMP_DIR)/$(ENV)/database-env.yaml" \
-		> "$(MANIFEST_DIR)/$(ENV)/database/manifest.yaml"
-	@echo "✅ Done ($(ENV))!"
+test: check-env clean
+	@echo "=================================================="
+	@echo "Testing K8s Manifest Generation for ENV: $(ENV)"
+	@echo "=================================================="
+	@mkdir -p $(TEST_OUT_DIR)/$(ENV)
+	
+	@# Parse top-level keys (services) from the environment file
+	@SERVICES=$$(grep -E "^[a-zA-Z0-9_-]+:" $(ENV_DIR)/$(ENV).yaml | sed 's/://g'); \
+	for svc in $$SERVICES; do \
+		echo "=> Rendering Service: $$svc"; \
+		PROFILE=$$(grep -A 5 "^$$svc:" $(ENV_DIR)/$(ENV).yaml | grep -m 1 "profile:" | awk '{print $$2}' | tr -d '"' | tr -d "'" || true); \
+		if [ -z "$$PROFILE" ]; then \
+			if [ "$$svc" = "database" ]; then \
+				PROFILE="db"; \
+			else \
+				PROFILE="be"; \
+			fi; \
+		fi; \
+		mkdir -p $(TEST_OUT_DIR)/$(ENV)/$$svc; \
+		helm template $$svc $(TEMPLATE_DIR) \
+			-f $(APP_DIR)/$$PROFILE.yaml \
+			-f $(ENV_DIR)/$(ENV).yaml \
+			--set currentService=$$svc \
+			--set nameOverride=$$svc \
+			> $(TEST_OUT_DIR)/$(ENV)/$$svc/manifest.yaml; \
+		echo "   Saved: $(TEST_OUT_DIR)/$(ENV)/$$svc/manifest.yaml"; \
+	done
+	@echo "=================================================="
+	@echo "✅ Done! You can inspect the $(TEST_OUT_DIR)/$(ENV) directory."
 
 clean:
-	@echo "==> Cleaning rendered manifests and temp files..."
-	@rm -rf "$(MANIFEST_DIR)"/* "$(TMP_DIR)"
-	@echo "✅ Done!"
+	@echo "==> Cleaning local test manifests..."
+	@rm -rf $(TEST_OUT_DIR)
