@@ -23,6 +23,7 @@ spec:
     targetRevision: main
     path: template
     helm:
+      releaseName: {{ $appName }}
       valueFiles:
         - ../app/{{ $profile }}.yaml
         - ../env/{{ $.Values.env }}.yaml
