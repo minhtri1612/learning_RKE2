@@ -44,10 +44,12 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{/*
 Selector labels
+Dùng nameOverride (= tên service ngắn như "backend", "database") thay vì Release.Name
+để selector label ổn định, không phụ thuộc vào tên ArgoCD App.
 */}}
 {{- define "template.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "template.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/instance: {{ .Values.nameOverride | default .Release.Name }}
 {{- end }}
 
 {{/*
