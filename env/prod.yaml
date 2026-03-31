@@ -9,7 +9,3 @@ database:
   image:
     tag: "16"
   replicaCount: 2
-kafka:
-  image:
-    tag: "3.7.0"
-  replicaCount: 3
