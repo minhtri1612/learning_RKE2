@@ -31,6 +31,8 @@ spec:
           value: {{ $appName }}
         - name: nameOverride
           value: {{ $appName }}
+        - name: fullnameOverride
+          value: {{ $appName }}
   destination:
     name: {{ $.Values.cluster }}
     namespace: {{ $namespace }}
