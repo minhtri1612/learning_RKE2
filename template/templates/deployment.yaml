@@ -67,9 +67,25 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.runtimeConfig.enabled }}
+          {{- if not .Values.volumeMounts }}
+          volumeMounts:
+          {{- end }}
+            - name: app-config
+              mountPath: {{ .Values.runtimeConfig.mountPath | default "/app/config" }}
+              readOnly: true
+          {{- end }}
       {{- with .Values.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.runtimeConfig.enabled }}
+      {{- if not .Values.volumes }}
+      volumes:
+      {{- end }}
+        - name: app-config
+          configMap:
+            name: {{ include "template.fullname" . }}-config
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

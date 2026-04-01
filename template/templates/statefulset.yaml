@@ -95,10 +95,22 @@ spec:
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-      {{- if not ($p.enabled | default true) }}
+            {{- if .Values.runtimeConfig.enabled }}
+            - name: app-config
+              mountPath: {{ .Values.runtimeConfig.mountPath | default "/app/config" }}
+              readOnly: true
+            {{- end }}
+      {{- if or (not ($p.enabled | default true)) .Values.runtimeConfig.enabled }}
       volumes:
+        {{- if not ($p.enabled | default true) }}
         - name: data
           emptyDir: {}
+        {{- end }}
+        {{- if .Values.runtimeConfig.enabled }}
+        - name: app-config
+          configMap:
+            name: {{ include "template.fullname" . }}-config
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

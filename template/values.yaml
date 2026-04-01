@@ -159,3 +159,11 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+# Runtime app config (non-sensitive values).
+# Use external-secrets for sensitive values (passwords, tokens, secrets).
+runtimeConfig:
+  enabled: false
+  fileName: app.yaml
+  mountPath: /app/config
+  data: {}

@@ -1,0 +1,11 @@
+{{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "template.fullname" . }}-config
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+data:
+  {{ .Values.runtimeConfig.fileName | default "app.yaml" }}: |
+    {{- toYaml .Values.runtimeConfig.data | nindent 4 }}
+{{- end }}

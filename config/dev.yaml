@@ -1,0 +1,18 @@
+runtimeConfig:
+  enabled: true
+  fileName: app.yaml
+  mountPath: /app/config
+  data:
+    app:
+      env: dev
+      logLevel: debug
+      httpPort: 3000
+    database:
+      host: postgres.database.svc.cluster.local
+      port: 5432
+      name: meo_stationery
+      ssl: false
+    cache:
+      enabled: false
+    featureFlags:
+      enableMetrics: true
