@@ -2,12 +2,15 @@
 
 ## Cấu trúc
 
+- **`../terraform_secret/`** (cùng cấp repo) – chỉ AWS Secrets Manager `app-credentials` cho dev/staging/prod, tách khỏi stack RKE2
 - **`modules/`** – VPC, IAM, keys, certificate, **secrets** (AWS Secrets Manager + random RKE2 token), loadbalancers, openvpn, rke2
 - **`environments/dev`** – Dev (terraform.tfvars có sẵn)
 - **`environments/prod`** – Prod (copy `terraform.tfvars.example` → `terraform.tfvars`, điền `my_ip`, `rke2_token`)
 - **`environments/management`** – Management (chỉ ArgoCD)
 
 ## Chạy theo environment
+
+**Không** chạy `terraform apply` từ thư mục `terraform/` (chỉ còn `ec2.tf` legacy, thiếu VPC/module → lỗi kiểu `aws_subnet ... has not been declared`, và không có `module.secrets`). Luôn dùng `terraform -chdir=environments/<dev|prod|management> ...`.
 
 ```bash
 # Dev

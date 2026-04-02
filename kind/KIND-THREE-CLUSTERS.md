@@ -240,7 +240,7 @@ Sau khi sync xong, sẽ có:
 - **Kind trên Linux:** Argo CD gọi API dev/staging/prod qua **container IP + port 6443** (xem bước 3.4). Lấy IP: `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. **KHÔNG dùng** `host.docker.internal` (không resolve trên Linux) hay gateway `172.18.0.1` (có thể timeout). IP container sẽ thay đổi khi xóa/tạo lại cluster → phải tạo lại secret.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.4.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
-- **Database/backend trên Kind:** Trên Kind không có External Secrets Operator → Secret phải tạo tay trên từng cluster (dev/staging/prod) theo **mục 6.5**. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster.
+- **Database/backend trên Kind:** Có hai cách: **ESO + AWS Secrets Manager** (**mục 6.5.1**, khuyến nghị khi đã có secret trên AWS) hoặc **Secret tĩnh bằng kubectl** (**mục 6.5.2**, offline / không AWS). **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster.
 
 ---
 
@@ -248,7 +248,7 @@ Sau khi sync xong, sẽ có:
 
 Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại **không có lệnh "start lại nguyên cụm" đơn giản**. Cách an toàn, ít lỗi nhất:
 
-> **Xóa cụm cũ nếu còn → tạo lại 4 cluster Kind → cài lại Argo CD → đăng ký dev/staging/prod → tạo lại secrets local → sync lại app.**
+> **Xóa cụm cũ nếu còn → tạo lại 4 cluster Kind → cài lại Argo CD → đăng ký dev/staging/prod → làm lại secrets (6.5.1 ESO+AWS hoặc 6.5.2 kubectl) → sync lại app.**
 
 Giả sử đang ở branch `kind` của repo này.
 
@@ -356,9 +356,105 @@ kubectl create secret generic cluster-prod -n argocd \
 kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
 ```
 
-### 6.5. Tạo lại secrets local cho database + backend (giả ESO)
+### 6.5. Secrets cho database + backend (sau khi recreate cluster)
 
-Vì cluster Kind mới hoàn toàn nên các Secret giả ESO phải tạo lại. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên (`| kubectl --context kind-dev apply -f -`), nếu không namespace sẽ bị tạo nhầm cluster.
+#### 6.5.1. External Secrets Operator + AWS Secrets Manager (thay cho “ESO giả”)
+
+Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Secrets Manager (cùng keys như Terraform `modules/secrets`: `POSTGRES_*`, `DATABASE_URL`, `NEXTAUTH_SECRET`).
+
+**Trên từng workload cluster** (`kind-dev`, `kind-staging`, `kind-prod`) — lặp lại với đúng `--context` và file values tương ứng:
+
+1. Cài External Secrets Operator (**một lần trên mỗi** cluster `kind-dev`, `kind-staging`, `kind-prod`):
+
+   Config Kind của repo dùng **Kubernetes 1.28** (`kindest/node:v1.28.0`). Chart ESO **≥ 0.20.1** kèm CRD có `selectableFields` (chỉ hợp lệ từ K8s ~1.31+) → `helm install` báo lỗi kiểu `.spec.versions[0].selectableFields: field not declared in schema` và **CRD không được cài** → apply `ExternalSecret` sẽ lỗi `no matches for kind "ExternalSecret"`.
+
+   **Cách xử lý:** ghim chart **0.19.2** (bản 0.20.1 trở lên cần K8s mới hơn). Nếu lần trước cài hỏng: `helm uninstall external-secrets -n external-secrets` trên context tương ứng, rồi cài lại.
+
+   ```bash
+   helm repo add external-secrets https://charts.external-secrets.io
+   helm repo update
+
+   for ctx in kind-dev kind-staging kind-prod; do
+     helm upgrade --install external-secrets external-secrets/external-secrets \
+       --version 0.19.2 \
+       -n external-secrets --create-namespace \
+       --kube-context "$ctx"
+   done
+   ```
+
+   **Sau `helm install`, bắt buộc chờ pod ESO (webhook) Ready** rồi mới apply `ClusterSecretStore` / `ExternalSecret`. Nếu apply quá sớm, API server gọi validating webhook `external-secrets-webhook` trong khi pod chưa listen → lỗi `connection refused` / `Internal error occurred: failed calling webhook`.
+
+   ```bash
+   for ctx in kind-dev kind-staging kind-prod; do
+     kubectl --context "$ctx" -n external-secrets rollout status deployment/external-secrets-webhook --timeout=300s
+     kubectl --context "$ctx" -n external-secrets wait --for=condition=Ready pods --all --timeout=300s
+   done
+   ```
+
+   (Nếu tên deployment webhook khác: `kubectl --context kind-dev -n external-secrets get deploy`.)
+
+   (Muốn dùng ESO mới nhất: nâng image Kind lên **≥ 1.31** trong `kind/*-kind-config.yaml` rồi bỏ `--version`.)
+
+2. Tạo `aws-credentials` trong namespace `external-secrets` **trên từng cluster**
+
+   **Không bỏ bước này** dù bạn đã tạo secret **trên AWS Secrets Manager** (Terraform / console) từ trước:
+
+   - Secret **trên AWS** (`meo-stationery/dev/app-credentials` …) chứa JSON app (`POSTGRES_*`, `DATABASE_URL`, …) — đích mà **ExternalSecret** đồng bộ vào K8s.
+   - Secret **`aws-credentials` trong cluster** chứa **Access key IAM** để **controller ESO** gọi API AWS (`GetSecretValue`). Không có nó (hoặc không có auth tương đương), ESO không đọc được AWS.
+
+   IAM cần `secretsmanager:GetSecretValue` trên prefix secret của project (giống user ESO trong `terraform_secret` hoặc `terraform/modules/iam`).
+
+   ```bash
+   kubectl --context kind-dev -n external-secrets create secret generic aws-credentials \
+     --from-literal=access-key-id='YOUR_AWS_ACCESS_KEY_ID' \
+     --from-literal=secret-access-key='YOUR_AWS_SECRET_ACCESS_KEY'
+   # Lặp với kind-staging / kind-prod (thường cùng một cặp key). Nếu secret đã tồn tại: thêm --dry-run=client -o yaml | kubectl apply -f - hoặc delete rồi create lại.
+   ```
+
+3. Tạo namespace đích (ESO ghi K8s Secret vào `database` + `meo-stationery`). Ví dụ cho **kind-dev** (đổi context cho staging/prod):
+
+   ```bash
+   kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
+   kubectl --context kind-dev create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
+   kubectl --context kind-prod create namespace database --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
+   kubectl --context kind-prod create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
+   kubectl --context kind-staging create namespace database --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+   kubectl --context kind-staging create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+   ```
+
+4. Apply `ClusterSecretStore` + `ExternalSecret` từ repo (từ thư mục gốc repo):
+
+   ```bash
+   cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
+
+   helm template external-secrets external-secrets/applications \
+     -f external-secrets/applications/values.yaml \
+     -f external-secrets/applications/values-dev.yaml \
+     | kubectl --context kind-dev apply -f -
+
+   helm template external-secrets external-secrets/applications \
+     -f external-secrets/applications/values.yaml \
+     -f external-secrets/applications/values-staging.yaml \
+     | kubectl --context kind-staging apply -f -
+
+   helm template external-secrets external-secrets/applications \
+     -f external-secrets/applications/values.yaml \
+     -f external-secrets/applications/values-prod.yaml \
+     | kubectl --context kind-prod apply -f -
+   ```
+
+5. Kiểm tra sync:
+
+   ```bash
+   kubectl --context kind-dev get externalsecret,secret -n database
+   kubectl --context kind-dev get externalsecret,secret -n meo-stationery
+   ```
+
+**Staging trên AWS:** Repo có `external-secrets/applications/values-staging.yaml` trỏ tới `meo-stationery/staging/app-credentials`. Terraform trong repo **chưa** có `environments/staging` — bạn cần tạo secret đó trên AWS (console hoặc thêm module) trước khi ESO sync được.
+
+#### 6.5.2. Secret tĩnh bằng kubectl (không AWS — “giả ESO”)
+
+Khi không dùng ESO/AWS, tạo Secret thủ công trên từng cluster. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên (`| kubectl --context kind-dev apply -f -`), nếu không namespace sẽ bị tạo nhầm cluster.
 
 **Trên `kind-dev`:**
 

@@ -4,10 +4,17 @@ Terraform đã tạo secret `meo-stationery/<env>/app-credentials` trong AWS Sec
 
 ## 1. Cài External Secrets Operator
 
+**KinD 1.28 hoặc K8s chưa lên 1.31:** chart ESO từ **0.20.1** trở lên có CRD `selectableFields` không tương thích → ghim chart, ví dụ:
+
 ```bash
 helm repo add external-secrets https://charts.external-secrets.io
-helm install external-secrets external-secrets/external-secrets -n external-secrets --create-namespace
+helm repo update
+helm install external-secrets external-secrets/external-secrets \
+  --version 0.19.2 \
+  -n external-secrets --create-namespace
 ```
+
+Trên cluster **≥ 1.31** có thể bỏ `--version` để lấy bản mới nhất.
 
 ## 2. AWS credentials cho ESO (tự động)
 
@@ -21,13 +28,17 @@ kubectl delete secret aws-credentials -n external-secrets
 
 ## 3. Áp dụng SecretStore + ExternalSecret theo env
 
-**deploy.py** tự động apply qua Helm chart khi chạy `./deploy.py dev` hoặc `./deploy.py prod`.
+**deploy.py** tự động apply qua Helm chart khi chạy `./deploy.py dev` hoặc `./deploy.py prod` (staging: apply thủ công hoặc mở rộng deploy script).
 
 Apply thủ công:
 ```bash
 helm template external-secrets external-secrets/applications \
   -f external-secrets/applications/values.yaml \
   -f external-secrets/applications/values-dev.yaml | kubectl apply -f -
+
+helm template external-secrets external-secrets/applications \
+  -f external-secrets/applications/values.yaml \
+  -f external-secrets/applications/values-staging.yaml | kubectl apply -f -
 ```
 
 Sau khi ESO tạo xong K8s Secret, deploy ArgoCD apps (backend + database) với values có `existingSecret.name` đã set.
@@ -40,6 +51,7 @@ external-secrets/
 │   ├── Chart.yaml
 │   ├── values.yaml          # defaults
 │   ├── values-dev.yaml
+│   ├── values-staging.yaml
 │   ├── values-prod.yaml
 │   └── templates/
 │       ├── secretstore.yaml

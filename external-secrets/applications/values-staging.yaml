@@ -1,0 +1,12 @@
+env: staging
+
+projectName: meo-stationery
+# Cùng format JSON như dev/prod (Terraform module secrets hoặc tạo tay trên AWS).
+# Chưa có Terraform env staging trong repo → tạo secret AWS trước khi apply ESO.
+awsBackendSecretKey: meo-stationery/staging/app-credentials
+awsDatabaseSecretKey: meo-stationery/staging/app-credentials
+
+backend:
+  refreshInterval: 1h
+database:
+  refreshInterval: 1h

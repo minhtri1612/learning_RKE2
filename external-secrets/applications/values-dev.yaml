@@ -1,8 +1,10 @@
 env: dev
 
 projectName: meo-stationery
-awsBackendSecretKey: meo-stationery/dev/app-credentials-v2
-awsDatabaseSecretKey: meo-stationery/dev/app-credentials-v2
+# Tên secret trên AWS phải tồn tại. terraform_secret → meo-stationery/dev/app-credentials
+# terraform/environments/dev (module secrets) dùng hậu tố -v2 → app-credentials-v2
+awsBackendSecretKey: meo-stationery/dev/app-credentials
+awsDatabaseSecretKey: meo-stationery/dev/app-credentials
 
 backend:
   refreshInterval: 5m   # shorter so secret updates (e.g. after tf apply) propagate quickly
