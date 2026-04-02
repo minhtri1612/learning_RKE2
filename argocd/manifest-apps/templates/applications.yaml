@@ -27,6 +27,7 @@ spec:
       valueFiles:
         - ../app/{{ $profile }}.yaml
         - ../env/{{ $.Values.env }}.yaml
+        - ../config/{{ $.Values.env }}/{{ $appName }}.yaml
       parameters:
         - name: currentService
           value: {{ $appName }}

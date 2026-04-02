@@ -162,3 +162,10 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+# Runtime app config (non-sensitive values).
+# Nội dung data được merge từ config/{env}/backend.yaml
+runtimeConfig:
+  enabled: true
+  fileName: app.yaml
+  mountPath: /app/config

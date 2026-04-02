@@ -1,0 +1,9 @@
+# Runtime config cho database (PostgreSQL) ở môi trường PROD.
+
+runtimeConfig:
+  data:
+    max_connections: 100
+    shared_buffers: "512MB"
+    work_mem: "16MB"
+    log_min_duration_statement: 1000     # log query > 1s
+    log_statement: "ddl"
