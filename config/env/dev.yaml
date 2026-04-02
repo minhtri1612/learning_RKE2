@@ -1,0 +1,17 @@
+# DEV override — chỉ phần khác so với config/base/
+
+runtimeConfig:
+  data:
+    # backend
+    app:
+      env: dev
+      logLevel: debug
+    cache:
+      enabled: false
+
+    # database
+    max_connections: 20
+    shared_buffers: "128MB"
+    work_mem: "4MB"
+    log_min_duration_statement: 0        # log MỌI query
+    log_statement: "all"

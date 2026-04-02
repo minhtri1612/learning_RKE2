@@ -1,0 +1,16 @@
+# PROD override — chỉ phần khác so với config/base/
+
+runtimeConfig:
+  data:
+    # backend
+    app:
+      env: prod
+      logLevel: warn
+    cache:
+      enabled: true
+
+    # database
+    max_connections: 100
+    shared_buffers: "512MB"
+    work_mem: "16MB"
+    log_min_duration_statement: 1000     # log query > 1s

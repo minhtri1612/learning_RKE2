@@ -1,9 +1,0 @@
-# Runtime config cho database (PostgreSQL) ở môi trường STAGING.
-
-runtimeConfig:
-  data:
-    max_connections: 50
-    shared_buffers: "256MB"
-    work_mem: "8MB"
-    log_min_duration_statement: 500      # log query > 500ms
-    log_statement: "ddl"
