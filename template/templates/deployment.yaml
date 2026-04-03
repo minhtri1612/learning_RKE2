@@ -72,7 +72,7 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if .Values.runtimeConfig.enabled }}
+          {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
           {{- if not .Values.volumeMounts }}
           volumeMounts:
           {{- end }}
@@ -84,7 +84,7 @@ spec:
       volumes:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.runtimeConfig.enabled }}
+      {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
       {{- if not .Values.volumes }}
       volumes:
       {{- end }}

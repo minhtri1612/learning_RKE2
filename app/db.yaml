@@ -191,9 +191,10 @@ tolerations: []
 affinity: {}
 
 # Runtime database config (non-sensitive tuning).
-# Nội dung data được merge từ config/{env}/database.yaml
 runtimeConfig:
   enabled: true
   fileName: extra.conf
   mountPath: /etc/postgresql
+  data:
+    log_statement: "ddl"
 

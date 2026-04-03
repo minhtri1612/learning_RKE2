@@ -197,7 +197,7 @@ kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=clust
 
 ## 4. Add repo Git và apply bootstrap (trên management)
 
-Bootstrap là **3 file Application** trong `argocd/bootstrap/`. Apply lần lượt để tạo Application `argocd-projects` + `dev-meostation` + `prod-meostation`.
+Bootstrap gồm **4 file** trong `argocd/bootstrap/` (`01-projects` + dev + staging + prod). Apply lần lượt để tạo `argocd-projects` và các stack `dev-meostation`, `staging-meostation`, `prod-meostation`.
 
 ```bash
 kubectl config use-context kind-management
@@ -216,7 +216,7 @@ kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
 Sau khi sync xong, sẽ có:
 
 - **argocd-projects** → deploy `argocd/projects` → tạo AppProject `dev`, `staging`, `prod`
-- **dev-meostation** → render chart `argocd/manifest-apps` (env=dev) → sinh ra `dev-meostation-backend-app` (trỏ `.manifest/dev/backend`), `dev-meostation-database-app` (trỏ `.manifest/dev/database`) → deploy lên cluster **dev**
+- **dev-meostation** → render chart `argocd/manifest-apps` (env=dev) → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app`, `dev-meostation-frontend-app` — mỗi app con dùng Helm chart **`template`** với `valueFiles`: `app/be.yaml` hoặc `app/db.yaml`, `env/<env>.yaml`, `config/base/config.yaml`, `config/env/<env>.yaml` → deploy lên cluster **dev**
 - **staging-meostation** → tương tự, env=staging → deploy lên cluster **staging**
 - **prod-meostation** → tương tự, env=prod → deploy lên cluster **prod**
 
@@ -236,7 +236,7 @@ Sau khi sync xong, sẽ có:
 
 ## Lưu ý
 
-- Replica count được cấu hình trong `env/*.yaml` cho từng môi trường (dev/staging/prod). File `.manifest/` được render tự động qua GitHub Actions khi push thay đổi vào `app/`, `env/`, hoặc `template/`.
+- Replica count / image tag được cấu hình trong `env/<env>.yaml`. Chart workload là `template/`; profile values trong `app/be.yaml`, `app/db.yaml`; config chung `config/base/config.yaml`, override theo môi trường `config/env/<env>.yaml`. **Không** còn đường `.manifest/` trong flow Argo hiện tại.
 - **Kind trên Linux:** Argo CD gọi API dev/staging/prod qua **container IP + port 6443** (xem bước 3.4). Lấy IP: `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. **KHÔNG dùng** `host.docker.internal` (không resolve trên Linux) hay gateway `172.18.0.1` (có thể timeout). IP container sẽ thay đổi khi xóa/tạo lại cluster → phải tạo lại secret.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.4.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
@@ -427,19 +427,40 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    ```bash
    cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 
+   # DEV
    helm template external-secrets external-secrets/applications \
      -f external-secrets/applications/values.yaml \
-     -f external-secrets/applications/values-dev.yaml \
+     -f app/be-secrets.yaml \
+     -f env-secrets/dev.yaml \
+     | kubectl --context kind-dev apply -f -
+   helm template external-secrets external-secrets/applications \
+     -f external-secrets/applications/values.yaml \
+     -f app/db-secrets.yaml \
+     -f env-secrets/dev.yaml \
      | kubectl --context kind-dev apply -f -
 
+   # STAGING
    helm template external-secrets external-secrets/applications \
      -f external-secrets/applications/values.yaml \
-     -f external-secrets/applications/values-staging.yaml \
+     -f app/be-secrets.yaml \
+     -f env-secrets/staging.yaml \
+     | kubectl --context kind-staging apply -f -
+   helm template external-secrets external-secrets/applications \
+     -f external-secrets/applications/values.yaml \
+     -f app/db-secrets.yaml \
+     -f env-secrets/staging.yaml \
      | kubectl --context kind-staging apply -f -
 
+   # PROD
    helm template external-secrets external-secrets/applications \
      -f external-secrets/applications/values.yaml \
-     -f external-secrets/applications/values-prod.yaml \
+     -f app/be-secrets.yaml \
+     -f env-secrets/prod.yaml \
+     | kubectl --context kind-prod apply -f -
+   helm template external-secrets external-secrets/applications \
+     -f external-secrets/applications/values.yaml \
+     -f app/db-secrets.yaml \
+     -f env-secrets/prod.yaml \
      | kubectl --context kind-prod apply -f -
    ```
 
@@ -450,7 +471,7 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    kubectl --context kind-dev get externalsecret,secret -n meo-stationery
    ```
 
-**Staging trên AWS:** Repo có `external-secrets/applications/values-staging.yaml` trỏ tới `meo-stationery/staging/app-credentials`. Terraform trong repo **chưa** có `environments/staging` — bạn cần tạo secret đó trên AWS (console hoặc thêm module) trước khi ESO sync được.
+**Staging trên AWS:** Repo có `env-secrets/staging.yaml` trỏ tới `meo-stationery/staging/app-credentials`. Terraform trong repo **chưa** có `environments/staging` — bạn cần tạo secret đó trên AWS (console hoặc thêm module) trước khi ESO sync được.
 
 #### 6.5.2. Secret tĩnh bằng kubectl (không AWS — “giả ESO”)
 
@@ -509,7 +530,7 @@ kubectl --context kind-prod -n meo-stationery create secret generic meo-statione
 
 ### 6.6. Apply lại bootstrap Argo CD
 
-Bootstrap là 3 file Application; apply lần lượt:
+Bootstrap là **4** file Application (projects + dev + staging + prod); apply lần lượt:
 
 ```bash
 kubectl config use-context kind-management
@@ -526,8 +547,8 @@ kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
 Sau khi sync xong, sẽ có:
 
 - `argocd-projects` → tạo AppProject dev, staging, prod
-- `dev-meostation` → render `argocd/manifest-apps` → sinh ra `dev-meostation-backend-app` (`.manifest/dev/backend`), `dev-meostation-database-app` (`.manifest/dev/database`)
-- `staging-meostation` → sinh ra `staging-meostation-backend-app`, `staging-meostation-database-app`
+- `dev-meostation` → render `argocd/manifest-apps` → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app`, `dev-meostation-frontend-app` (chart `template` + `app/*.yaml` + `env/` + `config/`)
+- `staging-meostation` → sinh ra `staging-meostation-backend-app`, `staging-meostation-database-app`, `staging-meostation-redis-app` (nếu `env/staging.yaml` khai báo `redis`)
 - `prod-meostation` → sinh ra `prod-meostation-backend-app`, `prod-meostation-database-app`
 
 Với môi trường **prod** (sync policy `Manual`), force sync thủ công:
@@ -544,3 +565,40 @@ argocd app sync argocd/prod-meostation-database-app
 > PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 > argocd login localhost:8080 --insecure --username admin --password "$PASS"
 > ```
+
+---
+
+### 6.7. Gỡ rối thường gặp (đọc trước khi blame doc)
+
+**Hai “nguồn sự thật” — đừng trộn lung tung**
+
+- **Argo CD** (app con `dev-meostation-*-app`) đã cấu hình `helm.releaseName` = `backend` / `database` / `frontend` và sync chart `template` lên **kind-dev** (hoặc staging/prod).  
+- **Helm CLI** `helm upgrade --install backend ...` trên **cùng** cluster/namespace với cùng tên release → Kubernetes **server-side apply** sẽ báo **conflict với `argocd-controller`** (Deployment/StatefulSet).  
+- **Khuyến nghị:** workload app chỉ để **Argo sync** từ Git; chỉ dùng Helm tay khi bạn đã **suspend** app con tương ứng trên Argo (context **`kind-management`**, namespace `argocd`). Nếu đã lỡ cài Helm failed: `helm uninstall backend -n meo-stationery` và `helm uninstall database -n database`, rồi bật lại sync Argo.
+
+**Context đúng cho từng việc**
+
+- CRD `Application` (Argo) chỉ có trên cluster cài Argo → **`kubectl ... application ...` dùng `--context kind-management`**, **không** dùng `kind-dev`.
+- Pod/Secret/ConfigMap trên workload cluster → **`kind-dev` / `kind-staging` / `kind-prod`**.
+- Lệnh **Helm** trỏ cluster bằng **`--kube-context kind-dev`**, không có flag `--context` (đó là của `kubectl`).
+
+**External Secrets chart trong repo (không còn file cũ)**
+
+- Apply manifest ESO **không** dùng `external-secrets/applications/values-dev.yaml` (đã xóa). Luôn dùng:
+  - `external-secrets/applications/values.yaml`
+  - `app/be-secrets.yaml` **hoặc** `app/db-secrets.yaml`
+  - `env-secrets/dev.yaml` | `staging.yaml` | `prod.yaml`
+- Mỗi env chạy **hai** lệnh `helm template ... | kubectl apply` (backend profile + database profile), như mục **6.5.1 bước 4**.
+
+**Pod `ContainerCreating` + `configmap "backend-config" not found`**
+
+- Chart `template` chỉ tạo ConfigMap khi **có** `runtimeConfig.enabled` **và** `runtimeConfig.data` (xem `template/templates/configmap.yaml`). `app/be.yaml` / `app/db.yaml` trong repo này đã có `data` — nếu trên cluster vẫn không thấy ConfigMap, gần như chắc **Argo đang sync revision Git cũ** (bootstrap trỏ `https://github.com/minhtri1612/learning_RKE2.git` `main` — phải **push** đúng repo/branch đó). Sau khi push: Refresh + Sync app trên Argo.
+- Từ bản chart đã cập nhật: Deployment/StatefulSet **chỉ mount** volume `app-config` khi có `runtimeConfig.data` (khớp điều kiện tạo ConfigMap) — tránh pod kẹt vĩnh viễn khi Git chưa có `data` (pod có thể lên nhưng thiếu file config cho tới khi bạn sync đúng Git).
+
+**ExternalSecret database `SecretSyncedError`**
+
+- Kiểm tra `env-secrets/<env>.yaml`: `secrets.database.remoteKey` phải **trùng tên secret thật** trên AWS. Nếu Terraform chỉ tạo một JSON `.../app-credentials`, đừng trỏ DB sang `.../database` khi secret đó chưa tồn tại.
+
+**ServiceAccount “exists and cannot be imported into the current release”**
+
+- Tài nguyên đã được tạo trước đó không thuộc Helm release hiện tại. Trên môi trường practice: ưu tiên **một** luồng (Argo **hoặc** Helm tay); tránh vừa Argo vừa `helm upgrade` cùng release.

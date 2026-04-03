@@ -6,6 +6,7 @@ secrets:
   backend:
     remoteKey: meo-stationery/dev/app-credentials
     refreshInterval: 5m
+  # Cùng một JSON trên AWS như backend (terraform_secret / app-credentials) nếu chưa tách secret riêng meo-stationery/dev/database
   database:
-    remoteKey: meo-stationery/dev/database
+    remoteKey: meo-stationery/dev/app-credentials
     refreshInterval: 1h
