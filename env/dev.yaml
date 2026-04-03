@@ -1,7 +1,7 @@
-# Merge: helm ... -f app/be.yaml|db.yaml -f env/dev.yaml
+# Tag/replica + env (suffix secret). useExternalSecrets mặc định true trong template/values.yaml.
+# helm ... -f app/be.yaml|db.yaml -f env/dev.yaml
 
 env: dev
-useExternalSecrets: true
 
 backend:
   image:

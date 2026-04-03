@@ -1,8 +1,7 @@
-# Chỉ tag phiên bản image — team developer.
+# Tag/replica + env. useExternalSecrets mặc định true trong template/values.yaml.
 # helm ... -f app/be.yaml|db.yaml -f env/prod.yaml
 
 env: prod
-useExternalSecrets: true
 
 backend:
   image:

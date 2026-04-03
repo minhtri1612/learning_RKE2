@@ -168,8 +168,9 @@ runtimeConfig:
   mountPath: /app/config
   data: {}
 # -- Toggle to use External Secrets for sensitive values
-# When enabled, templates will pull secrets from K8s Secret objects managed by ESO.
-useExternalSecrets: false
+# When enabled, templates will pull secrets from K8s Secret objects managed by ESO (or static Secrets with matching names).
+# Default true for Argo deploys; local tests without secrets: --set useExternalSecrets=false or a small values file.
+useExternalSecrets: true
 
 # -- Environment name (dev, staging, prod)
 env: ""
