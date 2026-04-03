@@ -13,7 +13,4 @@ database:
     tag: "16"
   replicaCount: 3
 
-frontend:
-  image:
-    tag: "1.0.0"
-  replicaCount: 5
+# Cùng image repo với backend (app/be.yaml); tag phải tồn tại trên registry — 1.0.0 thường gây ErrImagePull

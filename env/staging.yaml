@@ -11,7 +11,3 @@ database:
   image:
     tag: "16"
   replicaCount: 4
-redis:
-  image:
-    tag: "7.4.0"
-  replicaCount: 2
