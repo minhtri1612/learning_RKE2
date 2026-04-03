@@ -59,6 +59,11 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.useExternalSecrets }}
+          envFrom:
+            - secretRef:
+                name: {{ include "template.secretName" . }}
+          {{- end }}
           {{- with .Values.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}

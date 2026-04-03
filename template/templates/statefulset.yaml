@@ -55,6 +55,23 @@ spec:
           {{- if or (and (eq $svcName "database") .Values.database) .Values.extraEnv }}
           env:
             {{- if and (eq $svcName "database") .Values.database }}
+            {{- if .Values.useExternalSecrets }}
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "template.secretName" . }}
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "template.secretName" . }}
+                  key: POSTGRES_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "template.secretName" . }}
+                  key: POSTGRES_PASSWORD
+            {{- else }}
             - name: POSTGRES_USER
               value: {{ .Values.database.username | default "postgres" | quote }}
             - name: POSTGRES_DB
@@ -68,6 +85,7 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.database.existingSecret.name }}
                   key: {{ .Values.database.existingSecret.key | default "password" }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- with .Values.extraEnv }}

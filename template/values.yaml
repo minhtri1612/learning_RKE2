@@ -167,3 +167,9 @@ runtimeConfig:
   fileName: app.yaml
   mountPath: /app/config
   data: {}
+# -- Toggle to use External Secrets for sensitive values
+# When enabled, templates will pull secrets from K8s Secret objects managed by ESO.
+useExternalSecrets: false
+
+# -- Environment name (dev, staging, prod)
+env: ""

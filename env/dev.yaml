@@ -1,5 +1,7 @@
-# Chỉ tag phiên bản image — team developer chỉnh ở đây cho từng môi trường.
 # Merge: helm ... -f app/be.yaml|db.yaml -f env/dev.yaml
+
+env: dev
+useExternalSecrets: true
 
 backend:
   image:

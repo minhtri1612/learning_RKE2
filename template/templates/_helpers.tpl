@@ -86,3 +86,22 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Suffix cho tên K8s Secret: -dev, -staging, hoặc rỗng (prod).
+*/}}
+{{- define "template.secretSuffix" -}}
+{{- if eq .Values.env "dev" -}}
+-dev
+{{- else if eq .Values.env "staging" -}}
+-staging
+{{- end -}}
+{{- end -}}
+
+{{/*
+Tên K8s Secret được ghép động theo quy ước: meo-stationery-<component>-secrets<suffix>
+*/}}
+{{- define "template.secretName" -}}
+{{- $svcName := .Values.currentService | default "backend" -}}
+{{- printf "meo-stationery-%s-secrets%s" $svcName (include "template.secretSuffix" .) -}}
+{{- end -}}

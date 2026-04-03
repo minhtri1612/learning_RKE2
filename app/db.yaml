@@ -155,7 +155,7 @@ persistence:
 database:
   username: meo_admin
   name: meo_stationery
-  password: "dev-only-change-me"
+  # password: "dev-only-change-me"
 
 # --- chart mở rộng: mount + probe cho StatefulSet ---
 statefulset:

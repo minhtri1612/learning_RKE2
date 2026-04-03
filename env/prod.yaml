@@ -1,6 +1,9 @@
 # Chỉ tag phiên bản image — team developer.
 # helm ... -f app/be.yaml|db.yaml -f env/prod.yaml
 
+env: prod
+useExternalSecrets: true
+
 backend:
   image:
     tag: "3.0.1"
