@@ -1,17 +1,26 @@
-# DEV override — chỉ phần khác so với config/base/
+# DEV override — chỉ phần khác so với config/base/config.yaml
 
-runtimeConfig:
-  data:
-    # backend
-    app:
-      env: dev
-      logLevel: debug
-    cache:
-      enabled: false
+backend:
+  secrets:
+    target:
+      name: meo-stationery-backend-secrets-dev
+    remoteKey: meo-stationery/dev/app-credentials
 
-    # database
-    max_connections: 20
-    shared_buffers: "128MB"
-    work_mem: "4MB"
-    log_min_duration_statement: 0        # log MỌI query
-    log_statement: "all"
+database:
+  # Dev giữ thêm env vars local-friendly (không lặp cấu trúc secrets).
+  configs:
+    env:
+      - name: DATABASE_URL
+        value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+      - name: POSTGRES_USER
+        value: "postgres"
+      - name: POSTGRES_PASSWORD
+        value: "postgres"
+      - name: POSTGRES_HOST
+        value: "localhost"
+      - name: POSTGRES_PORT
+        value: "5432"
+  secrets:
+    target:
+      name: meo-stationery-database-secrets-dev
+    remoteKey: meo-stationery/dev/database

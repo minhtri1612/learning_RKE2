@@ -1,16 +1,14 @@
-# PROD override — chỉ phần khác so với config/base/
+# PROD override — chỉ phần khác so với config/base/config.yaml
 
-runtimeConfig:
-  data:
-    # backend
-    app:
-      env: prod
-      logLevel: warn
-    cache:
-      enabled: true
+backend:
+  secrets:
+    target:
+      name: meo-stationery-backend-secrets-prod
+    remoteKey: meo-stationery/prod/app-credentials
 
-    # database
-    max_connections: 100
-    shared_buffers: "512MB"
-    work_mem: "16MB"
-    log_min_duration_statement: 1000     # log query > 1s
+database:
+  secrets:
+    target:
+      name: meo-stationery-database-secrets-prod
+    remoteKey: meo-stationery/prod/app-credentials
+

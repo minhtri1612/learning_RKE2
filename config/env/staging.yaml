@@ -1,16 +1,13 @@
-# STAGING override — chỉ phần khác so với config/base/
+# STAGING override — chỉ phần khác so với config/base/config.yaml
 
-runtimeConfig:
-  data:
-    # backend
-    app:
-      env: staging
-      logLevel: info
-    cache:
-      enabled: true
+backend:
+  secrets:
+    target:
+      name: meo-stationery-backend-secrets-staging
+    remoteKey: meo-stationery/staging/app-credentials
 
-    # database
-    max_connections: 50
-    shared_buffers: "256MB"
-    work_mem: "8MB"
-    log_min_duration_statement: 500      # log query > 500ms
+database:
+  secrets:
+    target:
+      name: meo-stationery-database-secrets-staging
+    remoteKey: meo-stationery/staging/app-credentials

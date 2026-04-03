@@ -1,6 +1,0 @@
-# Base runtime config cho database (PostgreSQL) — giống nhau mọi env.
-# Override per env ở config/env/{env}.yaml
-
-runtimeConfig:
-  data:
-    log_statement: "ddl"

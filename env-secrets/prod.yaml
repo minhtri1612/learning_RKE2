@@ -1,0 +1,11 @@
+env: prod
+projectName: meo-stationery
+
+# Source của secrets cho External Secret Engine
+secrets:
+  backend:
+    remoteKey: meo-stationery/prod/app-credentials
+    refreshInterval: 1h
+  database:
+    remoteKey: meo-stationery/prod/app-credentials
+    refreshInterval: 1h

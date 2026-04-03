@@ -7,61 +7,13 @@ backend:
   image:
     tag: "2.0.3"
   replicaCount: 4
+
 database:
   image:
     tag: "16"
   replicaCount: 3
-  configs:
-    env:
-      - name: DATABASE_URL
-        value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
-      - name: POSTGRES_USER
-        value: "postgres"
-      - name: POSTGRES_PASSWORD
-        value: "postgres"
-      - name: POSTGRES_HOST
-        value: "localhost"
-      - name: POSTGRES_PORT
-        value: "5432"
-    files:
-      - name: config.yaml
-        value: |
-          DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "543"
-  secrets:
-    useExternalSecrets: true
-    secretStoreRef:
-      name: aws-secrets-manager
-      kind: ClusterSecretStore
-    target:
-      name: meo-stationery-database-secrets-dev
-      creationPolicy: Owner
-    data:
-      - secretKey: POSTGRES_USER
-        remoteRef:
-          key: meo-stationery/dev/database
-          property: POSTGRES_USER
-      - secretKey: POSTGRES_PASSWORD
-        remoteRef:
-          key: meo-stationery/dev/database
-          property: POSTGRES_PASSWORD
-      - secretKey: POSTGRES_HOST
-        remoteRef:
-          key: meo-stationery/dev/database
-          property: POSTGRES_HOST
-      - secretKey: POSTGRES_PORT
-        remoteRef:
-          key: meo-stationery/dev/database
-          property: POSTGRES_PORT
-      - secretKey: POSTGRES_DB
-        remoteRef:
-          key: meo-stationery/dev/database
-          property: POSTGRES_DB
+
 frontend:
   image:
     tag: "1.0.0"
   replicaCount: 5
-

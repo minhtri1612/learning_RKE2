@@ -1,0 +1,43 @@
+# Base config dùng chung cho mọi môi trường.
+# Mọi giá trị khác nhau theo môi trường được override ở config/env/{dev,staging,prod}.yaml
+
+backend:
+  secrets:
+    useExternalSecrets: true
+    secretStoreRef:
+      name: aws-secrets-manager
+      kind: ClusterSecretStore
+    target:
+      creationPolicy: Owner
+    data:
+      - secretKey: DATABASE_URL
+        remoteRef:
+          property: DATABASE_URL
+      - secretKey: NEXTAUTH_SECRET
+        remoteRef:
+          property: NEXTAUTH_SECRET
+
+database:
+  configs:
+    env:
+      - name: POSTGRES_HOST
+        value: "localhost"
+      - name: POSTGRES_PORT
+        value: "5432"
+  secrets:
+    useExternalSecrets: true
+    secretStoreRef:
+      name: aws-secrets-manager
+      kind: ClusterSecretStore
+    target:
+      creationPolicy: Owner
+    data:
+      - secretKey: POSTGRES_USER
+        remoteRef:
+          property: POSTGRES_USER
+      - secretKey: POSTGRES_PASSWORD
+        remoteRef:
+          property: POSTGRES_PASSWORD
+      - secretKey: POSTGRES_DB
+        remoteRef:
+          property: POSTGRES_DB
