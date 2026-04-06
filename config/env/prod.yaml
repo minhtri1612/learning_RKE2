@@ -5,14 +5,14 @@ projectName: meo-stationery
 backend:
   secrets:
     target:
-      name: meo-stationery-backend-secrets-prod
+      name: meo-stationery-backend-secrets
     remoteKey: meo-stationery/prod/app-credentials
     refreshInterval: 1h
 
 database:
   secrets:
     target:
-      name: meo-stationery-database-secrets-prod
+      name: meo-stationery-database-secrets
     remoteKey: meo-stationery/prod/app-credentials
     refreshInterval: 1h
 
