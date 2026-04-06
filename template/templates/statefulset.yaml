@@ -12,7 +12,7 @@
 {{- if and $svc.secrets (hasKey $svc.secrets "useExternalSecrets") }}
 {{- $useES = $svc.secrets.useExternalSecrets }}
 {{- end }}
-{{- $secretName := include "template.secretName" . }}
+{{- $secretName := include "template.serviceSecretName" . }}
 {{- $svcSt := (index $svc "statefulset") | default dict }}
 {{- $lProbe := (index $svcSt "livenessProbe") | default (index $st "livenessProbe") }}
 {{- $rProbe := (index $svcSt "readinessProbe") | default (index $st "readinessProbe") }}

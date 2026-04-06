@@ -105,3 +105,16 @@ Tên K8s Secret được ghép động theo quy ước: meo-stationery-<componen
 {{- $svcName := .Values.currentService | default "backend" -}}
 {{- printf "meo-stationery-%s-secrets%s" $svcName (include "template.secretSuffix" .) -}}
 {{- end -}}
+
+{{/*
+Tên Secret pod mount: ưu tiên <service>.secrets.target.name (config/env), fallback template.secretName.
+*/}}
+{{- define "template.serviceSecretName" -}}
+{{- $svcName := .Values.currentService | default "backend" -}}
+{{- $svc := index .Values $svcName | default dict -}}
+{{- if and $svc.secrets $svc.secrets.target $svc.secrets.target.name -}}
+{{- $svc.secrets.target.name -}}
+{{- else -}}
+{{- include "template.secretName" . -}}
+{{- end -}}
+{{- end -}}

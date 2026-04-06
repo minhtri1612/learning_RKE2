@@ -71,7 +71,7 @@ spec:
           {{- if $useES }}
           envFrom:
             - secretRef:
-                name: {{ include "template.secretName" . }}
+                name: {{ include "template.serviceSecretName" . }}
           {{- end }}
           {{- if or .Values.extraEnv (gt (len $cfgEnv) 0) }}
           env:
