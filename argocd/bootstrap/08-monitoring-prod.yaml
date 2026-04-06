@@ -19,7 +19,6 @@ spec:
     name: prod
     namespace: monitoring
   syncPolicy:
-    manual: {} # Prod is usually manual or restricted
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
