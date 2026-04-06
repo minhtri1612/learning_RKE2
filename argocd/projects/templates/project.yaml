@@ -8,7 +8,9 @@ metadata:
 spec:
   description: {{ .name }} environment project
   sourceRepos:
-    - {{ $.Values.repoURL }}
+    {{- range $.Values.sourceRepos }}
+    - {{ . }}
+    {{- end }}
   destinations:
     {{- range .namespaces }}
     - name: {{ $cluster }}
