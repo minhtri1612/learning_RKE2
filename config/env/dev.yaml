@@ -1,26 +1,23 @@
-# DEV override — chỉ phần khác so với config/base/config.yaml
+# DEV override — Environment-specific Secret/Config mapping.
+env: dev
+projectName: meo-stationery
 
 backend:
   secrets:
     target:
       name: meo-stationery-backend-secrets-dev
     remoteKey: meo-stationery/dev/app-credentials
+    refreshInterval: 5m
 
 database:
-  # Dev giữ thêm env vars local-friendly (không lặp cấu trúc secrets).
+  # Dev giữ thêm env vars local-friendly.
   configs:
     env:
       - name: DATABASE_URL
         value: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
-      - name: POSTGRES_USER
-        value: "postgres"
-      - name: POSTGRES_PASSWORD
-        value: "postgres"
-      - name: POSTGRES_HOST
-        value: "localhost"
-      - name: POSTGRES_PORT
-        value: "5432"
   secrets:
     target:
       name: meo-stationery-database-secrets-dev
     remoteKey: meo-stationery/dev/database
+    refreshInterval: 1h
+    refreshInterval: 1h

@@ -3,6 +3,16 @@
 {{- $st := .Values.statefulset | default dict }}
 {{- $svcName := .Values.currentService | default "database" }}
 {{- $svc := (index .Values $svcName) | default dict }}
+{{- $cfg := $svc.configs | default dict }}
+{{- $cfgEnv := $cfg.env | default list }}
+{{- $files := $cfg.files | default list }}
+{{- $hasFiles := gt (len $files) 0 }}
+{{- $filesMount := $cfg.filesMountPath | default "/config/files" }}
+{{- $useES := .Values.useExternalSecrets }}
+{{- if and $svc.secrets (hasKey $svc.secrets "useExternalSecrets") }}
+{{- $useES = $svc.secrets.useExternalSecrets }}
+{{- end }}
+{{- $secretName := include "template.secretName" . }}
 {{- $svcSt := (index $svc "statefulset") | default dict }}
 {{- $lProbe := (index $svcSt "livenessProbe") | default (index $st "livenessProbe") }}
 {{- $rProbe := (index $svcSt "readinessProbe") | default (index $st "readinessProbe") }}
@@ -52,25 +62,36 @@ spec:
             - name: {{ .Values.service.portName | default "http" }}
               containerPort: {{ .Values.service.containerPort | default .Values.service.port }}
               protocol: TCP
-          {{- if or (and (eq $svcName "database") .Values.database) .Values.extraEnv }}
+          {{- if or (and (eq $svcName "database") .Values.database) .Values.extraEnv (gt (len $cfgEnv) 0) }}
           env:
             {{- if and (eq $svcName "database") .Values.database }}
-            {{- if .Values.useExternalSecrets }}
+            {{- if $useES }}
+            {{- $sd := $svc.secrets.data | default list }}
+            {{- if gt (len $sd) 0 }}
+            {{- range $sd }}
+            - name: {{ .secretKey }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ .secretKey }}
+            {{- end }}
+            {{- else }}
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "template.secretName" . }}
+                  name: {{ $secretName }}
                   key: POSTGRES_USER
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "template.secretName" . }}
+                  name: {{ $secretName }}
                   key: POSTGRES_DB
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "template.secretName" . }}
+                  name: {{ $secretName }}
                   key: POSTGRES_PASSWORD
+            {{- end }}
             {{- else }}
             - name: POSTGRES_USER
               value: {{ .Values.database.username | default "postgres" | quote }}
@@ -90,6 +111,9 @@ spec:
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if gt (len $cfgEnv) 0 }}
+            {{- toYaml $cfgEnv | nindent 12 }}
             {{- end }}
           {{- end }}
           {{- with $lProbe }}
@@ -118,7 +142,12 @@ spec:
               mountPath: {{ .Values.runtimeConfig.mountPath | default "/app/config" }}
               readOnly: true
             {{- end }}
-      {{- if or (not ($p.enabled | default true)) (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) }}
+            {{- if $hasFiles }}
+            - name: svc-config-files
+              mountPath: {{ $filesMount }}
+              readOnly: true
+            {{- end }}
+      {{- if or (not ($p.enabled | default true)) (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) $hasFiles }}
       volumes:
         {{- if not ($p.enabled | default true) }}
         - name: data
@@ -128,6 +157,11 @@ spec:
         - name: app-config
           configMap:
             name: {{ include "template.fullname" . }}-config
+        {{- end }}
+        {{- if $hasFiles }}
+        - name: svc-config-files
+          configMap:
+            name: {{ include "template.fullname" . }}-files
         {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}

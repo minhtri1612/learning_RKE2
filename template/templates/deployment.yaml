@@ -1,4 +1,15 @@
 {{- if ne (.Values.workloadKind | default "deployment") "statefulset" }}
+{{- $svcName := .Values.currentService | default "backend" }}
+{{- $svc := (index .Values $svcName) | default dict }}
+{{- $cfg := $svc.configs | default dict }}
+{{- $cfgEnv := $cfg.env | default list }}
+{{- $files := $cfg.files | default list }}
+{{- $hasFiles := gt (len $files) 0 }}
+{{- $filesMount := $cfg.filesMountPath | default "/config/files" }}
+{{- $useES := .Values.useExternalSecrets }}
+{{- if and $svc.secrets (hasKey $svc.secrets "useExternalSecrets") }}
+{{- $useES = $svc.secrets.useExternalSecrets }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,8 +18,6 @@ metadata:
     {{- include "template.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
-  {{- $svcName := .Values.currentService | default "backend" }}
-  {{- $svc := (index .Values $svcName) | default dict }}
   replicas: {{ $svc.replicaCount | default .Values.replicaCount }}
   {{- end }}
   selector:
@@ -59,38 +68,52 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if .Values.useExternalSecrets }}
+          {{- if $useES }}
           envFrom:
             - secretRef:
                 name: {{ include "template.secretName" . }}
           {{- end }}
-          {{- with .Values.extraEnv }}
+          {{- if or .Values.extraEnv (gt (len $cfgEnv) 0) }}
           env:
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if gt (len $cfgEnv) 0 }}
+            {{- toYaml $cfgEnv | nindent 12 }}
+            {{- end }}
           {{- end }}
-          {{- with .Values.volumeMounts }}
+          {{- $vm := .Values.volumeMounts }}
+          {{- if or $vm (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) $hasFiles }}
           volumeMounts:
+            {{- with $vm }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
-          {{- if not .Values.volumeMounts }}
-          volumeMounts:
-          {{- end }}
+            {{- end }}
+            {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
             - name: app-config
               mountPath: {{ .Values.runtimeConfig.mountPath | default "/app/config" }}
               readOnly: true
+            {{- end }}
+            {{- if $hasFiles }}
+            - name: svc-config-files
+              mountPath: {{ $filesMount }}
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- with .Values.volumes }}
+      {{- if or .Values.volumes (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) $hasFiles }}
       volumes:
+        {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
-      {{- if not .Values.volumes }}
-      volumes:
-      {{- end }}
+        {{- end }}
+        {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
         - name: app-config
           configMap:
             name: {{ include "template.fullname" . }}-config
+        {{- end }}
+        {{- if $hasFiles }}
+        - name: svc-config-files
+          configMap:
+            name: {{ include "template.fullname" . }}-files
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

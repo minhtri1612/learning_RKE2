@@ -2,8 +2,22 @@
 # Mọi giá trị khác nhau theo môi trường được override ở config/env/{dev,staging,prod}.yaml
 
 backend:
+  # Metadata cho Deployment/Secret (ArgoCD Sync Wave, Namespace)
+  namespace: meo-stationery
+  syncWave: "-2"
+  
+  # Cấu hình biến môi trường (theo form mentor)
+  configs:
+    env:
+      - name: PORT
+        value: "3000"
+      - name: ENABLE_LOGGING
+        value: "true"
+
+  # Cấu hình Secret (External Secrets)
   secrets:
     useExternalSecrets: true
+    refreshInterval: 1h
     secretStoreRef:
       name: aws-secrets-manager
       kind: ClusterSecretStore
@@ -18,14 +32,22 @@ backend:
           property: NEXTAUTH_SECRET
 
 database:
+  # Metadata
+  namespace: database
+  syncWave: "-3"
+
+  # Cấu hình biến môi trường
   configs:
     env:
       - name: POSTGRES_HOST
         value: "localhost"
       - name: POSTGRES_PORT
         value: "5432"
+
+  # Cấu hình Secret
   secrets:
     useExternalSecrets: true
+    refreshInterval: 1h
     secretStoreRef:
       name: aws-secrets-manager
       kind: ClusterSecretStore

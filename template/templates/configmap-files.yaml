@@ -1,0 +1,17 @@
+{{- $svcName := .Values.currentService | default "backend" }}
+{{- $svc := index .Values $svcName | default dict }}
+{{- $cfg := $svc.configs | default dict }}
+{{- $files := $cfg.files | default list }}
+{{- if gt (len $files) 0 }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "template.fullname" . }}-files
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+data:
+{{- range $f := $files }}
+  {{ $f.name }}: |
+{{ $f.value | nindent 4 }}
+{{- end }}
+{{- end }}

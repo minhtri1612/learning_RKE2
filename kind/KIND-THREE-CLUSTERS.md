@@ -427,41 +427,26 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    ```bash
    cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 
-   # DEV
-   helm template external-secrets external-secrets/applications \
-     -f external-secrets/applications/values.yaml \
-     -f app/be-secrets.yaml \
-     -f env-secrets/dev.yaml \
-     | kubectl --context kind-dev apply -f -
-   helm template external-secrets external-secrets/applications \
-     -f external-secrets/applications/values.yaml \
-     -f app/db-secrets.yaml \
-     -f env-secrets/dev.yaml \
-     | kubectl --context kind-dev apply -f -
+    # DEV
+    helm template external-secrets external-secrets/applications \
+      -f external-secrets/applications/values.yaml \
+      -f config/base/config.yaml \
+      -f config/env/dev.yaml \
+      | kubectl --context kind-dev apply -f -
 
-   # STAGING
-   helm template external-secrets external-secrets/applications \
-     -f external-secrets/applications/values.yaml \
-     -f app/be-secrets.yaml \
-     -f env-secrets/staging.yaml \
-     | kubectl --context kind-staging apply -f -
-   helm template external-secrets external-secrets/applications \
-     -f external-secrets/applications/values.yaml \
-     -f app/db-secrets.yaml \
-     -f env-secrets/staging.yaml \
-     | kubectl --context kind-staging apply -f -
+    # STAGING
+    helm template external-secrets external-secrets/applications \
+      -f external-secrets/applications/values.yaml \
+      -f config/base/config.yaml \
+      -f config/env/staging.yaml \
+      | kubectl --context kind-staging apply -f -
 
-   # PROD
-   helm template external-secrets external-secrets/applications \
-     -f external-secrets/applications/values.yaml \
-     -f app/be-secrets.yaml \
-     -f env-secrets/prod.yaml \
-     | kubectl --context kind-prod apply -f -
-   helm template external-secrets external-secrets/applications \
-     -f external-secrets/applications/values.yaml \
-     -f app/db-secrets.yaml \
-     -f env-secrets/prod.yaml \
-     | kubectl --context kind-prod apply -f -
+    # PROD
+    helm template external-secrets external-secrets/applications \
+      -f external-secrets/applications/values.yaml \
+      -f config/base/config.yaml \
+      -f config/env/prod.yaml \
+      | kubectl --context kind-prod apply -f -
    ```
 
 5. Kiểm tra sync:
@@ -584,11 +569,11 @@ argocd app sync argocd/prod-meostation-database-app
 
 **External Secrets chart trong repo (không còn file cũ)**
 
-- Apply manifest ESO **không** dùng `external-secrets/applications/values-dev.yaml` (đã xóa). Luôn dùng:
+- Apply manifest ESO **không** dùng các file `-secrets.yaml` lẻ tẻ. Luôn dùng:
   - `external-secrets/applications/values.yaml`
-  - `app/be-secrets.yaml` **hoặc** `app/db-secrets.yaml`
-  - `env-secrets/dev.yaml` | `staging.yaml` | `prod.yaml`
-- Mỗi env chạy **hai** lệnh `helm template ... | kubectl apply` (backend profile + database profile), như mục **6.5.1 bước 4**.
+  - `config/base/config.yaml` (Chứa danh sách key secret)
+  - `config/env/dev.yaml` | `staging.yaml` | `prod.yaml` (Chứa path metadata)
+- Mỗi env chỉ cần chạy **một** lệnh `helm template ... | kubectl apply` tổng thể thay vì chia ra backend/database profile.
 
 **Pod `ContainerCreating` + `configmap "backend-config" not found`**
 
@@ -597,7 +582,7 @@ argocd app sync argocd/prod-meostation-database-app
 
 **ExternalSecret database `SecretSyncedError`**
 
-- Kiểm tra `env-secrets/<env>.yaml`: `secrets.database.remoteKey` phải **trùng tên secret thật** trên AWS. Nếu Terraform chỉ tạo một JSON `.../app-credentials`, đừng trỏ DB sang `.../database` khi secret đó chưa tồn tại.
+- Kiểm tra `config/env/<env>.yaml`: `database.secrets.remoteKey` phải **trùng tên secret thật** trên AWS. Nếu Terraform chỉ tạo một JSON `.../app-credentials`, đừng trỏ DB sang `.../database` khi secret đó chưa tồn tại.
 
 **ServiceAccount “exists and cannot be imported into the current release”**
 
