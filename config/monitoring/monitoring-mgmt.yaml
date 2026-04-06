@@ -15,13 +15,13 @@ prometheus:
     additionalScrapeConfigs:
       - job_name: 'kubernetes-nodes-dev'
         static_configs:
-          - targets: ['172.18.0.5:9100'] # dev-control-plane IP
+          - targets: ['172.18.0.5:9100', '172.18.0.5:30080']
       - job_name: 'kubernetes-nodes-staging'
         static_configs:
-          - targets: ['172.18.0.6:9100'] # staging-control-plane IP
+          - targets: ['172.18.0.6:9100', '172.18.0.6:30080']
       - job_name: 'kubernetes-nodes-prod'
         static_configs:
-          - targets: ['172.18.0.8:9100'] # prod-control-plane IP
+          - targets: ['172.18.0.8:9100', '172.18.0.8:30080']
 
 # Disable components that we don't need for management
 alertmanager:

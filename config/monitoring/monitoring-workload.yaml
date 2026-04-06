@@ -20,6 +20,9 @@ nodeExporter:
 
 kubeStateMetrics:
   enabled: true
+  service:
+    type: NodePort
+    nodePort: 30080
 
 # Disable system components to avoid 'kube-system' namespace permission issues in Kind
 kubeApiServer:
