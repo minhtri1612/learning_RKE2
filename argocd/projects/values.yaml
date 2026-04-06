@@ -11,6 +11,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - kube-system
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
@@ -26,6 +27,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - kube-system
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
@@ -41,6 +43,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - kube-system
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace

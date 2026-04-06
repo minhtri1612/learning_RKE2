@@ -20,3 +20,17 @@ nodeExporter:
 
 kubeStateMetrics:
   enabled: true
+
+# Disable system components to avoid 'kube-system' namespace permission issues in Kind
+kubeApiServer:
+  enabled: false
+kubelet:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
