@@ -224,11 +224,36 @@ Sau khi sync xong, sẽ có:
 
 ---
 
-## 5. Kiểm tra
+## 5. Triển khai Monitoring Stack (Prometheus & Grafana)
 
-- UI: https://localhost:8080 → Applications: `dev-*` trỏ cluster **dev**, `staging-*` trỏ cluster **staging**, `prod-*` trỏ cluster **prod**.
-- Management: `kubectl --context kind-management get pods -n argocd`
-- Dev: `kubectl --context kind-dev get pods -A`
+Hệ thống sử dụng mô hình **Hub-and-Spoke**: Server tập trung tại `management` và các Agent thu thập tại các cụm workload. Cấu hình Helm values nằm tại `config/monitoring/`.
+
+```bash
+kubectl config use-context kind-management
+
+# 1. Cài đặt Prometheus Server & Grafana trên management
+kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
+
+# 2. Cài đặt các Agent thu thập trên các cụm con
+kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
+kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
+kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
+```
+
+Sau khi cài đặt, ArgoCD sẽ tự động kéo Helm chart từ `prometheus-community` và gộp với cấu hình trong `config/monitoring/`.
+
+---
+
+## 6. Kiểm tra
+
+- UI ArgoCD: https://localhost:8080 → Applications: `dev-*`, `monitoring-*`...
+- UI Grafana:
+  ```bash
+  kubectl -n monitoring port-forward svc/monitoring-management-grafana 3000:80
+  # Truy cập: http://localhost:3000 (admin / admin)
+  ```
+- Management: `kubectl --context kind-management get pods -n monitoring`
+- Dev: `kubectl --context kind-dev get pods -n monitoring`
 - Staging: `kubectl --context kind-staging get pods -A`
 - Prod: `kubectl --context kind-prod get pods -A`
 
@@ -515,7 +540,7 @@ kubectl --context kind-prod -n meo-stationery create secret generic meo-statione
 
 ### 6.6. Apply lại bootstrap Argo CD
 
-Bootstrap là **4** file Application (projects + dev + staging + prod); apply lần lượt:
+Bootstrap là các file Application; apply lần lượt:
 
 ```bash
 kubectl config use-context kind-management
@@ -523,10 +548,17 @@ cd ~/Downloads/practice_RKE2
 
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 
+# 1. App meostation
 kubectl apply -f argocd/bootstrap/01-projects.yaml
 kubectl apply -f argocd/bootstrap/02-dev-meostation-stack.yaml
 kubectl apply -f argocd/bootstrap/03-staging-meostation-stack.yaml
 kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
+
+# 2. App Monitoring
+kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
+kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
+kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
+kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
 ```
 
 Sau khi sync xong, sẽ có:
