@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-prod
+  namespace: argocd
+spec:
+  project: prod
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 61.3.2
+      helm:
+        valueFiles:
+          - $values/config/monitoring/monitoring-workload.yaml
+    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+      ref: values
+  destination:
+    name: prod
+    namespace: monitoring
+  syncPolicy:
+    manual: {} # Prod is usually manual or restricted
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

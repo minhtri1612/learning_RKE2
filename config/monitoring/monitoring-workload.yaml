@@ -1,0 +1,22 @@
+# Minimal values for workload clusters (Spokes)
+# These only provide metrics to the management cluster
+
+grafana:
+  enabled: false
+
+prometheus:
+  enabled: false # We don't need a local Prometheus server on the workload clusters
+
+alertmanager:
+  enabled: false
+
+prometheusOperator:
+  enabled: true # We need the operator to manage the node-exporter and kube-state-metrics
+
+nodeExporter:
+  enabled: true
+  service:
+    type: ClusterIP # We don't need an external IP, as our mgmt Prometheus scrapes directly via Node IP/Port
+
+kubeStateMetrics:
+  enabled: true

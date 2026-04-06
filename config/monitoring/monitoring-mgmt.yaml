@@ -1,0 +1,28 @@
+grafana:
+  adminPassword: "admin"
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 32000
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    retention: 1d
+    storageSpec:
+      emptyDir:
+        medium: ""
+    additionalScrapeConfigs:
+      - job_name: 'kubernetes-nodes-dev'
+        static_configs:
+          - targets: ['172.18.0.5:9100'] # dev-control-plane IP
+      - job_name: 'kubernetes-nodes-staging'
+        static_configs:
+          - targets: ['172.18.0.7:9100'] # staging-control-plane IP
+      - job_name: 'kubernetes-nodes-prod'
+        static_configs:
+          - targets: ['172.18.0.8:9100'] # prod-control-plane IP
+
+# Disable components that we don't need for management
+alertmanager:
+  enabled: false
