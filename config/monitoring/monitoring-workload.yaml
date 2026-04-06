@@ -13,12 +13,12 @@ alertmanager:
 prometheusOperator:
   enabled: true # We need the operator to manage the node-exporter and kube-state-metrics
 
-nodeExporter:
+prometheus-node-exporter:
   enabled: true
   service:
-    type: ClusterIP # We don't need an external IP, as our mgmt Prometheus scrapes directly via Node IP/Port
+    type: ClusterIP
 
-kubeStateMetrics:
+kube-state-metrics:
   enabled: true
   service:
     type: NodePort
