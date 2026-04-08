@@ -44,12 +44,7 @@ rollout:
           args:
             - name: service-name
               value: backend
-      - pause: {}
       - setWeight: 20
-      - pause:
-          duration: 300s
       - setWeight: 50
-      - pause:
-          duration: 600s
       - setWeight: 100
 
