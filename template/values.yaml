@@ -192,3 +192,6 @@ rollout:
       - pause:
           duration: 120s
       - setWeight: 100
+  analysis:
+    enabled: false
+    templates: []

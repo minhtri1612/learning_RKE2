@@ -17,9 +17,37 @@ database:
     refreshInterval: 1h
 
 rollout:
+  analysis:
+    enabled: true
+    templates:
+      - name: success-rate
+        args:
+          - name: service-name
+            value: backend
+        metrics:
+          - name: success-rate
+            interval: 30s
+            count: 6
+            successCondition: result[0] >= 0.98
+            failureCondition: result[0] < 0.98
+            provider:
+              prometheus:
+                address: http://monitoring-management-kube-prometheus.monitoring.svc.cluster.local:9090
+                query: |
+                  (
+                    sum(rate(http_requests_total{service="{{args.service-name}}",code!~"5.."}[1m]))
+                    /
+                    clamp_min(sum(rate(http_requests_total{service="{{args.service-name}}"}[1m])), 1)
+                  )
   canary:
     steps:
       - setWeight: 5
+      - analysis:
+          templates:
+            - templateName: success-rate
+          args:
+            - name: service-name
+              value: backend
       - pause: {}
       - setWeight: 20
       - pause:

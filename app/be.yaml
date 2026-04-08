@@ -33,7 +33,10 @@ serviceAccount:
 
 # This is for setting Kubernetes Annotations to a Pod.
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
-podAnnotations: {}
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "3000"
+  prometheus.io/path: "/metrics"
 # This is for setting Kubernetes Labels to a Pod.
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 podLabels: {}
@@ -193,3 +196,24 @@ rollout:
       - pause:
           duration: 180s
       - setWeight: 100
+  analysis:
+    enabled: false
+    templates:
+      - name: success-rate
+        args:
+          - name: service-name
+        metrics:
+          - name: success-rate
+            interval: 30s
+            count: 5
+            successCondition: result[0] >= 0.95
+            failureCondition: result[0] < 0.95
+            provider:
+              prometheus:
+                address: http://prometheus.monitoring.svc.cluster.local:9090
+                query: |
+                  (
+                    sum(rate(http_requests_total{service="{{args.service-name}}",code!~"5.."}[1m]))
+                    /
+                    clamp_min(sum(rate(http_requests_total{service="{{args.service-name}}"}[1m])), 1)
+                  )

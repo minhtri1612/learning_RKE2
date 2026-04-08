@@ -1,0 +1,18 @@
+{{- if and (ne (.Values.workloadKind | default "deployment") "statefulset") .Values.rollout.analysis.enabled }}
+{{- range $tpl := .Values.rollout.analysis.templates }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ $tpl.name }}
+  labels:
+    {{- include "template.labels" $ | nindent 4 }}
+spec:
+  {{- with $tpl.args }}
+  args:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  metrics:
+    {{- toYaml $tpl.metrics | nindent 4 }}
+---
+{{- end }}
+{{- end }}
