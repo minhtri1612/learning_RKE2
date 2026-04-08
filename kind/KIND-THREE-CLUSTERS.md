@@ -631,13 +631,14 @@ Lệnh thao tác rollout nhanh:
 
 ```bash
 # Xem rollout backend trên dev
-kubectl --context kind-dev -n meo-stationery argo rollouts get rollout backend
+kubectl config use-context kind-dev
+kubectl argo rollouts -n meo-stationery get rollout backend
 
 # Promote qua step kế tiếp
-kubectl --context kind-dev -n meo-stationery argo rollouts promote backend
+kubectl argo rollouts -n meo-stationery promote backend
 
 # Abort rollout
-kubectl --context kind-dev -n meo-stationery argo rollouts abort backend
+kubectl argo rollouts -n meo-stationery abort backend
 ```
 
 > **Lưu ý:** Vì chart stateless đã chuyển sang `kind: Rollout`, workload cluster bắt buộc phải có CRD/controller Argo Rollouts; nếu thiếu sẽ lỗi `no matches for kind "Rollout"`.
