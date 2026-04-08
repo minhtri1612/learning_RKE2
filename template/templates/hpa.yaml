@@ -1,4 +1,4 @@
-{{- if and .Values.autoscaling.enabled (ne (.Values.workloadKind | default "deployment") "statefulset") }}
+{{- if and .Values.autoscaling.enabled (not .Values.rollout.enabled) (ne (.Values.workloadKind | default "deployment") "statefulset") }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

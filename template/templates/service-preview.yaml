@@ -1,7 +1,8 @@
+{{- if and .Values.rollout.enabled (ne (.Values.workloadKind | default "deployment") "statefulset") }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "template.trafficServiceName" . }}
+  name: {{ include "template.rolloutPreviewServiceName" . }}
   labels:
     {{- include "template.labels" . | nindent 4 }}
 spec:
@@ -13,3 +14,4 @@ spec:
       name: {{ .Values.service.portName | default "http" }}
   selector:
     {{- include "template.selectorLabels" . | nindent 4 }}
+{{- end }}

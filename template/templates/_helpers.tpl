@@ -118,3 +118,40 @@ Tên Secret pod mount: ưu tiên <service>.secrets.target.name (config/env), fal
 {{- include "template.secretName" . -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Tên Service nhận traffic production cho Argo Rollouts blue-green.
+*/}}
+{{- define "template.rolloutActiveServiceName" -}}
+{{- printf "%s-%s" (include "template.fullname" .) (.Values.rollout.blueGreen.activeServiceSuffix | default "blue-green-active") | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Tên Service preview cho Argo Rollouts blue-green.
+*/}}
+{{- define "template.rolloutPreviewServiceName" -}}
+{{- printf "%s-%s" (include "template.fullname" .) (.Values.rollout.blueGreen.previewServiceSuffix | default "blue-green-preview") | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Service name được dùng bởi Ingress/HTTPRoute.
+Khi rollout bật: trỏ vào active service.
+*/}}
+{{- define "template.trafficServiceName" -}}
+{{- if and .Values.rollout .Values.rollout.enabled -}}
+{{- include "template.rolloutActiveServiceName" . -}}
+{{- else -}}
+{{- include "template.fullname" . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Tên AnalysisTemplate mặc định cho rollout.
+*/}}
+{{- define "template.rolloutAnalysisTemplateName" -}}
+{{- if .Values.rollout.analysis.templateName -}}
+{{- .Values.rollout.analysis.templateName -}}
+{{- else -}}
+{{- printf "%s-bg-analysis" (include "template.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
