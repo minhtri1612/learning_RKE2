@@ -15,3 +15,14 @@ database:
       name: meo-stationery-database-secrets-staging
     remoteKey: meo-stationery/staging/app-credentials
     refreshInterval: 1h
+
+rollout:
+  canary:
+    steps:
+      - setWeight: 20
+      - pause:
+          duration: 60s
+      - setWeight: 60
+      - pause:
+          duration: 120s
+      - setWeight: 100

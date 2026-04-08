@@ -21,3 +21,11 @@ database:
     # Cùng JSON AWS như backend (khớp terraform_secret / staging); đừng trỏ /database nếu secret đó chưa tạo.
     remoteKey: meo-stationery/dev/app-credentials
     refreshInterval: 1h
+
+rollout:
+  canary:
+    steps:
+      - setWeight: 50
+      - pause:
+          duration: 30s
+      - setWeight: 100

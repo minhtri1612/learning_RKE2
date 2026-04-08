@@ -16,3 +16,16 @@ database:
     remoteKey: meo-stationery/prod/app-credentials
     refreshInterval: 1h
 
+rollout:
+  canary:
+    steps:
+      - setWeight: 5
+      - pause: {}
+      - setWeight: 20
+      - pause:
+          duration: 300s
+      - setWeight: 50
+      - pause:
+          duration: 600s
+      - setWeight: 100
+

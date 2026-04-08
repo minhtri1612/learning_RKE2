@@ -585,7 +585,64 @@ argocd app sync argocd/prod-meostation-database-app
 
 ---
 
-### 6.7. Gỡ rối thường gặp (đọc trước khi blame doc)
+### 6.7. Cài Argo Rollouts cho dev/staging/prod + mở dashboard
+
+Argo Rollouts là controller riêng cho canary/blue-green, khác với Argo CD UI.
+
+- **Argo CD UI** (`https://localhost:8080`): quản lý GitOps Application (sync/health/diff).
+- **Argo Rollouts dashboard** (`http://localhost:3100`): xem step canary, pause, promote, abort cho `Rollout`.
+
+Cài Argo Rollouts trên **cả 3 workload cluster** (`kind-dev`, `kind-staging`, `kind-prod`):
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  kubectl --context "$ctx" create namespace argo-rollouts --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+  kubectl --context "$ctx" apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+  kubectl --context "$ctx" -n argo-rollouts wait --for=condition=Available deploy/argo-rollouts --timeout=300s
+done
+```
+
+Cài CLI plugin `kubectl-argo-rollouts` (Linux):
+
+```bash
+curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+chmod +x ./kubectl-argo-rollouts-linux-amd64
+sudo mv ./kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+kubectl argo rollouts version
+```
+
+Mở dashboard cho từng cluster (mỗi lần 1 context):
+
+```bash
+# DEV
+kubectl config use-context kind-dev
+kubectl argo rollouts dashboard
+
+# STAGING
+kubectl config use-context kind-staging
+kubectl argo rollouts dashboard
+
+# PROD
+kubectl config use-context kind-prod
+kubectl argo rollouts dashboard
+```
+
+Lệnh thao tác rollout nhanh:
+
+```bash
+# Xem rollout backend trên dev
+kubectl --context kind-dev -n meo-stationery argo rollouts get rollout backend
+
+# Promote qua step kế tiếp
+kubectl --context kind-dev -n meo-stationery argo rollouts promote backend
+
+# Abort rollout
+kubectl --context kind-dev -n meo-stationery argo rollouts abort backend
+```
+
+> **Lưu ý:** Vì chart stateless đã chuyển sang `kind: Rollout`, workload cluster bắt buộc phải có CRD/controller Argo Rollouts; nếu thiếu sẽ lỗi `no matches for kind "Rollout"`.
+
+### 6.8. Gỡ rối thường gặp (đọc trước khi blame doc)
 
 **Hai “nguồn sự thật” — đừng trộn lung tung**
 
