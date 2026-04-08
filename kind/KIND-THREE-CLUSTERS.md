@@ -604,10 +604,13 @@ done
 
 Cài CLI plugin `kubectl-argo-rollouts` (Linux):
 
+> **Khuyến nghị hiện tại:** pin bản `v1.8.3`. Bản mới hơn (đặc biệt `v1.9.0`) có thể làm dashboard web bị treo `Loading...` và API trả `501 Not Implemented` dù CLI vẫn hoạt động bình thường.
+
 ```bash
-curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
-chmod +x ./kubectl-argo-rollouts-linux-amd64
-sudo mv ./kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+curl -L -o /tmp/kubectl-argo-rollouts \
+  https://github.com/argoproj/argo-rollouts/releases/download/v1.8.3/kubectl-argo-rollouts-linux-amd64
+chmod +x /tmp/kubectl-argo-rollouts
+sudo mv /tmp/kubectl-argo-rollouts /usr/local/bin/kubectl-argo-rollouts
 kubectl argo rollouts version
 ```
 
@@ -625,6 +628,19 @@ kubectl argo rollouts dashboard
 # PROD
 kubectl config use-context kind-prod
 kubectl argo rollouts dashboard
+```
+
+Nếu UI vẫn đứng ở `Loading...`, thử:
+
+```bash
+# 1) đảm bảo context đúng trước khi mở dashboard
+kubectl config use-context kind-dev
+
+# 2) đổi port khác
+kubectl argo rollouts dashboard --port 3110
+
+# 3) dùng CLI để thao tác rollout trong lúc dashboard lỗi
+kubectl argo rollouts -n meo-stationery get rollout backend
 ```
 
 Lệnh thao tác rollout nhanh:
