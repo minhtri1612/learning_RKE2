@@ -33,10 +33,12 @@ spec:
       {{- with .Values.rollout.blueGreen.previewReplicaCount }}
       previewReplicaCount: {{ . }}
       {{- end }}
-      {{- if .Values.rollout.analysis.enabled }}
+      {{- if and .Values.rollout.analysis.enabled .Values.rollout.analysis.templates }}
       prePromotionAnalysis:
         templates:
-          - templateName: {{ include "template.rolloutAnalysisTemplateName" . }}
+          {{- range $tpl := .Values.rollout.analysis.templates }}
+          - templateName: {{ $tpl.name }}
+          {{- end }}
       {{- end }}
   template:
     metadata:

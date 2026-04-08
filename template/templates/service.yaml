@@ -1,7 +1,33 @@
+{{- $fullName := include "template.fullname" . }}
+{{- $selectors := include "template.selectorLabels" . }}
+{{- $isStateful := eq (.Values.workloadKind | default "deployment") "statefulset" }}
+{{- if not $isStateful }}
+{{- if .Values.rollout.enabled }}
+{{- $activeName := include "template.rolloutActiveServiceName" . }}
+{{- $previewName := include "template.rolloutPreviewServiceName" . }}
+{{- range $svcName := list $activeName $previewName }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "template.trafficServiceName" . }}
+  name: {{ $svcName }}
+  labels:
+    {{- include "template.labels" $ | nindent 4 }}
+spec:
+  type: {{ $.Values.service.type }}
+  ports:
+    - port: {{ $.Values.service.port }}
+      targetPort: {{ $.Values.service.targetPort | default ($.Values.service.portName | default "http") }}
+      protocol: TCP
+      name: {{ $.Values.service.portName | default "http" }}
+  selector:
+    {{- $selectors | nindent 4 }}
+---
+{{- end }}
+{{- else }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}
   labels:
     {{- include "template.labels" . | nindent 4 }}
 spec:
@@ -12,4 +38,24 @@ spec:
       protocol: TCP
       name: {{ .Values.service.portName | default "http" }}
   selector:
-    {{- include "template.selectorLabels" . | nindent 4 }}
+    {{- $selectors | nindent 4 }}
+{{- end }}
+{{- else }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-hl
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort | default (.Values.service.portName | default "http") }}
+      protocol: TCP
+      name: {{ .Values.service.portName | default "http" }}
+  selector:
+    {{- $selectors | nindent 4 }}
+{{- end }}

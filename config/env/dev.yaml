@@ -21,3 +21,27 @@ database:
     # Cùng JSON AWS như backend (khớp terraform_secret / staging); đừng trỏ /database nếu secret đó chưa tạo.
     remoteKey: meo-stationery/dev/app-credentials
     refreshInterval: 1h
+
+rollout:
+  enabled: true
+  blueGreen:
+    autoPromotionEnabled: false
+    scaleDownDelaySeconds: 30
+  analysis:
+    enabled: true
+    templates:
+      - name: success-rate
+        args:
+          - name: service-name
+            value: backend
+        metrics:
+          - name: success-rate
+            interval: 30s
+            count: 4
+            successCondition: result[0] >= 0.95
+            failureCondition: result[0] < 0.95
+            provider:
+              prometheus:
+                address: http://172.18.0.2:32090
+                query: |
+                  sum(up{job="monitoring-management-kube-prometheus"})

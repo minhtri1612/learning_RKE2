@@ -175,3 +175,18 @@ runtimeConfig:
     cache:
       host: redis.default.svc.cluster.local
       port: 6379
+
+# Argo Rollouts blue-green strategy (platform policy for stateless workloads).
+rollout:
+  enabled: true
+  revisionHistoryLimit: 3
+  blueGreen:
+    activeServiceSuffix: blue-green-active
+    previewServiceSuffix: blue-green-preview
+    autoPromotionEnabled: false
+    # autoPromotionSeconds: 60
+    scaleDownDelaySeconds: 30
+    # previewReplicaCount: 1
+  analysis:
+    enabled: false
+    templates: []

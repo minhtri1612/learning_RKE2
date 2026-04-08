@@ -175,26 +175,23 @@ useExternalSecrets: true
 # -- Environment name (dev, staging, prod)
 env: ""
 
-# -- Argo Rollouts settings (blue-green)
+# -- Argo Rollouts config for canary deployments.
 rollout:
   enabled: false
-  blueGreen:
-    activeServiceSuffix: blue-green-active
-    previewServiceSuffix: blue-green-preview
-    autoPromotionEnabled: false
-    # autoPromotionSeconds: 60
-    scaleDownDelaySeconds: 30
-    # previewReplicaCount: 1
+  revisionHistoryLimit: 3
+  canary:
+    stableService: ""
+    canaryService: ""
+    maxSurge: 25%
+    maxUnavailable: 0
+    steps:
+      - setWeight: 20
+      - pause:
+          duration: 60s
+      - setWeight: 50
+      - pause:
+          duration: 120s
+      - setWeight: 100
   analysis:
     enabled: false
-    # templateName: ""
-    prometheus:
-      address: http://prometheus-server.monitoring.svc.cluster.local
-      query: |
-        sum(rate(http_requests_total{status!~"5.."}[2m]))
-        /
-        clamp_min(sum(rate(http_requests_total[2m])), 1)
-      successCondition: result[0] >= 0.95
-      interval: 1m
-      count: 3
-      failureLimit: 1
+    templates: []
