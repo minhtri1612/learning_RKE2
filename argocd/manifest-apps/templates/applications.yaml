@@ -20,7 +20,7 @@ spec:
   project: {{ $.Values.project }}
   source:
     repoURL: {{ $.Values.repoURL }}
-    targetRevision: main
+    targetRevision: feature/canary-rollout
     path: template
     helm:
       releaseName: {{ $appName }}

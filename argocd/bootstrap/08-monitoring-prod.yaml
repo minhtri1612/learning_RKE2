@@ -13,7 +13,7 @@ spec:
         valueFiles:
           - $values/config/monitoring/monitoring-workload.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      targetRevision: main
+      targetRevision: feature/canary-rollout
       ref: values
   destination:
     name: prod
