@@ -30,7 +30,7 @@ export default function ProductsFilter({
   searchQuery
 }: ProductsFilterProps) {
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const searchParams = useSearchParams() ?? new URLSearchParams()
   const searchInputRef = useRef<HTMLInputElement>(null)
   
   const [priceRange, setPriceRange] = useState<[number, number]>([

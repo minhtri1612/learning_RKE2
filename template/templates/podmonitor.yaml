@@ -10,7 +10,7 @@ metadata:
 spec:
   podMetricsEndpoints:
     - port: {{ .Values.service.portName | default "http" | quote }}
-      path: /metrics
+      path: /api/metrics
       interval: 30s
       scheme: http
   selector:

@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense } from "react";
 import { toast } from "sonner";
 
 const VNPayReturnPageContent = () => {
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams() ?? new URLSearchParams();
   const router = useRouter();
   const [status, setStatus] = useState("Đang xử lý thanh toán...");
 

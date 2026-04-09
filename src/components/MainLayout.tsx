@@ -10,7 +10,7 @@ export default function MainLayout({
 }: {
   children: React.ReactNode
 }) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const isAdminRoute = pathname.startsWith('/admin')
 
   // Don't render Navbar and Footer on admin routes

@@ -17,7 +17,7 @@ interface ProductsResponse {
 }
 
 function Products() {
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams() ?? new URLSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [minPrice, setMinPrice] = useState(0);
