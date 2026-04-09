@@ -5,7 +5,7 @@ env: dev
 
 backend:
   image:
-    tag: "3.0.1"
+    tag: "2.0.2"
   replicaCount: 5
 
 database:
