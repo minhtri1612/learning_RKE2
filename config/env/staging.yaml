@@ -32,9 +32,9 @@ rollout:
             failureCondition: result[0] < 0.95
             provider:
               prometheus:
-                address: http://172.18.0.2:32090
+                address: http://monitoring-staging-kube-pr-prometheus.monitoring.svc:9090
                 query: |
-                  sum(up{job="monitoring-management-kube-prometheus"})
+                  sum(up{namespace="monitoring"})
   canary:
     steps:
       - setWeight: 20

@@ -1,11 +1,17 @@
 # Minimal values for workload clusters (Spokes)
-# These only provide metrics to the management cluster
+# Node-exporter + kube-state-metrics feed the management Prometheus; a local Prometheus
+# instance exists so Argo Rollouts analysis can query in-cluster (no cross-cluster Docker IP).
 
 grafana:
   enabled: false
 
 prometheus:
-  enabled: false # We don't need a local Prometheus server on the workload clusters
+  enabled: true
+  prometheusSpec:
+    retention: 1d
+    storageSpec:
+      emptyDir:
+        medium: ""
 
 alertmanager:
   enabled: false
