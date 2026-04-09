@@ -202,6 +202,7 @@ rollout:
       - name: success-rate
         args:
           - name: service-name
+            value: backend
         metrics:
           - name: success-rate
             interval: 30s
@@ -210,7 +211,7 @@ rollout:
             failureCondition: result[0] < 0.95
             provider:
               prometheus:
-                address: http://prometheus.monitoring.svc.cluster.local:9090
+                address: http://prometheus-operated.monitoring.svc:9090
                 query: |
                   (
                     sum(rate(http_requests_total{service="{{args.service-name}}",code!~"5.."}[1m]))

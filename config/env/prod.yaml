@@ -17,24 +17,6 @@ database:
     refreshInterval: 1h
 
 rollout:
-  analysis:
-    enabled: true
-    templates:
-      - name: success-rate
-        args:
-          - name: service-name
-            value: backend
-        metrics:
-          - name: success-rate
-            interval: 30s
-            count: 6
-            successCondition: result[0] >= 0.98
-            failureCondition: result[0] < 0.98
-            provider:
-              prometheus:
-                address: http://monitoring-prod-kube-prome-prometheus.monitoring.svc:9090
-                query: |
-                  sum(up{namespace="monitoring"})
   canary:
     steps:
       - setWeight: 5
