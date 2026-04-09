@@ -206,9 +206,6 @@ rollout:
         args:
           - name: service-name
             value: backend
-          - name: podHash
-            valueFrom:
-              podTemplateHashValue: Latest
         metrics:
           - name: success-rate
             interval: 30s
