@@ -191,13 +191,13 @@ rollout:
     steps:
       - setWeight: 10
       - pause:
-          duration: 60s
+          duration: 5s
       - setWeight: 50
       - pause:
-          duration: 180s
+          duration: 5s
       - setWeight: 100
   analysis:
-    enabled: false
+    enabled: true
     templates:
       - name: success-rate
         args:
