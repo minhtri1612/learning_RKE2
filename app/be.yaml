@@ -214,7 +214,14 @@ rollout:
                 address: http://prometheus-operated.monitoring.svc:9090
                 query: |
                   (
-                    sum(rate(http_requests_total{service="{{args.service-name}}",code!~"5.."}[1m]))
+                    sum(rate(http_requests_total{namespace="meo-stationery",pod=~"{{args.service-name}}-.*",code!~"5.."}[1m]))
                     /
-                    clamp_min(sum(rate(http_requests_total{service="{{args.service-name}}"}[1m])), 1)
+                    clamp_min(sum(rate(http_requests_total{namespace="meo-stationery",pod=~"{{args.service-name}}-.*"}[1m])), 1)
                   )
+                  or
+                  (
+                    sum(rate(http_requests_total{namespace="meo-stationery",pod=~"{{args.service-name}}-.*",status_code!~"5.."}[1m]))
+                    /
+                    clamp_min(sum(rate(http_requests_total{namespace="meo-stationery",pod=~"{{args.service-name}}-.*"}[1m])), 1)
+                  )
+                  or vector(0)
