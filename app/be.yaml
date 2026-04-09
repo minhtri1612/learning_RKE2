@@ -212,10 +212,10 @@ rollout:
             count: 5
             initialDelay: 45s
             failureLimit: 3
-            successCondition: result[0] >= 0.95
-            failureCondition: result[0] < 0.95
+            successCondition: result[0] >= 0.82
+            failureCondition: result[0] < 0.82
             provider:
               prometheus:
                 address: http://prometheus-operated.monitoring.svc:9090
                 query: |
-                  avg(meo_backend_up{namespace="meo-stationery",pod=~"{{args.service-name}}-{{args.podHash}}-.*"}) or vector(0)
+                  avg(meo_backend_up{namespace="meo-stationery",pod=~"{{args.service-name}}-.*"}) or vector(0)

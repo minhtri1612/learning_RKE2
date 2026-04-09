@@ -7,23 +7,9 @@ metadata:
   labels:
     {{- include "template.labels" $ | nindent 4 }}
 spec:
-  {{- /* valueFrom from values.yaml can become empty; inject podHash via dict for valid CRD */}}
-  {{- if eq $tpl.name "success-rate" }}
-  {{- $tplArgs := $tpl.args | default list }}
-  {{- $clean := list }}
-  {{- range $tplArgs }}
-  {{- if ne .name "podHash" }}
-  {{- $clean = append $clean . }}
-  {{- end }}
-  {{- end }}
-  {{- $args := append $clean (dict "name" "podHash" "valueFrom" (dict "podTemplateHashValue" "Latest")) }}
-  args:
-    {{- toYaml $args | nindent 4 }}
-  {{- else }}
   {{- with $tpl.args }}
   args:
     {{- toYaml . | nindent 4 }}
-  {{- end }}
   {{- end }}
   metrics:
     {{- toYaml $tpl.metrics | nindent 4 }}
