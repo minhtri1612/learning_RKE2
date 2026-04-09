@@ -1,0 +1,19 @@
+{{- if and (ne (.Values.workloadKind | default "deployment") "statefulset") (.Values.podMonitor.enabled | default false) }}
+{{- $monRel := printf "monitoring-%s" (.Values.env | default "dev") }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "template.fullname" . }}-metrics
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+    release: {{ $monRel | quote }}
+spec:
+  podMetricsEndpoints:
+    - port: {{ .Values.service.portName | default "http" | quote }}
+      path: /metrics
+      interval: 30s
+      scheme: http
+  selector:
+    matchLabels:
+      {{- include "template.selectorLabels" . | nindent 6 }}
+{{- end }}
