@@ -2,6 +2,9 @@ kubeProxyReplacement: true
 
 gatewayAPI:
   enabled: true
+  # App chart (template/) owns GatewayClass; avoid duplicate + operator reconcile issues.
+  gatewayClass:
+    create: "false"
 
 l7Proxy: true
 
@@ -34,6 +37,8 @@ prometheus:
   enabled: true
   serviceMonitor:
     enabled: true
+    # Argo CD renders manifests without cluster CRDs; monitoring stack installs CRDs on target clusters.
+    trustCRDsExist: true
 
 operator:
   prometheus:
