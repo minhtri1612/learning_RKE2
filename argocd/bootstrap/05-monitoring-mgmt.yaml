@@ -13,7 +13,7 @@ spec:
         valueFiles:
           - $values/config/monitoring/monitoring-mgmt.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      targetRevision: main
+      targetRevision: feature/canary-rollout
       ref: values
   destination:
     server: https://kubernetes.default.svc

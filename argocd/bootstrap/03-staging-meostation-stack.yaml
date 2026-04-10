@@ -10,7 +10,7 @@ spec:
   project: staging
   source:
     repoURL: https://github.com/minhtri1612/learning_RKE2.git
-    targetRevision: main
+    targetRevision: feature/canary-rollout
     path: argocd/manifest-apps
     helm:
       valueFiles:

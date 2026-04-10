@@ -1,24 +1,24 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: monitoring-prod
+  name: cilium-prod
   namespace: argocd
 spec:
   project: prod
   sources:
-    - repoURL: https://prometheus-community.github.io/helm-charts
-      chart: kube-prometheus-stack
-      targetRevision: 61.3.2
+    - repoURL: https://helm.cilium.io/
+      chart: cilium
+      targetRevision: 1.19.2
       helm:
         valueFiles:
-          - $values/config/monitoring/monitoring-workload.yaml
+          - $values/config/cilium/cilium-values.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: feature/canary-rollout
       ref: values
   destination:
     name: prod
-    namespace: monitoring
+    namespace: kube-system
   syncPolicy:
     syncOptions:
-      - CreateNamespace=true
+      - CreateNamespace=false
       - ServerSideApply=true

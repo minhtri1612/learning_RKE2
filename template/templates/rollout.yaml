@@ -10,19 +10,30 @@
 {{- if and $svc.secrets (hasKey $svc.secrets "useExternalSecrets") }}
 {{- $useES = $svc.secrets.useExternalSecrets }}
 {{- end }}
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
 metadata:
   name: {{ include "template.fullname" . }}
   labels:
     {{- include "template.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ $svc.replicaCount | default .Values.replicaCount }}
-  {{- end }}
+  revisionHistoryLimit: {{ .Values.rollout.revisionHistoryLimit | default 3 }}
   selector:
     matchLabels:
       {{- include "template.selectorLabels" . | nindent 6 }}
+  strategy:
+    canary:
+      stableService: {{ .Values.rollout.canary.stableService | default (printf "%s-stable" (include "template.fullname" .)) }}
+      canaryService: {{ .Values.rollout.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .)) }}
+      {{- with .Values.rollout.canary.maxSurge }}
+      maxSurge: {{ . }}
+      {{- end }}
+      {{- with .Values.rollout.canary.maxUnavailable }}
+      maxUnavailable: {{ . }}
+      {{- end }}
+      steps:
+        {{- toYaml .Values.rollout.canary.steps | nindent 8 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}

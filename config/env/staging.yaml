@@ -1,6 +1,29 @@
 # STAGING override — Environment-specific Secret/Config mapping.
 env: staging
 projectName: meo-stationery
+httpRoute:
+  hostnames:
+    - staging.meo.local
+ciliumNetworkPolicy:
+  enabled: true
+  # Phase 2: keep auth mode empty, then move to "required" after soak test.
+  authenticationMode: ""
+  ingress:
+    fromEndpoints:
+      - matchLabels:
+          app.kubernetes.io/name: frontend
+    http:
+      - method: GET
+        path: "/api/.*"
+      - method: POST
+        path: "/api/.*"
+  egress:
+    toEndpoints:
+      - matchLabels:
+          app.kubernetes.io/name: database
+          app.kubernetes.io/instance: database
+    port: "5432"
+    protocol: TCP
 
 backend:
   secrets:
@@ -15,3 +38,16 @@ database:
       name: meo-stationery-database-secrets-staging
     remoteKey: meo-stationery/staging/app-credentials
     refreshInterval: 1h
+
+rollout:
+  canary:
+    steps:
+      - setWeight: 20
+      - analysis:
+          templates:
+            - templateName: success-rate
+          args:
+            - name: service-name
+              value: backend
+      - setWeight: 60
+      - setWeight: 100

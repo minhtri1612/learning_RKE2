@@ -1,6 +1,8 @@
-{{- if and .Values.httpRoute.enabled (ne (.Values.workloadKind | default "deployment") "statefulset") -}}
+{{- if and .Values.httpRoute.enabled (eq (.Values.currentService | default "backend") "backend") (ne (.Values.workloadKind | default "deployment") "statefulset") -}}
 {{- $fullName := include "template.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
+{{- $stableSvc := .Values.rollout.canary.stableService | default (printf "%s-stable" $fullName) -}}
+{{- $canarySvc := .Values.rollout.canary.canaryService | default (printf "%s-canary" $fullName) -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -30,9 +32,19 @@ spec:
       filters:
       {{- toYaml . | nindent 8 }}
     {{- end }}
+      {{- if and $.Values.rollout.enabled ($.Values.httpRoute.useRolloutCanaryBackends | default true) }}
+      backendRefs:
+        - name: {{ $stableSvc }}
+          port: {{ $svcPort }}
+          weight: {{ $.Values.httpRoute.stableWeight | default 90 }}
+        - name: {{ $canarySvc }}
+          port: {{ $svcPort }}
+          weight: {{ $.Values.httpRoute.canaryWeight | default 10 }}
+      {{- else }}
       backendRefs:
         - name: {{ $fullName }}
           port: {{ $svcPort }}
           weight: 1
+      {{- end }}
     {{- end }}
 {{- end }}

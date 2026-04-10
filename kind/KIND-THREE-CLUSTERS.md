@@ -238,6 +238,11 @@ kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
 kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
+
+# 3. Cài Cilium (GitOps) trên các workload cluster
+kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
+kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
+kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
 ```
 
 Sau khi cài đặt, ArgoCD sẽ tự động kéo Helm chart từ `prometheus-community` và gộp với cấu hình trong `config/monitoring/`.
@@ -559,6 +564,11 @@ kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
 kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
+
+# 3. App Cilium
+kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
+kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
+kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
 ```
 
 Sau khi sync xong, sẽ có:
@@ -585,13 +595,115 @@ argocd app sync argocd/prod-meostation-database-app
 
 ---
 
-### 6.7. Gỡ rối thường gặp (đọc trước khi blame doc)
+### 6.7. Cài Cilium + Gateway API cho dev/staging/prod (chuẩn bị canary theo HTTPRoute)
 
-**Hai “nguồn sự thật” — đừng trộn lung tung**
+Mục tiêu của bước này:
 
-- **Argo CD** (app con `dev-meostation-*-app`) đã cấu hình `helm.releaseName` = `backend` / `database` / `frontend` và sync chart `template` lên **kind-dev** (hoặc staging/prod).  
-- **Helm CLI** `helm upgrade --install backend ...` trên **cùng** cluster/namespace với cùng tên release → Kubernetes **server-side apply** sẽ báo **conflict với `argocd-controller`** (Deployment/StatefulSet).  
-- **Khuyến nghị:** workload app chỉ để **Argo sync** từ Git; chỉ dùng Helm tay khi bạn đã **suspend** app con tương ứng trên Argo (context **`kind-management`**, namespace `argocd`). Nếu đã lỡ cài Helm failed: `helm uninstall backend -n meo-stationery` và `helm uninstall database -n database`, rồi bật lại sync Argo.
+- Cài Cilium CNI trên các workload cluster (`kind-dev`, `kind-staging`, `kind-prod`).
+- Bật Gateway API để route traffic north-south qua `Gateway` + `HTTPRoute`.
+- Giữ nguyên nguyên tắc GitOps: **Argo CD là source of truth**; mọi manifest chính thức phải nằm trong Git.
+
+> **Lưu ý quan trọng:** Có thể cài thử bằng CLI để kiểm tra nhanh, nhưng khi chốt production flow thì đưa cấu hình vào Git/ArgoCD để tránh drift.
+
+#### 6.7.1. Cài Gateway API CRDs (một lần trên mỗi workload cluster)
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  kubectl --context "$ctx" apply -f \
+    https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+done
+```
+
+#### 6.7.2. Cài Cilium bằng Argo CD (GitOps chuẩn)
+
+Từ cluster `kind-management`, apply 3 bootstrap Application:
+
+```bash
+kubectl config use-context kind-management
+cd ~/Downloads/practice_RKE2
+
+kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
+kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
+kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
+```
+
+Sau đó sync ứng dụng Cilium:
+
+```bash
+argocd app sync argocd/cilium-dev
+argocd app sync argocd/cilium-staging
+argocd app sync argocd/cilium-prod
+```
+
+> Nếu `prod` đang policy `Manual`, giữ nguyên: sync `cilium-prod` thủ công khi bạn muốn rollout.
+
+Kiểm tra nhanh:
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  echo "=== $ctx ==="
+  kubectl --context "$ctx" -n kube-system get pods -l k8s-app=cilium
+  kubectl --context "$ctx" -n kube-system get cm cilium-config -o yaml | rg "enable-wireguard|encrypt-node|enable-l7-proxy|loadbalancer-algorithm"
+  kubectl --context "$ctx" -n kube-system get servicemonitor | rg "cilium|hubble" || true
+done
+```
+
+#### 6.7.3. (Tuỳ chọn) Cài Cilium CLI cho break-glass
+
+```bash
+CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+CLI_ARCH=amd64
+curl -L --fail --remote-name-all \
+  "https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz"{,.sha256sum}
+sha256sum --check "cilium-linux-${CLI_ARCH}.tar.gz.sha256sum"
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+cilium version
+```
+
+#### 6.7.4. Chạy một lệnh cho cả 3 cluster (sau reboot)
+
+`GatewayClass`, `Gateway`, `HTTPRoute` đã được quản lý trong Helm chart (`template/templates/*.yaml`) và sẽ được Argo CD sync từ Git.
+
+Lệnh một dòng để apply bootstrap Cilium Apps:
+
+```bash
+bash -lc 'set -euo pipefail; kubectl --context kind-management apply -f argocd/bootstrap/09-cilium-dev.yaml; kubectl --context kind-management apply -f argocd/bootstrap/10-cilium-staging.yaml; kubectl --context kind-management apply -f argocd/bootstrap/11-cilium-prod.yaml; argocd app sync argocd/cilium-dev; argocd app sync argocd/cilium-staging; argocd app sync argocd/cilium-prod'
+```
+
+Sau khi chạy lệnh trên, sync lại app stack để Helm chart apply `GatewayClass`/`Gateway`/`HTTPRoute`.
+
+Kiểm tra nhanh các tính năng Cilium đã bật:
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  echo "=== $ctx ==="
+  kubectl --context "$ctx" -n kube-system get cm cilium-config -o yaml | rg "enable-wireguard|encrypt-node|enable-l7-proxy|loadbalancer-algorithm"
+  kubectl --context "$ctx" -n kube-system get servicemonitor | rg "cilium|hubble" || true
+done
+```
+
+Truy cập Hubble UI:
+
+```bash
+# Mở UI cho từng cluster khi cần (ví dụ dev)
+cilium hubble ui --context kind-dev
+
+# Hoặc tự port-forward
+kubectl --context kind-dev -n kube-system port-forward svc/hubble-ui 12000:80
+# -> http://localhost:12000
+```
+
+> Nếu `GatewayClass` bị `Accepted: Unknown` và message `Waiting for controller`, kiểm tra lại thứ tự: CRDs -> Argo sync Cilium -> rollout restart `cilium-operator`/`cilium` (nếu cần).
+
+### 6.8. Gỡ rối thường gặp (đọc trước khi blame doc)
+
+**Argo CD là source of truth (GitOps)**
+
+- Argo CD (cluster `kind-management`) là bên nắm trạng thái mong muốn của `Application`, Helm values và manifest Gateway API.
+- Không maintain song song hai nguồn (vừa Argo vừa apply tay lâu dài), vì dễ gây drift và khó debug.
+- Có thể test nhanh bằng `kubectl apply`/`helm` ở `kind-dev`, nhưng sau khi xác nhận phải đưa ngay về Git rồi sync lại bằng Argo CD.
+- Nếu đã lỡ cài Helm tay đè lên workload Argo đang quản lý: gỡ release tay (`helm uninstall ...`) rồi refresh/sync lại app trên Argo.
 
 **Context đúng cho từng việc**
 
