@@ -13,7 +13,7 @@ spec:
         valueFiles:
           - $values/config/cilium/cilium-values.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
-      targetRevision: feature/canary-rollout
+      targetRevision: main
       ref: values
   destination:
     name: dev
