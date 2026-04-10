@@ -13,6 +13,7 @@ environments:
       - database
       - monitoring
       - kube-system
+      - cilium-secrets
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
@@ -29,6 +30,7 @@ environments:
       - database
       - monitoring
       - kube-system
+      - cilium-secrets
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
@@ -45,6 +47,7 @@ environments:
       - database
       - monitoring
       - kube-system
+      - cilium-secrets
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
