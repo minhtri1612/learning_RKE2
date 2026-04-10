@@ -1,6 +1,7 @@
 sourceRepos:
   - https://github.com/minhtri1612/learning_RKE2.git
   - https://prometheus-community.github.io/helm-charts
+  - https://helm.cilium.io/
 
 defaultServer: https://kubernetes.default.svc
 
