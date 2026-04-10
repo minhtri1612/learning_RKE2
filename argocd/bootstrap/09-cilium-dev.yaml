@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium-dev
+  namespace: argocd
+spec:
+  project: dev
+  sources:
+    - repoURL: https://helm.cilium.io/
+      chart: cilium
+      targetRevision: 1.19.2
+      helm:
+        valueFiles:
+          - $values/config/cilium/cilium-values.yaml
+    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: feature/canary-rollout
+      ref: values
+  destination:
+    name: dev
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true

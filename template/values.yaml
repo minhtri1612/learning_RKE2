@@ -53,6 +53,7 @@ securityContext: {}
 service:
   # This sets the service type more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
   type: ClusterIP
+  annotations: {}
   # This sets the ports more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
   port: 80
 
@@ -76,6 +77,20 @@ ingress:
 # -- Expose the service via gateway-api HTTPRoute
 # Requires Gateway API resources and suitable controller installed within the cluster
 # (see: https://gateway-api.sigs.k8s.io/guides/)
+gatewayAPI:
+  enabled: false
+  createGatewayClass: false
+  gatewayClassName: cilium
+  gatewayClassControllerName: io.cilium/gateway-controller
+  createGateway: true
+  gatewayName: meo-gw
+  gatewayNamespace: ""
+  listener:
+    name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutesFrom: Same
+
 httpRoute:
   # HTTPRoute enabled.
   enabled: false
@@ -110,6 +125,10 @@ httpRoute:
   #     headers:
   #     - name: version
   #       value: v2
+  # -- When rollout is enabled, auto-route to stable/canary services.
+  useRolloutCanaryBackends: true
+  stableWeight: 90
+  canaryWeight: 10
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
@@ -195,3 +214,17 @@ rollout:
   analysis:
     enabled: false
     templates: []
+
+# -- Optional Cilium L7 network policy (for clusters with Cilium CRDs installed).
+ciliumNetworkPolicy:
+  enabled: false
+  authenticationMode: ""
+  ingress:
+    fromEndpoints: []
+    http: []
+  egress:
+    toEndpoints: []
+    toEntities: []
+    port: ""
+    protocol: TCP
+    http: []

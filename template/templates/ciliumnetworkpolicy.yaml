@@ -1,0 +1,64 @@
+{{- if and .Values.ciliumNetworkPolicy.enabled (eq (.Values.currentService | default "backend") "backend") (ne (.Values.workloadKind | default "deployment") "statefulset") }}
+{{- $fromEps := .Values.ciliumNetworkPolicy.ingress.fromEndpoints | default list }}
+{{- $inHttpRules := .Values.ciliumNetworkPolicy.ingress.http | default list }}
+{{- $toEps := .Values.ciliumNetworkPolicy.egress.toEndpoints | default list }}
+{{- $toEntities := .Values.ciliumNetworkPolicy.egress.toEntities | default list }}
+{{- $egressPort := .Values.ciliumNetworkPolicy.egress.port | default (.Values.service.containerPort | default .Values.service.port) }}
+{{- $egressProto := .Values.ciliumNetworkPolicy.egress.protocol | default "TCP" }}
+{{- $egHttpRules := .Values.ciliumNetworkPolicy.egress.http | default list }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "template.fullname" . }}-l7
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "template.selectorLabels" . | nindent 6 }}
+  ingress:
+    - {{- if gt (len $fromEps) 0 }}
+      fromEndpoints:
+        {{- toYaml $fromEps | nindent 8 }}
+      {{- else }}
+      fromEntities:
+        - cluster
+      {{- end }}
+      toPorts:
+        - ports:
+            - port: {{ .Values.service.containerPort | default .Values.service.port | quote }}
+              protocol: TCP
+          {{- if gt (len $inHttpRules) 0 }}
+          rules:
+            http:
+              {{- toYaml $inHttpRules | nindent 14 }}
+          {{- end }}
+          {{- if .Values.ciliumNetworkPolicy.authenticationMode }}
+          authentication:
+            mode: {{ .Values.ciliumNetworkPolicy.authenticationMode | quote }}
+          {{- end }}
+  {{- if or (gt (len $toEps) 0) (gt (len $toEntities) 0) }}
+  egress:
+    - {{- if gt (len $toEps) 0 }}
+      toEndpoints:
+        {{- toYaml $toEps | nindent 8 }}
+      {{- end }}
+      {{- if gt (len $toEntities) 0 }}
+      toEntities:
+        {{- toYaml $toEntities | nindent 8 }}
+      {{- end }}
+      toPorts:
+        - ports:
+            - port: {{ $egressPort | quote }}
+              protocol: {{ $egressProto }}
+          {{- if gt (len $egHttpRules) 0 }}
+          rules:
+            http:
+              {{- toYaml $egHttpRules | nindent 14 }}
+          {{- end }}
+          {{- if .Values.ciliumNetworkPolicy.authenticationMode }}
+          authentication:
+            mode: {{ .Values.ciliumNetworkPolicy.authenticationMode | quote }}
+          {{- end }}
+  {{- end }}
+{{- end }}

@@ -1,6 +1,29 @@
 # PROD override — Environment-specific Secret/Config mapping.
 env: prod
 projectName: meo-stationery
+httpRoute:
+  hostnames:
+    - prod.meo.local
+ciliumNetworkPolicy:
+  enabled: true
+  # Phase 3: enforce auth on prod after dev/staging are stable.
+  authenticationMode: "required"
+  ingress:
+    fromEndpoints:
+      - matchLabels:
+          app.kubernetes.io/name: frontend
+    http:
+      - method: GET
+        path: "/api/.*"
+      - method: POST
+        path: "/api/.*"
+  egress:
+    toEndpoints:
+      - matchLabels:
+          app.kubernetes.io/name: database
+          app.kubernetes.io/instance: database
+    port: "5432"
+    protocol: TCP
 
 backend:
   secrets:

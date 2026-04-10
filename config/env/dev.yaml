@@ -1,6 +1,29 @@
 # DEV override — Environment-specific Secret/Config mapping.
 env: dev
 projectName: meo-stationery
+httpRoute:
+  hostnames:
+    - dev.meo.local
+ciliumNetworkPolicy:
+  enabled: true
+  # Phase 1: keep auth mode empty to avoid hard blocking while validating traffic.
+  authenticationMode: ""
+  ingress:
+    fromEndpoints:
+      - matchLabels:
+          app.kubernetes.io/name: frontend
+    http:
+      - method: GET
+        path: "/api/.*"
+      - method: POST
+        path: "/api/.*"
+  egress:
+    toEndpoints:
+      - matchLabels:
+          app.kubernetes.io/name: database
+          app.kubernetes.io/instance: database
+    port: "5432"
+    protocol: TCP
 
 backend:
   secrets:
