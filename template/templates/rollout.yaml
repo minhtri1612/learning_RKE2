@@ -1,15 +1,6 @@
 {{- if ne (.Values.workloadKind | default "deployment") "statefulset" }}
 {{- $svcName := .Values.currentService | default "backend" }}
 {{- $svc := (index .Values $svcName) | default dict }}
-{{- $cfg := $svc.configs | default dict }}
-{{- $cfgEnv := $cfg.env | default list }}
-{{- $files := $cfg.files | default list }}
-{{- $hasFiles := gt (len $files) 0 }}
-{{- $filesMount := $cfg.filesMountPath | default "/config/files" }}
-{{- $useES := .Values.useExternalSecrets }}
-{{- if and $svc.secrets (hasKey $svc.secrets "useExternalSecrets") }}
-{{- $useES = $svc.secrets.useExternalSecrets }}
-{{- end }}
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -35,107 +26,5 @@ spec:
       steps:
         {{- toYaml .Values.rollout.canary.steps | nindent 8 }}
   template:
-    metadata:
-      {{- with .Values.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      labels:
-        {{- include "template.labels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-    spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      serviceAccountName: {{ include "template.serviceAccountName" . }}
-      {{- with .Values.podSecurityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      containers:
-        - name: {{ .Chart.Name }}
-          {{- with .Values.securityContext }}
-          securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          image: "{{ include "template.imageRepositoryCurrent" . }}:{{ include "template.imageTagBackend" . }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - name: {{ .Values.service.portName | default "http" }}
-              containerPort: {{ .Values.service.containerPort | default .Values.service.port }}
-              protocol: TCP
-          {{- with .Values.livenessProbe }}
-          livenessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.readinessProbe }}
-          readinessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.resources }}
-          resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- if $useES }}
-          envFrom:
-            - secretRef:
-                name: {{ include "template.serviceSecretName" . }}
-          {{- end }}
-          {{- if or .Values.extraEnv (gt (len $cfgEnv) 0) }}
-          env:
-            {{- with .Values.extraEnv }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- if gt (len $cfgEnv) 0 }}
-            {{- toYaml $cfgEnv | nindent 12 }}
-            {{- end }}
-          {{- end }}
-          {{- $vm := .Values.volumeMounts }}
-          {{- if or $vm (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) $hasFiles }}
-          volumeMounts:
-            {{- with $vm }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
-            - name: app-config
-              mountPath: {{ .Values.runtimeConfig.mountPath | default "/app/config" }}
-              readOnly: true
-            {{- end }}
-            {{- if $hasFiles }}
-            - name: svc-config-files
-              mountPath: {{ $filesMount }}
-              readOnly: true
-            {{- end }}
-          {{- end }}
-      {{- if or .Values.volumes (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) $hasFiles }}
-      volumes:
-        {{- with .Values.volumes }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
-        - name: app-config
-          configMap:
-            name: {{ include "template.fullname" . }}-config
-        {{- end }}
-        {{- if $hasFiles }}
-        - name: svc-config-files
-          configMap:
-            name: {{ include "template.fullname" . }}-files
-        {{- end }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+    {{- include "template.workloadPodSpec" . | nindent 4 }}
 {{- end }}

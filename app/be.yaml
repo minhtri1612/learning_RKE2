@@ -200,7 +200,7 @@ runtimeConfig:
 podMonitor:
   enabled: true
 
-# Argo Rollouts canary strategy (platform policy for stateless workloads).
+# Argo Rollouts canary strategy (stateless workloads). Requires Argo Rollouts on the workload cluster.
 rollout:
   enabled: true
   revisionHistoryLimit: 3

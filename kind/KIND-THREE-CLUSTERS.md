@@ -205,6 +205,7 @@ cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 
 argocd login localhost:8080 --insecure --username admin --password "<admin_password>"
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
+argocd repo add https://argoproj.github.io/argo-helm
 
 # Apply projects trước, rồi stack (dev / staging / prod tùy nhu cầu)
 kubectl apply -f argocd/bootstrap/01-projects.yaml
@@ -238,6 +239,12 @@ kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
 kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
+
+# 2b. Argo Rollouts (CRD + controller) trên mỗi workload cluster — **bắt buộc** nếu chart `template` dùng `Rollout` / `AnalysisTemplate` (backend canary).
+kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
+kubectl apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
+kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
+# Đợi controller Ready (hoặc sync thủ công prod): `argocd app sync argocd/argo-rollouts-prod` nếu cần.
 
 # 3. Cài Cilium (GitOps) trên các workload cluster
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
@@ -552,6 +559,7 @@ kubectl config use-context kind-management
 cd ~/Downloads/practice_RKE2
 
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
+argocd repo add https://argoproj.github.io/argo-helm
 
 # 1. App meostation
 kubectl apply -f argocd/bootstrap/01-projects.yaml
@@ -564,6 +572,11 @@ kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
 kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
+
+# 2b. Argo Rollouts (backend dùng Rollout / AnalysisTemplate)
+kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
+kubectl apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
+kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
 
 # 3. App Cilium
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml

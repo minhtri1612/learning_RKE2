@@ -2,6 +2,7 @@ sourceRepos:
   - https://github.com/minhtri1612/learning_RKE2.git
   - https://prometheus-community.github.io/helm-charts
   - https://helm.cilium.io/
+  - https://argoproj.github.io/argo-helm
 
 defaultServer: https://kubernetes.default.svc
 
@@ -12,6 +13,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - argo-rollouts
       - kube-system
       - cilium-secrets
     clusterResourceWhitelist:
@@ -29,6 +31,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - argo-rollouts
       - kube-system
       - cilium-secrets
     clusterResourceWhitelist:
@@ -46,6 +49,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - argo-rollouts
       - kube-system
       - cilium-secrets
     clusterResourceWhitelist:
