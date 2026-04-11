@@ -1,0 +1,19 @@
+# Dải IP trên mạng Docker `kind` (thường 172.18.0.0/16). Mỗi cluster Kind cần dải KHÔNG trùng nhau.
+# Kiểm tra: docker network inspect kind -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: kind-dev-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 172.18.255.10-172.18.255.19
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-dev
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - kind-dev-pool

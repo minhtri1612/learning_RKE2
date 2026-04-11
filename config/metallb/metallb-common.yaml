@@ -1,0 +1,7 @@
+# MetalLB trên Kind (L2). Speaker mặc định tolerateMaster: true — đủ cho control-plane single-node.
+# Controller cũng cần chạy trên node duy nhất:
+controller:
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule

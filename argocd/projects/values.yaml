@@ -3,6 +3,7 @@ sourceRepos:
   - https://prometheus-community.github.io/helm-charts
   - https://helm.cilium.io/
   - https://argoproj.github.io/argo-helm
+  - https://metallb.github.io/metallb
 
 defaultServer: https://kubernetes.default.svc
 
@@ -13,6 +14,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - metallb-system
       - argo-rollouts
       - kube-system
       - cilium-secrets
@@ -31,6 +33,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - metallb-system
       - argo-rollouts
       - kube-system
       - cilium-secrets
@@ -49,6 +52,7 @@ environments:
       - meo-stationery
       - database
       - monitoring
+      - metallb-system
       - argo-rollouts
       - kube-system
       - cilium-secrets

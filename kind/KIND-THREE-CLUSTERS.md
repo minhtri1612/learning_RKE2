@@ -212,6 +212,7 @@ argocd login localhost:8080 --insecure --username admin --password "<admin_passw
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 # Helm index (không phải Git): bắt buộc --type helm, nếu không Argo CD sẽ gọi git ls-remote và trả 404 HTML.
 argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-helm
+argocd repo add https://metallb.github.io/metallb --type helm --name metallb
 
 # Apply projects trước, rồi stack (dev / staging / prod tùy nhu cầu)
 # Phải dùng context cluster **management** (nơi đã cài Argo CD). Nếu lỗi "no matches for kind Application": sai context hoặc chưa apply manifest Argo CD.
@@ -257,6 +258,13 @@ kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
 kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
+
+# 4. MetalLB — cấp IP LoadBalancer cho Gateway Cilium trên Kind (Git: `config/metallb/`)
+kubectl apply -f argocd/bootstrap/01-projects.yaml
+kubectl apply -f argocd/bootstrap/15-metallb-dev.yaml
+kubectl apply -f argocd/bootstrap/16-metallb-staging.yaml
+kubectl apply -f argocd/bootstrap/17-metallb-prod.yaml
+argocd app sync argocd/metallb-prod
 ```
 
 Sau khi cài đặt, ArgoCD sẽ tự động kéo Helm chart từ `prometheus-community` và gộp với cấu hình trong `config/monitoring/`.
@@ -567,6 +575,7 @@ cd ~/Downloads/practice_RKE2
 
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-helm
+argocd repo add https://metallb.github.io/metallb --type helm --name metallb
 
 # 1. App meostation
 kubectl apply -f argocd/bootstrap/01-projects.yaml
@@ -589,6 +598,12 @@ kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
 kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
+
+# 4. MetalLB (LoadBalancer Kind)
+kubectl apply -f argocd/bootstrap/01-projects.yaml
+kubectl apply -f argocd/bootstrap/15-metallb-dev.yaml
+kubectl apply -f argocd/bootstrap/16-metallb-staging.yaml
+kubectl apply -f argocd/bootstrap/17-metallb-prod.yaml
 ```
 
 Sau khi sync xong, sẽ có:
@@ -657,6 +672,29 @@ argocd app sync argocd/cilium-prod
 
 > Nếu `prod` đang policy `Manual`, giữ nguyên: sync `cilium-prod` thủ công khi bạn muốn rollout.
 
+#### 6.7.2b. MetalLB (GitOps) — LoadBalancer cho Gateway trên Kind
+
+1. Đăng ký Helm repo (một lần): `argocd repo add https://metallb.github.io/metallb --type helm --name metallb`
+2. Cập nhật AppProject (namespace `metallb-system`): `kubectl apply -f argocd/bootstrap/01-projects.yaml`
+3. Apply + sync:
+
+   ```bash
+   kubectl --context kind-management apply -f argocd/bootstrap/15-metallb-dev.yaml
+   kubectl --context kind-management apply -f argocd/bootstrap/16-metallb-staging.yaml
+   kubectl --context kind-management apply -f argocd/bootstrap/17-metallb-prod.yaml
+   argocd app sync argocd/metallb-prod
+   ```
+
+4. Pool IP nằm trong `config/metallb/pools/{dev,staging,prod}/pool.yaml` — **mỗi cluster một dải** (`172.18.255.10-19` dev, `20-29` staging, `30-39` prod). Nếu `docker network inspect kind` không phải `172.18.0.0/16`, sửa các file đó cho khớp subnet.
+
+5. Sau khi MetalLB **Healthy**, Service Gateway Cilium (`kubectl -n meo-stationery get svc`) sẽ có **EXTERNAL-IP**. Gọi:
+
+   ```bash
+   curl -sS -H 'Host: dev.meo.local' http://<EXTERNAL-IP>/api/health
+   ```
+
+   (`/etc/hosts`: `127.0.0.1 dev.meo.local` chỉ đúng khi bạn dùng NodePort/localhost; với IP MetalLB trên mạng Docker, thường **curl thẳng tới EXTERNAL-IP** là đủ.)
+
 Kiểm tra nhanh:
 
 ```bash
@@ -713,6 +751,12 @@ cilium hubble ui --context kind-dev
 kubectl --context kind-dev -n kube-system port-forward svc/hubble-ui 12000:80
 # -> http://localhost:12000
 ```
+
+#### 6.7.5. Truy cập app **không** `kubectl port-forward`
+
+- **Khuyến nghị:** MetalLB GitOps — xem **6.7.2b** (`argocd/bootstrap/15–17`, `config/metallb/`).
+- **Tùy chọn:** NodePort + `extraPortMappings` trong `kind/*-kind-config.yaml` (phải `kind delete`/`create` lại cluster) + `kubectl patch` Service `cilium-gateway-*`; xem các bản ghi cũ trong git nếu cần.
+- **Cloud / RKE2:** dùng LoadBalancer / Ingress có sẵn — không cần MetalLB trên Kind.
 
 > Nếu `GatewayClass` bị `Accepted: Unknown` và message `Waiting for controller`, kiểm tra lại thứ tự: CRDs -> Argo sync Cilium -> rollout restart `cilium-operator`/`cilium` (nếu cần).
 
