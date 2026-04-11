@@ -203,6 +203,11 @@ Bootstrap gồm **4 file** trong `argocd/bootstrap/` (`01-projects` + dev + stag
 kubectl config use-context kind-management
 cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 
+# Bắt buộc kiểm tra trước khi apply file Application: context phải là management, cluster phải đã cài Argo CD.
+kubectl config current-context
+kubectl get crd applications.argoproj.io
+# Nếu context là kind-dev/kind-prod hoặc CRD NotFound → đừng apply bootstrap; dev/prod không có Argo CD.
+
 argocd login localhost:8080 --insecure --username admin --password "<admin_password>"
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 # Helm index (không phải Git): bắt buộc --type helm, nếu không Argo CD sẽ gọi git ls-remote và trả 404 HTML.
