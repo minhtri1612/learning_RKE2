@@ -725,6 +725,12 @@ kubectl --context kind-dev -n kube-system port-forward svc/hubble-ui 12000:80
 - Có thể test nhanh bằng `kubectl apply`/`helm` ở `kind-dev`, nhưng sau khi xác nhận phải đưa ngay về Git rồi sync lại bằng Argo CD.
 - Nếu đã lỡ cài Helm tay đè lên workload Argo đang quản lý: gỡ release tay (`helm uninstall ...`) rồi refresh/sync lại app trên Argo.
 
+**Argo CD báo app `Progressing` dù `Synced` — `Gateway` / `HTTPRoute` vẫn Progressing**
+
+- Argo CD có health check riêng cho Gateway API: thường cần điều kiện kiểu *Programmed=True* / parent *Accepted* mới đánh **Healthy**.
+- Trên **Kind**, Cilium Gateway đôi khi **không** báo đủ điều kiện đó (không có LB cloud, listener chưa “programmed” theo nghĩa Argo) → **HTTPRoute** và **Gateway** treo **Progressing** lâu hoặc mãi, dù manifest đã **Synced** và **Rollout** đã **Healthy**.
+- Đây **không** phải lỗi `ignoreDifferences` (cái đó chỉ giảm **OutOfSync** do `.status`). Muốn cây Argo xanh hẳn: nâng phiên bản Argo CD, hoặc tùy chỉnh health Lua trong ConfigMap `argocd-cm` (`resource.customizations.health.gateway.networking.k8s.io_*`), hoặc chấp nhận **Progressing** khi lab Kind miễn traffic test nội bộ ổn.
+
 **Context đúng cho từng việc**
 
 - CRD `Application` (Argo) chỉ có trên cluster cài Argo → **`kubectl ... application ...` dùng `--context kind-management`**, **không** dùng `kind-dev`.

@@ -6,8 +6,8 @@ httpRoute:
     - prod.meo.local
 ciliumNetworkPolicy:
   enabled: true
-  # Phase 3: enforce auth on prod after dev/staging are stable.
-  authenticationMode: "required"
+  # Giống dev/staging cho đến khi mesh/mTLS Cilium được cấu hình xong; "required" chặn traffic nếu chưa có cert SPIRE/Auth.
+  authenticationMode: ""
   ingress:
     fromEndpoints:
       - matchLabels:
