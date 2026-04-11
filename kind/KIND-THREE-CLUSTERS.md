@@ -205,9 +205,11 @@ cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
 
 argocd login localhost:8080 --insecure --username admin --password "<admin_password>"
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
-argocd repo add https://argoproj.github.io/argo-helm
+# Helm index (không phải Git): bắt buộc --type helm, nếu không Argo CD sẽ gọi git ls-remote và trả 404 HTML.
+argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-helm
 
 # Apply projects trước, rồi stack (dev / staging / prod tùy nhu cầu)
+# Phải dùng context cluster **management** (nơi đã cài Argo CD). Nếu lỗi "no matches for kind Application": sai context hoặc chưa apply manifest Argo CD.
 kubectl apply -f argocd/bootstrap/01-projects.yaml
 kubectl apply -f argocd/bootstrap/02-dev-meostation-stack.yaml
 kubectl apply -f argocd/bootstrap/03-staging-meostation-stack.yaml
@@ -559,7 +561,7 @@ kubectl config use-context kind-management
 cd ~/Downloads/practice_RKE2
 
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
-argocd repo add https://argoproj.github.io/argo-helm
+argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-helm
 
 # 1. App meostation
 kubectl apply -f argocd/bootstrap/01-projects.yaml
