@@ -58,5 +58,18 @@ spec:
       kind: Deployment
       jsonPointers:
         - /spec/replicas
+    # Cilium (và Gateway API) ghi status trên cluster; Git không có → dễ OutOfSync dù spec đúng.
+    - group: cilium.io
+      kind: CiliumNetworkPolicy
+      jqPathExpressions:
+        - .status
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      jqPathExpressions:
+        - .status
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      jqPathExpressions:
+        - .status
   {{- end }}
 {{- end }}
