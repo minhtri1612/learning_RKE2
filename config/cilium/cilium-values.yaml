@@ -41,6 +41,8 @@ prometheus:
     trustCRDsExist: true
 
 operator:
+  # Kind thường 1 node: mặc định chart hay để 2 replica + hostPort → pod 2 Pending ("free ports") → Argo Degraded.
+  replicas: 1
   prometheus:
     enabled: true
     serviceMonitor:
