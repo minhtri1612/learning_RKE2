@@ -37,7 +37,7 @@ prometheus:
   enabled: true
   serviceMonitor:
     enabled: true
-    # Argo CD renders manifests without cluster CRDs; monitoring stack installs CRDs on target clusters.
+    # Argo compare: cluster đã có CRD ServiceMonitor sau khi sync kube-prometheus-stack (monitoring-*).
     trustCRDsExist: true
 
 operator:
