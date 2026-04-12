@@ -4,7 +4,7 @@ metadata:
   name: monitoring-staging
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   project: staging
   sources:
@@ -14,6 +14,7 @@ spec:
       helm:
         valueFiles:
           - $values/config/monitoring/monitoring-workload.yaml
+          - $values/config/monitoring/monitoring-workload-labels-staging.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: main
       ref: values

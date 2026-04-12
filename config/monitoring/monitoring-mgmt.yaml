@@ -1,3 +1,6 @@
+# Management: Prometheus đầy đủ + Grafana; nhận remote_write từ agent trên workload (NodePort 32090).
+# Workload dùng config/monitoring/monitoring-workload.yaml (agentMode + remoteWrite).
+
 grafana:
   adminPassword: "admin"
   enabled: true
@@ -17,16 +20,8 @@ prometheus:
     storageSpec:
       emptyDir:
         medium: ""
-    additionalScrapeConfigs:
-      - job_name: 'kubernetes-nodes-dev'
-        static_configs:
-          - targets: ['172.18.0.5:9100', '172.18.0.5:30080']
-      - job_name: 'kubernetes-nodes-staging'
-        static_configs:
-          - targets: ['172.18.0.6:9100', '172.18.0.6:30080']
-      - job_name: 'kubernetes-nodes-prod'
-        static_configs:
-          - targets: ['172.18.0.8:9100', '172.18.0.8:30080']
+    # Nhận remote_write từ Prometheus Agent trên dev/staging/prod (cổng Service NodePort 32090).
+    enableRemoteWriteReceiver: true
 
 # Disable components that we don't need for management
 alertmanager:

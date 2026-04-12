@@ -1,0 +1,5 @@
+prometheus:
+  prometheusSpec:
+    externalLabels:
+      cluster: prod
+      environment: prod
