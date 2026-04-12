@@ -39,6 +39,32 @@ spec:
       namespace: kube-system
       jsonPointers:
         - /data
+    # ClusterMesh TLS: Helm chart regenerates cert material on render (non-idempotent).
+    # ArgoCD would otherwise stay OutOfSync forever while the cluster stays Healthy.
+    - group: ""
+      kind: Secret
+      name: clustermesh-apiserver-admin-cert
+      namespace: kube-system
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: Secret
+      name: clustermesh-apiserver-local-cert
+      namespace: kube-system
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: Secret
+      name: clustermesh-apiserver-remote-cert
+      namespace: kube-system
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: Secret
+      name: clustermesh-apiserver-server-cert
+      namespace: kube-system
+      jsonPointers:
+        - /data
   syncPolicy:
     automated:
       prune: true
