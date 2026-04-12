@@ -1,5 +1,6 @@
-# Cilium trên cluster **management** (bước 2 — hub ClusterMesh + Hubble UI).
-# cluster.id/name: management / 1. Spoke dùng cilium-cluster-*.yaml (id 2–4) + clustermesh-management-peer.yaml.
+# Cilium trên cluster **management** (hub ClusterMesh + Hubble UI). GitOps / Argo: app `cilium-management`.
+# cluster.id/name: management / 1. Spoke: cilium-cluster-*.yaml (id 2–4) + clustermesh-management-peer.yaml.
+# Helm **tay** lần đầu (trước Prometheus Operator): thêm `-f cilium-values-management-bootstrap.yaml` để tắt ServiceMonitor.
 
 cluster:
   name: management

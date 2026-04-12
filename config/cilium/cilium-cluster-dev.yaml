@@ -3,6 +3,14 @@ cluster:
   name: dev
   id: 2
 
+# Hubble UI: NodePort cố định — từ host Kind: http://<IP dev-control-plane>:31201
+hubble:
+  ui:
+    enabled: true
+    service:
+      type: NodePort
+      nodePort: 31201
+
 clustermesh:
   config:
     enabled: true

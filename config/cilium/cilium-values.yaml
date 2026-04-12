@@ -47,7 +47,8 @@ hubble:
   skipUnknownCGroupIDs: false
   relay:
     enabled: true
-  # Hub Hubble UI ở kind-management; spoke chỉ agent + relay (+ metrics).
+  # UI workload: bật + NodePort riêng trong cilium-cluster-{dev,staging,prod}.yaml (31201–31203).
+  # Management: cilium-values-management.yaml (UI ClusterIP / port-forward 12000).
   ui:
     enabled: false
   metrics:

@@ -1,0 +1,18 @@
+# Helm Cilium **lần đầu** trên management (trước kube-prometheus-stack): chưa có CRD ServiceMonitor.
+# Dùng cùng lúc với cilium-values-management.yaml:
+#   helm upgrade --install cilium ... -f .../cilium-values-management.yaml -f .../cilium-values-management-bootstrap.yaml
+# Sau khi Argo sync monitoring (05-monitoring-mgmt) rồi cilium-management (18), Git chỉ cần cilium-values-management.yaml (ServiceMonitor bật).
+
+hubble:
+  metrics:
+    serviceMonitor:
+      enabled: false
+
+prometheus:
+  serviceMonitor:
+    enabled: false
+
+operator:
+  prometheus:
+    serviceMonitor:
+      enabled: false

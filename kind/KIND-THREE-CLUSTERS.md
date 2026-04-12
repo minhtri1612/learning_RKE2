@@ -40,9 +40,12 @@ kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
 
 helm repo add cilium https://helm.cilium.io 2>/dev/null || true
 helm repo update
+# Lần đầu: chưa có CRD ServiceMonitor (Prometheus Operator) → phải tắt ServiceMonitor trong chart, nếu không Helm lỗi
+# "no matches for kind ServiceMonitor" và Cilium không cài → không CNI → Argo CD Pending.
 helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
   --version 1.19.2 \
   -f config/cilium/cilium-values-management.yaml \
+  -f config/cilium/cilium-values-management-bootstrap.yaml \
   --wait --timeout 15m
 
 kind create cluster --name dev        --config kind/dev-kind-config.yaml
@@ -469,19 +472,27 @@ for ctx in kind-dev kind-staging kind-prod; do
 done
 ```
 
-Truy cập Hubble UI:
+**Hubble UI**
+
+- **`kind-management`:** ClusterIP — mở bằng CLI hoặc port-forward **localhost:12000** (mặc định của `cilium hubble ui`).
+- **dev / staging / prod:** `hubble-ui` kiểu **NodePort** cố định trong Git (`config/cilium/cilium-cluster-*.yaml`): **31201** (dev), **31202** (staging), **31203** (prod). Trên Kind (Linux), lấy IP node rồi mở trình duyệt:
 
 ```bash
-# Hub trên management (ClusterMesh + Hubble)
-cilium hubble ui --context kind-management
-
-# Workload (vẫn dùng được khi chỉ quan sát từng cụm)
-cilium hubble ui --context kind-dev
-
-# Hoặc port-forward
-kubectl --context kind-management -n kube-system port-forward svc/hubble-ui 12000:80
-# -> http://localhost:12000
+DEV_IP=$(docker inspect dev-control-plane        --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+STG_IP=$(docker inspect staging-control-plane   --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+PRD_IP=$(docker inspect prod-control-plane      --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+echo "dev:      http://${DEV_IP}:31201"
+echo "staging:  http://${STG_IP}:31202"
+echo "prod:     http://${PRD_IP}:31203"
 ```
+
+```bash
+# Management → http://localhost:12000
+cilium hubble ui --context kind-management
+# hoặc: kubectl --context kind-management -n kube-system port-forward svc/hubble-ui 12000:80
+```
+
+**CLI flow (tuỳ chọn):** `cilium` không có `hubble observe`. Cần binary **`hubble`**: [cilium/hubble#installation](https://github.com/cilium/hubble#installation). Relay: `cilium hubble port-forward --context kind-dev --port-forward 4245` rồi `hubble observe flows --server localhost:4245 -f` (staging/prod: đổi context; chạy song song thì đổi `--port-forward` local).
 
 #### 1.7.5. Truy cập app **không** `kubectl port-forward`
 
@@ -555,6 +566,8 @@ kubectl --context kind-management -n kube-system port-forward svc/hubble-ui 1200
 
 - Replica count / image tag trong `env/<env>.yaml`. Chart workload `template/`; profile `app/be.yaml`, `app/db.yaml`; config `config/base/config.yaml`, override `config/env/<env>.yaml`.
 - **Kind API / TLS:** `bash scripts/kind-fix-kubeconfig-servers.sh` sau `kind create`. Trên **management**, **trước** `helm install cilium` — nếu Helm lỗi TLS thì không có CNI (`disableDefaultCNI`) và Argo CD **Pending**.
+- **Helm Cilium + ServiceMonitor:** Lần đầu trên management **chưa** có kube-prometheus-stack → dùng **hai** file values: `cilium-values-management.yaml` + `cilium-values-management-bootstrap.yaml` (mục **1.2**). Lỗi `no matches for kind "ServiceMonitor"` = thiếu bước này hoặc chưa cài CRD Prometheus Operator.
+- **Hubble UI / CLI:** Management → port-forward **12000**. Workload → NodePort **31201 / 31202 / 31203** (IP `docker inspect *-control-plane`). CLI flow: `cilium hubble port-forward` + **`hubble observe flows`** — **mục 1.7.4**.
 - **ClusterMesh (spoke):** IP hub trong `config/cilium/clustermesh-management-peer.yaml` — `bash scripts/kind-clustermesh-peer-ip.sh` sau mỗi lần recreate Kind (rồi push Git nếu Argo trỏ remote).
 - **Linux:** Argo CD → API dev/staging/prod dùng **container IP + 6443** (mục **1.4**). `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. Không dùng `host.docker.internal` trên Linux.
 - Đổi port trong `kind/*-kind-config.yaml` thì cập nhật tương ứng mục **1.4** và `scripts/kind-fix-kubeconfig-servers.sh` nếu cần.

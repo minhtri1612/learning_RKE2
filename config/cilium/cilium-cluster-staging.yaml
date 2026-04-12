@@ -3,6 +3,14 @@ cluster:
   name: staging
   id: 3
 
+# Hubble UI: http://<IP staging-control-plane>:31202
+hubble:
+  ui:
+    enabled: true
+    service:
+      type: NodePort
+      nodePort: 31202
+
 clustermesh:
   config:
     enabled: true
