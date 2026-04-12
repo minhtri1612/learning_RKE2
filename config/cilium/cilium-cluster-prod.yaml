@@ -1,0 +1,8 @@
+# Overlay Argo: cilium-prod (cluster mesh spoke)
+cluster:
+  name: prod
+  id: 4
+
+clustermesh:
+  config:
+    enabled: true

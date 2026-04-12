@@ -11,7 +11,30 @@ Argo CD cài **chỉ** trên **cluster management**. Deploy app dev sang cluster
 ```bash
 cd ~/Downloads/practice_RKE2   # hoặc cd /path/to/practice_RKE2
 
+# Chỉ tạo management trước — file `kind/management-kind-config.yaml` bật `disableDefaultCNI`,
+# nên phải cài Cilium ngay (mục 1.2) trước khi pod nào (kể cả CoreDNS) chạy ổn định.
 kind create cluster --name management --config kind/management-kind-config.yaml
+```
+
+### 1.2. Cilium trên management trước Argo CD (bước 2 — hub ClusterMesh + Hubble)
+
+**Bắt buộc** ngay sau khi tạo cụm `management` (và **trước mục 2** cài Argo CD). Dùng cùng values với app GitOps `cilium-management` (`config/cilium/cilium-values-management.yaml`): `cluster.id: 1`, `cluster.name: management`, `clustermesh.useAPIServer: true`, Hubble UI/Relay.
+
+```bash
+kubectl config use-context kind-management
+helm repo add cilium https://helm.cilium.io
+helm repo update
+helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
+  --version 1.19.2 \
+  -f config/cilium/cilium-values-management.yaml \
+  --wait --timeout 15m
+
+kubectl -n kube-system wait --for=condition=Ready pods -l k8s-app=cilium --timeout=300s || true
+```
+
+Sau đó tạo các cụm workload (vẫn có kindnet mặc định trên dev/staging/prod):
+
+```bash
 kind create cluster --name dev        --config kind/dev-kind-config.yaml
 kind create cluster --name staging    --config kind/staging-kind-config.yaml
 kind create cluster --name prod       --config kind/prod-kind-config.yaml
@@ -28,7 +51,11 @@ Mỗi file `kind/*-kind-config.yaml` khai báo **`networking.podSubnet`** và **
 | staging    | `10.202.0.0/16` | `10.222.0.0/16`    |
 | prod       | `10.203.0.0/16` | `10.223.0.0/16`    |
 
+**ClusterMesh:** `cluster.id` / `cluster.name` trên từng cụm — xem **mục 5.1**.
+
 **Quan trọng:** Các cụm đã tạo **trước** khi có bảng trên đang dùng CIDR mặc định của Kind. Sau khi kéo Git có `networking` mới, cần **xóa và tạo lại** cả bốn cluster (`kind delete cluster …` rồi chạy lại lệnh `kind create` ở trên), rồi làm lại bước Argo CD / đăng ký cluster / bootstrap như doc — **chỉ đổi file YAML trên disk không tự sửa CIDR cluster đang chạy**.
+
+**Riêng management:** `networking.disableDefaultCNI: true` — **không** được bỏ qua mục **1.2** (Cilium Helm) trước khi sang mục 2 (Argo CD).
 
 - **management**: API server trên host tại `127.0.0.1:33443` (Argo CD chạy ở đây)
 - **dev**: API server trên host tại `127.0.0.1:30443`
@@ -57,6 +84,8 @@ kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
 ---
 
 ## 2. Cài Argo CD trên cluster management
+
+Giả định **mục 1.2** đã cài Cilium trên `kind-management` (cụm dùng `disableDefaultCNI`).
 
 ```bash
 kubectl config use-context kind-management
@@ -226,6 +255,7 @@ argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 # Helm index (không phải Git): bắt buộc --type helm, nếu không Argo CD sẽ gọi git ls-remote và trả 404 HTML.
 argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-helm
 argocd repo add https://metallb.github.io/metallb --type helm --name metallb
+argocd repo add https://helm.cilium.io/ --type helm --name cilium
 
 # Apply projects trước, rồi stack (dev / staging / prod tùy nhu cầu)
 # Phải dùng context cluster **management** (nơi đã cài Argo CD). Nếu lỗi "no matches for kind Application": sai context hoặc chưa apply manifest Argo CD.
@@ -253,8 +283,11 @@ Hệ thống sử dụng mô hình **Hub-and-Spoke**: Server tập trung tại `
 ```bash
 kubectl config use-context kind-management
 
-# 1. Cài đặt Prometheus Server & Grafana trên management
+# 1. Cài đặt Prometheus Server & Grafana trên management (sync-wave 1 — trước Cilium management)
 kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
+
+# 1b. Cilium trên management (GitOps; sync-wave 2 — cùng values mục 1.2; ClusterMesh API server + Hubble hub)
+kubectl apply -f argocd/bootstrap/18-cilium-management.yaml
 
 # 2. Cài đặt các Agent thu thập trên các cụm con
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
@@ -267,7 +300,7 @@ kubectl apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
 kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
 # Đợi controller Ready (hoặc sync thủ công prod): `argocd app sync argocd/argo-rollouts-prod` nếu cần.
 
-# 3. Cài Cilium (GitOps) trên các workload cluster
+# 3. Cài Cilium (GitOps) trên các workload cluster — trước đó chạy scripts/kind-clustermesh-peer-ip.sh + push Git (mục 5.1)
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
 kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
@@ -280,12 +313,56 @@ kubectl apply -f argocd/bootstrap/17-metallb-prod.yaml
 argocd app sync argocd/metallb-prod
 ```
 
-Sau khi cài đặt, ArgoCD sẽ tự động kéo Helm chart từ `prometheus-community` và gộp với cấu hình trong `config/monitoring/`.
+Sau khi cài đặt, ArgoCD sẽ tự động kéo Helm chart từ `prometheus-community` và gộp với cấu hình trong `config/monitoring/`. App **`cilium-management`** giữ Cilium trên management (ClusterMesh API server + Hubble) đồng bộ với `config/cilium/cilium-values-management.yaml` (đã bootstrap bằng Helm ở mục 1.2).
+
+### 5.1. ClusterMesh bước 3 — spoke (dev / staging / prod) + IP hub
+
+**Mục tiêu:** Hub = `kind-management` (`cluster.name: management`, `cluster.id: 1`, `clustermesh.useAPIServer: true`). Mỗi workload có `cluster.id` riêng, **Hubble UI tắt** (chỉ agent + relay + metrics), nối tới **clustermesh-apiserver** trên management qua **NodePort `32379`**.
+
+| Cụm        | `cluster.name` | `cluster.id` | File overlay                         |
+| ---------- | -------------- | ------------ | ------------------------------------ |
+| management | `management`   | `1`          | `config/cilium/cilium-values-management.yaml` |
+| dev        | `dev`          | `2`          | `config/cilium/cilium-cluster-dev.yaml`       |
+| staging    | `staging`      | `3`          | `config/cilium/cilium-cluster-staging.yaml`   |
+| prod       | `prod`         | `4`          | `config/cilium/cilium-cluster-prod.yaml`      |
+
+Spoke dùng chung **`config/cilium/clustermesh-management-peer.yaml`**: trường `clustermesh.config.clusters.management.ips` phải là **IP Docker** của container `management-control-plane` trên network `kind` (đổi mỗi lần recreate cluster).
+
+1. Đợi Argo **Healthy** cho `cilium-management` và đã apply bootstrap **09–11** (hoặc refresh sau bước dưới).
+2. Từ thư mục repo:
+
+```bash
+bash scripts/kind-clustermesh-peer-ip.sh
+# Kiểm tra diff: config/cilium/clustermesh-management-peer.yaml
+git add config/cilium/clustermesh-management-peer.yaml
+git commit -m "chore: clustermesh peer IP for management hub"
+git push   # nếu Argo trỏ remote Git
+```
+
+3. **Refresh + sync** các app `cilium-dev`, `cilium-staging`, `cilium-prod` (và prod manual nếu cần). Thứ tự khuyến nghị: **monitoring-*** workload trước (CRD `ServiceMonitor`), rồi **cilium-***.
+
+4. Kiểm tra:
+
+```bash
+bash scripts/kind-clustermesh-status.sh
+# Hoặc tay (cần cilium CLI):
+cilium clustermesh status --context kind-management
+cilium clustermesh status --context kind-dev
+```
+
+5. **Tuỳ chọn** nếu Helm chưa đủ để peers hiện `connected`:
+
+```bash
+bash scripts/kind-clustermesh-connect.sh
+```
+
+**Hubble UI:** dùng **`kind-management`** (`cilium hubble ui --context kind-management`). Trên dev/staging/prod **không** bật UI (xem `config/cilium/cilium-values.yaml`).
 
 ---
 
 ## 6. Kiểm tra
 
+- ClusterMesh: `bash scripts/kind-clustermesh-status.sh` (hoặc `cilium clustermesh status --context kind-management`).
 - UI ArgoCD: https://localhost:8080 → Applications: `dev-*`, `monitoring-*`...
 - UI Grafana:
   ```bash
@@ -302,6 +379,7 @@ Sau khi cài đặt, ArgoCD sẽ tự động kéo Helm chart từ `prometheus-c
 ## Lưu ý
 
 - Replica count / image tag được cấu hình trong `env/<env>.yaml`. Chart workload là `template/`; profile values trong `app/be.yaml`, `app/db.yaml`; config chung `config/base/config.yaml`, override theo môi trường `config/env/<env>.yaml`. **Không** còn đường `.manifest/` trong flow Argo hiện tại.
+- **ClusterMesh:** IP hub trong `config/cilium/clustermesh-management-peer.yaml` phải khớp `management-control-plane` trên Docker — chạy `scripts/kind-clustermesh-peer-ip.sh` sau mỗi lần recreate Kind (rồi push Git nếu Argo dùng remote). Chi tiết **mục 5.1**.
 - **Kind trên Linux:** Argo CD gọi API dev/staging/prod qua **container IP + port 6443** (xem bước 3.4). Lấy IP: `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. **KHÔNG dùng** `host.docker.internal` (không resolve trên Linux) hay gateway `172.18.0.1` (có thể timeout). IP container sẽ thay đổi khi xóa/tạo lại cluster → phải tạo lại secret.
 - Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.4.
 - **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
@@ -313,7 +391,7 @@ Sau khi cài đặt, ArgoCD sẽ tự động kéo Helm chart từ `prometheus-c
 
 Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại **không có lệnh "start lại nguyên cụm" đơn giản**. Cách an toàn, ít lỗi nhất:
 
-> **Xóa cụm cũ nếu còn → tạo lại 4 cluster Kind → cài lại Argo CD → đăng ký dev/staging/prod → làm lại secrets (6.5.1 ESO+AWS hoặc 6.5.2 kubectl) → sync lại app.**
+> **Xóa cụm cũ nếu còn → tạo lại Kind (management trước + Cilium Helm mục 1.2 → rồi dev/staging/prod) → cài lại Argo CD → đăng ký dev/staging/prod → làm lại secrets (6.5.1 ESO+AWS hoặc 6.5.2 kubectl) → sync lại app.**
 
 Giả sử đang ở branch `kind` của repo này.
 
@@ -330,10 +408,21 @@ Không sao cả: mọi config cho Kind đã nằm trong Git (branch `kind`).
 
 ### 6.2. Tạo lại 4 cluster Kind
 
+Giống **mục 1** + **1.2**: tạo **management** trước, **Helm Cilium management** ngay, rồi **dev / staging / prod**.
+
 ```bash
 cd ~/Downloads/practice_RKE2   # bắt buộc từ thư mục repo
 
 kind create cluster --name management --config kind/management-kind-config.yaml
+
+kubectl config use-context kind-management
+helm repo add cilium https://helm.cilium.io 2>/dev/null || true
+helm repo update
+helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
+  --version 1.19.2 \
+  -f config/cilium/cilium-values-management.yaml \
+  --wait --timeout 15m
+
 kind create cluster --name dev        --config kind/dev-kind-config.yaml
 kind create cluster --name staging    --config kind/staging-kind-config.yaml
 kind create cluster --name prod       --config kind/prod-kind-config.yaml
@@ -341,7 +430,7 @@ kind create cluster --name prod       --config kind/prod-kind-config.yaml
 kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-staging, kind-prod
 ```
 
-CIDR pod/service không trùng giữa các cụm: xem **mục 1.1** (file `kind/*-kind-config.yaml`).
+CIDR pod/service không trùng giữa các cụm: xem **mục 1.1** (file `kind/*-kind-config.yaml`). **Cilium management:** xem **mục 1.2**.
 
 **Nếu kubectl báo lỗi TLS** (x509: certificate ... not 0.0.0.0), chạy ngay:
 
@@ -591,6 +680,7 @@ cd ~/Downloads/practice_RKE2
 argocd repo add https://github.com/minhtri1612/learning_RKE2.git
 argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-helm
 argocd repo add https://metallb.github.io/metallb --type helm --name metallb
+argocd repo add https://helm.cilium.io/ --type helm --name cilium
 
 # 1. App meostation
 kubectl apply -f argocd/bootstrap/01-projects.yaml
@@ -600,6 +690,7 @@ kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
 
 # 2. App Monitoring
 kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
+kubectl apply -f argocd/bootstrap/18-cilium-management.yaml
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
 kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
@@ -609,7 +700,7 @@ kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
 kubectl apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
 kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
 
-# 3. App Cilium
+# 3. App Cilium (nhớ peer IP hub — scripts/kind-clustermesh-peer-ip.sh, mục 5.1)
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
 kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
@@ -759,11 +850,14 @@ done
 Truy cập Hubble UI:
 
 ```bash
-# Mở UI cho từng cluster khi cần (ví dụ dev)
+# Hub trên management (ClusterMesh API server + Hubble; bước 2 — traffic mesh đầy đủ sau bước 3)
+cilium hubble ui --context kind-management
+
+# Workload (vẫn dùng được khi chỉ quan sát từng cụm)
 cilium hubble ui --context kind-dev
 
-# Hoặc tự port-forward
-kubectl --context kind-dev -n kube-system port-forward svc/hubble-ui 12000:80
+# Hoặc port-forward
+kubectl --context kind-management -n kube-system port-forward svc/hubble-ui 12000:80
 # -> http://localhost:12000
 ```
 

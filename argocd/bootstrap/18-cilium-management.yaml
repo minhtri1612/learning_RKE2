@@ -1,26 +1,24 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cilium-staging
+  name: cilium-management
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "2"
 spec:
-  project: staging
+  project: default
   sources:
     - repoURL: https://helm.cilium.io/
       chart: cilium
       targetRevision: 1.19.2
       helm:
         valueFiles:
-          - $values/config/cilium/cilium-values.yaml
-          - $values/config/cilium/cilium-cluster-staging.yaml
-          - $values/config/cilium/clustermesh-management-peer.yaml
+          - $values/config/cilium/cilium-values-management.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: main
       ref: values
   destination:
-    name: staging
+    server: https://kubernetes.default.svc
     namespace: kube-system
   ignoreDifferences:
     - group: ""

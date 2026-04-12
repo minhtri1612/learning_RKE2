@@ -1,0 +1,8 @@
+# Overlay Argo: cilium-dev (cluster mesh spoke)
+cluster:
+  name: dev
+  id: 2
+
+clustermesh:
+  config:
+    enabled: true

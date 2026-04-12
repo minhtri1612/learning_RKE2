@@ -1,0 +1,8 @@
+# Overlay Argo: cilium-staging (cluster mesh spoke)
+cluster:
+  name: staging
+  id: 3
+
+clustermesh:
+  config:
+    enabled: true

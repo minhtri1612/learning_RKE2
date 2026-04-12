@@ -1,0 +1,76 @@
+# Cilium trên cluster **management** (bước 2 — hub ClusterMesh + Hubble UI).
+# cluster.id/name: management / 1. Spoke dùng cilium-cluster-*.yaml (id 2–4) + clustermesh-management-peer.yaml.
+
+cluster:
+  name: management
+  id: 1
+
+kubeProxyReplacement: true
+
+gatewayAPI:
+  enabled: false
+  gatewayClass:
+    create: "false"
+
+l7Proxy: false
+
+loadBalancer:
+  algorithm: maglev
+
+encryption:
+  enabled: false
+
+clustermesh:
+  useAPIServer: true
+  config:
+    enabled: true
+    clusters: {}
+
+bpf:
+  events:
+    drop:
+      enabled: true
+    policyVerdict:
+      enabled: true
+    trace:
+      enabled: true
+
+hubble:
+  enabled: true
+  eventBufferCapacity: "16383"
+  networkPolicyCorrelation:
+    enabled: true
+  redact:
+    enabled: false
+  skipUnknownCGroupIDs: false
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+  metrics:
+    enabled:
+      - dns:query
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - http
+      - port-distribution
+    enableOpenMetrics: true
+    serviceMonitor:
+      enabled: true
+    dashboards:
+      enabled: false
+
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    trustCRDsExist: true
+
+operator:
+  replicas: 1
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true

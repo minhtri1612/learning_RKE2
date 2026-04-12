@@ -1,5 +1,9 @@
 kubeProxyReplacement: true
 
+# Spoke (dev/staging/prod): ClusterMesh tới hub management — không deploy clustermesh-apiserver ở đây.
+clustermesh:
+  useAPIServer: false
+
 gatewayAPI:
   enabled: true
   # App chart (template/) owns GatewayClass; avoid duplicate + operator reconcile issues.
@@ -43,8 +47,9 @@ hubble:
   skipUnknownCGroupIDs: false
   relay:
     enabled: true
+  # Hub Hubble UI ở kind-management; spoke chỉ agent + relay (+ metrics).
   ui:
-    enabled: true
+    enabled: false
   metrics:
     # https://docs.cilium.io/en/stable/observability/metrics/#hubble-metrics
     enabled:

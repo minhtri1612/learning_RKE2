@@ -14,6 +14,8 @@ spec:
       helm:
         valueFiles:
           - $values/config/cilium/cilium-values.yaml
+          - $values/config/cilium/cilium-cluster-dev.yaml
+          - $values/config/cilium/clustermesh-management-peer.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: main
       ref: values
