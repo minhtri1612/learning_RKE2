@@ -27,44 +27,73 @@ spec:
       namespace: kube-system
       jsonPointers:
         - /data
+        - /stringData
+      jqPathExpressions:
+        - .data
+        - .stringData
     - group: ""
       kind: Secret
       name: hubble-server-certs
       namespace: kube-system
       jsonPointers:
         - /data
+        - /stringData
+      jqPathExpressions:
+        - .data
+        - .stringData
     - group: ""
       kind: Secret
       name: hubble-relay-client-certs
       namespace: kube-system
       jsonPointers:
         - /data
+        - /stringData
+      jqPathExpressions:
+        - .data
+        - .stringData
     # ClusterMesh TLS: Helm chart regenerates cert material on render (non-idempotent).
     # ArgoCD would otherwise stay OutOfSync forever while the cluster stays Healthy.
+    # jqPathExpressions helps when syncPolicy uses ServerSideApply=true.
     - group: ""
       kind: Secret
       name: clustermesh-apiserver-admin-cert
       namespace: kube-system
       jsonPointers:
         - /data
+        - /stringData
+      jqPathExpressions:
+        - .data
+        - .stringData
     - group: ""
       kind: Secret
       name: clustermesh-apiserver-local-cert
       namespace: kube-system
       jsonPointers:
         - /data
+        - /stringData
+      jqPathExpressions:
+        - .data
+        - .stringData
     - group: ""
       kind: Secret
       name: clustermesh-apiserver-remote-cert
       namespace: kube-system
       jsonPointers:
         - /data
+        - /stringData
+      jqPathExpressions:
+        - .data
+        - .stringData
     - group: ""
       kind: Secret
       name: clustermesh-apiserver-server-cert
       namespace: kube-system
       jsonPointers:
         - /data
+        - /stringData
+      jqPathExpressions:
+        - .data
+        - .stringData
   syncPolicy:
     automated:
       prune: true
