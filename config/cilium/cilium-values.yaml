@@ -6,6 +6,7 @@ gatewayAPI:
   gatewayClass:
     create: "false"
 
+# L7 qua Envoy: cần cho HTTP/DNS chi tiết trên flow khi traffic đi qua proxy L7 (Gateway/L7 policy).
 l7Proxy: true
 
 loadBalancer:
@@ -16,22 +17,51 @@ encryption:
   type: wireguard
   nodeEncryption: true
 
+# BPF events → monitor/Hubble (drop / policy verdict / trace). Bật rõ ràng để debug policy trên UI.
+bpf:
+  events:
+    drop:
+      enabled: true
+    policyVerdict:
+      enabled: true
+    trace:
+      enabled: true
+
+# Hubble UI: Service map + flow table. Không thể bật “policy simulation” hay dashboard SRE (latency/5xx)
+# trong chính Hubble UI — các phần đó là cilium policy trace / Grafana + Prometheus.
 hubble:
   enabled: true
+  # Buffer flow gần đây (giá trị hợp lệ theo chart Cilium).
+  eventBufferCapacity: "16383"
+  # Gắn flow với CiliumNetworkPolicy (egress_allowed_by / ingress_denied_by) trong UI.
+  networkPolicyCorrelation:
+    enabled: true
+  # false = giữ tối đa chi tiết L7 trên UI; bật redact khi cần ẩn PII.
+  redact:
+    enabled: false
+  # Một phần event từ cgroup lạ; false = hiển thị thêm (có thể nhiễu).
+  skipUnknownCGroupIDs: false
   relay:
     enabled: true
   ui:
     enabled: true
   metrics:
+    # https://docs.cilium.io/en/stable/observability/metrics/#hubble-metrics
     enabled:
-      - dns
+      - dns:query
       - drop
       - tcp
       - flow
-      - port-distribution
+      - icmp
       - http
+      - port-distribution
+    enableOpenMetrics: true
     serviceMonitor:
       enabled: true
+    # Dashboard JSON Grafana: ConfigMap tạo trên cluster có Cilium (workload). Grafana của bạn
+    # chạy trên management → không tự import; bật true nếu sau này có Grafana trên cùng cluster.
+    dashboards:
+      enabled: false
 
 prometheus:
   enabled: true

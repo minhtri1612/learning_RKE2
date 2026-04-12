@@ -1,8 +1,12 @@
 # Kind cluster: prod (giống VPC prod)
 # API server expose ra host port 31443 để Argo CD (chạy trên cluster management) có thể gọi vào.
 # Trên host cgroup v1 không dùng containerdConfigPatches (SystemdCgroup) để tránh kubelet không start.
+# Pod/Service CIDR riêng (chuẩn bị ClusterMesh — không trùng các cụm khác).
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  podSubnet: 10.203.0.0/16
+  serviceSubnet: 10.223.0.0/16
 
 nodes:
   - role: control-plane

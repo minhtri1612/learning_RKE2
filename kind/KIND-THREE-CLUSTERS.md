@@ -17,6 +17,19 @@ kind create cluster --name staging    --config kind/staging-kind-config.yaml
 kind create cluster --name prod       --config kind/prod-kind-config.yaml
 ```
 
+### 1.1. Pod / Service CIDR riêng từng cụm (bước 1 — chuẩn bị ClusterMesh)
+
+Mỗi file `kind/*-kind-config.yaml` khai báo **`networking.podSubnet`** và **`networking.serviceSubnet`** **không trùng** giữa bốn cụm. Điều kiện cần nếu sau này bật **Cilium ClusterMesh** (route pod/service giữa cluster); nếu mọi cụm cùng dải mặc định (ví dụ `10.244.0.0/16`) thì mesh sẽ không định tuyến đúng.
+
+| Cụm        | `podSubnet`     | `serviceSubnet`  |
+| ---------- | --------------- | ------------------ |
+| management | `10.200.0.0/16` | `10.220.0.0/16`    |
+| dev        | `10.201.0.0/16` | `10.221.0.0/16`    |
+| staging    | `10.202.0.0/16` | `10.222.0.0/16`    |
+| prod       | `10.203.0.0/16` | `10.223.0.0/16`    |
+
+**Quan trọng:** Các cụm đã tạo **trước** khi có bảng trên đang dùng CIDR mặc định của Kind. Sau khi kéo Git có `networking` mới, cần **xóa và tạo lại** cả bốn cluster (`kind delete cluster …` rồi chạy lại lệnh `kind create` ở trên), rồi làm lại bước Argo CD / đăng ký cluster / bootstrap như doc — **chỉ đổi file YAML trên disk không tự sửa CIDR cluster đang chạy**.
+
 - **management**: API server trên host tại `127.0.0.1:33443` (Argo CD chạy ở đây)
 - **dev**: API server trên host tại `127.0.0.1:30443`
 - **staging**: API server trên host tại `127.0.0.1:32443`
@@ -327,6 +340,8 @@ kind create cluster --name prod       --config kind/prod-kind-config.yaml
 
 kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-staging, kind-prod
 ```
+
+CIDR pod/service không trùng giữa các cụm: xem **mục 1.1** (file `kind/*-kind-config.yaml`).
 
 **Nếu kubectl báo lỗi TLS** (x509: certificate ... not 0.0.0.0), chạy ngay:
 

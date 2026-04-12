@@ -1,7 +1,11 @@
 # Kind cluster: staging (giống VPC dev, nhưng API server expose host port khác)
 # Argo CD sẽ gọi API server của cluster staging.
+# Pod/Service CIDR riêng (chuẩn bị ClusterMesh — không trùng các cụm khác).
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  podSubnet: 10.202.0.0/16
+  serviceSubnet: 10.222.0.0/16
 
 nodes:
   - role: control-plane

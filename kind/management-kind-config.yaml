@@ -1,8 +1,12 @@
 # Kind cluster: management – chạy Argo CD (quản lý dev + prod)
 # API server expose ra host port 33443.
 # Dùng node image + containerd patch tương thích cgroup v2 (Ubuntu 22.04+).
+# Pod/Service CIDR riêng (bước 1 chuẩn bị Cilium ClusterMesh — không trùng các cụm khác).
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  podSubnet: 10.200.0.0/16
+  serviceSubnet: 10.220.0.0/16
 
 containerdConfigPatches:
   - |-
