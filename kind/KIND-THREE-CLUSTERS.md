@@ -1,401 +1,20 @@
-# (Hiện tại) 4 cluster Kind (management + dev + staging + prod) – giống cloud
+# Kind — khởi động lại mỗi ngày (sau reboot)
 
-Argo CD cài **chỉ** trên **cluster management**. Deploy app dev sang cluster **dev**, app staging sang cluster **staging**, app prod sang cluster **prod**. Cần expose API server của dev/staging/prod ra host để Argo CD (chạy trong management) gọi được.
+Luồng **chính** trong tài liệu này: xoá / tạo lại 4 cluster (management + dev + staging + prod), Helm Cilium trên management, Argo CD, đăng ký cluster workload, secrets, bootstrap GitOps, Gateway/Cilium trên dev–staging–prod.
 
----
-
-## 1. Tạo 4 cluster Kind
-
-**Bắt buộc chạy từ thư mục gốc repo** (nếu đang ở `~` sẽ lỗi `open kind/management-kind-config.yaml: no such file or directory`):
-
-```bash
-cd ~/Downloads/practice_RKE2   # hoặc cd /path/to/practice_RKE2
-
-# Chỉ tạo management trước — file `kind/management-kind-config.yaml` bật `disableDefaultCNI`,
-# nên phải cài Cilium ngay (mục 1.2) trước khi pod nào (kể cả CoreDNS) chạy ổn định.
-kind create cluster --name management --config kind/management-kind-config.yaml
-```
-
-### 1.2. Cilium trên management trước Argo CD (bước 2 — hub ClusterMesh + Hubble)
-
-**Bắt buộc** ngay sau khi tạo cụm `management` (và **trước mục 2** cài Argo CD). Dùng cùng values với app GitOps `cilium-management` (`config/cilium/cilium-values-management.yaml`): `cluster.id: 1`, `cluster.name: management`, `clustermesh.useAPIServer: true`, Hubble UI/Relay.
-
-```bash
-kubectl config use-context kind-management
-helm repo add cilium https://helm.cilium.io
-helm repo update
-helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
-  --version 1.19.2 \
-  -f config/cilium/cilium-values-management.yaml \
-  --wait --timeout 15m
-
-kubectl -n kube-system wait --for=condition=Ready pods -l k8s-app=cilium --timeout=300s || true
-```
-
-Sau đó tạo các cụm workload (vẫn có kindnet mặc định trên dev/staging/prod):
-
-```bash
-kind create cluster --name dev        --config kind/dev-kind-config.yaml
-kind create cluster --name staging    --config kind/staging-kind-config.yaml
-kind create cluster --name prod       --config kind/prod-kind-config.yaml
-```
-
-### 1.1. Pod / Service CIDR riêng từng cụm (bước 1 — chuẩn bị ClusterMesh)
-
-Mỗi file `kind/*-kind-config.yaml` khai báo **`networking.podSubnet`** và **`networking.serviceSubnet`** **không trùng** giữa bốn cụm. Điều kiện cần nếu sau này bật **Cilium ClusterMesh** (route pod/service giữa cluster); nếu mọi cụm cùng dải mặc định (ví dụ `10.244.0.0/16`) thì mesh sẽ không định tuyến đúng.
-
-| Cụm        | `podSubnet`     | `serviceSubnet`  |
-| ---------- | --------------- | ------------------ |
-| management | `10.200.0.0/16` | `10.220.0.0/16`    |
-| dev        | `10.201.0.0/16` | `10.221.0.0/16`    |
-| staging    | `10.202.0.0/16` | `10.222.0.0/16`    |
-| prod       | `10.203.0.0/16` | `10.223.0.0/16`    |
-
-**ClusterMesh:** `cluster.id` / `cluster.name` trên từng cụm — xem **mục 5.1**.
-
-**Quan trọng:** Các cụm đã tạo **trước** khi có bảng trên đang dùng CIDR mặc định của Kind. Sau khi kéo Git có `networking` mới, cần **xóa và tạo lại** cả bốn cluster (`kind delete cluster …` rồi chạy lại lệnh `kind create` ở trên), rồi làm lại bước Argo CD / đăng ký cluster / bootstrap như doc — **chỉ đổi file YAML trên disk không tự sửa CIDR cluster đang chạy**.
-
-**Riêng management:** `networking.disableDefaultCNI: true` — **không** được bỏ qua mục **1.2** (Cilium Helm) trước khi sang mục 2 (Argo CD).
-
-- **management**: API server trên host tại `127.0.0.1:33443` (Argo CD chạy ở đây)
-- **dev**: API server trên host tại `127.0.0.1:30443`
-- **staging**: API server trên host tại `127.0.0.1:32443`
-- **prod**: API server trên host tại `127.0.0.1:31443`
-
-Kiểm tra:
-
-```bash
-kubectl config get-contexts
-# kind-management  kind-management  ...
-# kind-dev         kind-dev         ...
-# kind-staging     kind-staging     ...
-# kind-prod        kind-prod        ...
-```
-
-**Nếu `kubectl` báo lỗi TLS** (`x509: certificate is valid for ..., not 0.0.0.0`): kubeconfig đang trỏ server `0.0.0.0` — certificate API server không có SAN đó. **Chạy ngay** (trước bước 2) để trỏ cluster sang `127.0.0.1`:
-
-```bash
-kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
-kubectl config set-cluster kind-dev --server=https://127.0.0.1:30443
-kubectl config set-cluster kind-staging --server=https://127.0.0.1:32443
-kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
-```
+**Chạy lệnh từ thư mục gốc repo** (`cd ~/Downloads/practice_RKE2` hoặc path tương đương). Argo CD chỉ trên **kind-management**. API từ máy host: management `127.0.0.1:33443`, dev `30443`, staging `32443`, prod `31443`.
 
 ---
 
-## 2. Cài Argo CD trên cluster management
-
-Giả định **mục 1.2** đã cài Cilium trên `kind-management` (cụm dùng `disableDefaultCNI`).
-
-```bash
-kubectl config use-context kind-management
-
-kubectl create namespace argocd
-kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-kubectl -n argocd wait --for=condition=Ready pods --all --timeout=300s
-```
-
-Lấy password admin (user `admin`):
-
-```bash
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
-```
-
-Port-forward UI/API (giữ terminal mở hoặc chạy nền):
-
-```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:443
-# Login: https://localhost:8080, user admin
-```
-
-**Lưu ý khi vừa recreate ArgoCD (xóa/tạo lại cluster):** token của `argocd` CLI cũ sẽ lỗi kiểu `invalid session: token signature is invalid`.
-Fix nhanh: xóa config cũ và login lại:
-
-```bash
-rm -rf ~/.argocd
-PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-argocd login localhost:8080 --insecure --username admin --password "$PASS"
-```
-
----
-
-## 3. Đăng ký cluster "dev", "staging" và "prod" với Argo CD (trên management)
-
-Argo CD chạy **trong** cluster management.
-
-- **Cluster management**: Argo CD tự deploy vào chính cluster này qua `https://kubernetes.default.svc` (không cần "register" gì thêm).
-- **Cluster dev/staging/prod**: để Argo CD deploy sang 3 cluster này, cần **đăng ký** credentials cho dev/staging/prod.
-
-Để Argo CD (chạy trong management) gọi được API server của dev/staging/prod, cần biết địa chỉ mạng:
-
-- **Mac/Windows (Docker Desktop):** `host.docker.internal:<host-port>` (30443/32443/31443)
-- **Linux (Kind) — khuyến nghị:** dùng **container IP trực tiếp + port 6443**. Lấy IP bằng `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. Cách này ổn định nhất, tránh lỗi `host.docker.internal` không resolve hoặc gateway timeout. IP sẽ thay đổi khi xóa/tạo lại cluster.
-
-### 3.1. Tạo ServiceAccount và token trên cluster dev
-
-```bash
-kubectl --context kind-dev apply -f kind/dev-argocd-manager.yaml
-sleep 5
-```
-
-Lấy token dev (giữ nguyên terminal để dùng biến `$DEV_TOKEN` ở bước 3.4):
-
-```bash
-DEV_TOKEN=$(kubectl --context kind-dev get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
-echo "$DEV_TOKEN"
-```
-
-### 3.2. Tạo ServiceAccount và token trên cluster prod
-
-```bash
-kubectl --context kind-prod apply -f kind/prod-argocd-manager.yaml
-sleep 5
-```
-
-Lấy token prod (giữ nguyên terminal để dùng biến `$PROD_TOKEN` ở bước 3.4):
-
-```bash
-PROD_TOKEN=$(kubectl --context kind-prod get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
-echo "$PROD_TOKEN"
-```
-
-### 3.3. Tạo ServiceAccount và token trên cluster staging
-
-```bash
-kubectl --context kind-staging apply -f kind/dev-argocd-manager.yaml
-sleep 5
-```
-
-Lấy token staging (giữ nguyên terminal để dùng biến `$STAGING_TOKEN` ở bước 3.4):
-
-```bash
-STAGING_TOKEN=$(kubectl --context kind-staging get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
-echo "$STAGING_TOKEN"
-```
-
-### 3.4. Tạo Secret cluster "dev", "staging" và "prod" trong Argo CD (trên management)
-
-Chạy **cùng shell** sau khi đã chạy 3.1, 3.2 và 3.3 (để có biến `$DEV_TOKEN`, `$STAGING_TOKEN`, `$PROD_TOKEN`).
-
-**Trên Mac/Windows:**
-
-```bash
-kubectl config use-context kind-management
-
-kubectl create secret generic cluster-dev \
-  -n argocd \
-  --from-literal=name=dev \
-  --from-literal=server=https://host.docker.internal:30443 \
-  --from-literal=config="{\"bearerToken\":\"$DEV_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
-kubectl label secret cluster-dev -n argocd argocd.argoproj.io/secret-type=cluster
-
-kubectl create secret generic cluster-prod \
-  -n argocd \
-  --from-literal=name=prod \
-  --from-literal=server=https://host.docker.internal:31443 \
-  --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
-kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
-
-kubectl create secret generic cluster-staging \
-  -n argocd \
-  --from-literal=name=staging \
-  --from-literal=server=https://host.docker.internal:32443 \
-  --from-literal=config="{\"bearerToken\":\"$STAGING_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
-kubectl label secret cluster-staging -n argocd argocd.argoproj.io/secret-type=cluster
-```
-
-**Trên Linux** (dùng **container IP trực tiếp** + port **6443** — cách ổn định nhất, tránh lỗi `host.docker.internal` không resolve hoặc `172.18.0.1` timeout):
-
-```bash
-kubectl config use-context kind-management
-
-DEV_IP=$(docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
-STAGING_IP=$(docker inspect staging-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
-PROD_IP=$(docker inspect prod-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
-
-kubectl create secret generic cluster-dev -n argocd \
-  --from-literal=name=dev \
-  --from-literal=server=https://$DEV_IP:6443 \
-  --from-literal=config="{\"bearerToken\":\"$DEV_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
-kubectl label secret cluster-dev -n argocd argocd.argoproj.io/secret-type=cluster
-
-kubectl create secret generic cluster-staging -n argocd \
-  --from-literal=name=staging \
-  --from-literal=server=https://$STAGING_IP:6443 \
-  --from-literal=config="{\"bearerToken\":\"$STAGING_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
-kubectl label secret cluster-staging -n argocd argocd.argoproj.io/secret-type=cluster
-
-kubectl create secret generic cluster-prod -n argocd \
-  --from-literal=name=prod \
-  --from-literal=server=https://$PROD_IP:6443 \
-  --from-literal=config="{\"bearerToken\":\"$PROD_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}"
-kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
-```
-
-> **Lưu ý:** Container IP sẽ thay đổi mỗi lần xóa/tạo lại cluster Kind. Luôn chạy `docker inspect` để lấy IP mới.
-
----
-
-## 4. Add repo Git và apply bootstrap (trên management)
-
-Bootstrap gồm **4 file** trong `argocd/bootstrap/` (`01-projects` + dev + staging + prod). Apply lần lượt để tạo `argocd-projects` và các stack `dev-meostation`, `staging-meostation`, `prod-meostation`.
-
-```bash
-kubectl config use-context kind-management
-cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
-
-# Bắt buộc kiểm tra trước khi apply file Application: context phải là management, cluster phải đã cài Argo CD.
-kubectl config current-context
-kubectl get crd applications.argoproj.io
-# Nếu context là kind-dev/kind-prod hoặc CRD NotFound → đừng apply bootstrap; dev/prod không có Argo CD.
-
-argocd login localhost:8080 --insecure --username admin --password "<admin_password>"
-argocd repo add https://github.com/minhtri1612/learning_RKE2.git
-# Helm index (không phải Git): bắt buộc --type helm, nếu không Argo CD sẽ gọi git ls-remote và trả 404 HTML.
-argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-helm
-argocd repo add https://metallb.github.io/metallb --type helm --name metallb
-argocd repo add https://helm.cilium.io/ --type helm --name cilium
-
-# Apply projects trước, rồi stack (dev / staging / prod tùy nhu cầu)
-# Phải dùng context cluster **management** (nơi đã cài Argo CD). Nếu lỗi "no matches for kind Application": sai context hoặc chưa apply manifest Argo CD.
-kubectl apply -f argocd/bootstrap/01-projects.yaml
-kubectl apply -f argocd/bootstrap/02-dev-meostation-stack.yaml
-kubectl apply -f argocd/bootstrap/03-staging-meostation-stack.yaml
-kubectl apply -f argocd/bootstrap/04-prod-meostation-stack.yaml
-```
-
-Sau khi sync xong, sẽ có:
-
-- **argocd-projects** → deploy `argocd/projects` → tạo AppProject `dev`, `staging`, `prod`
-- **dev-meostation** → render chart `argocd/manifest-apps` (env=dev) → sinh ra `dev-meostation-backend-app`, `dev-meostation-database-app`, `dev-meostation-frontend-app` — mỗi app con dùng Helm chart **`template`** với `valueFiles`: `app/be.yaml` hoặc `app/db.yaml`, `env/<env>.yaml`, `config/base/config.yaml`, `config/env/<env>.yaml` → deploy lên cluster **dev**
-- **staging-meostation** → tương tự, env=staging → deploy lên cluster **staging**
-- **prod-meostation** → tương tự, env=prod → deploy lên cluster **prod**
-
-> **Lưu ý:** Đối với môi trường **prod**, chính sách sync là `Manual`. Cần vào UI Argo CD (hoặc CLI) bấm Sync thủ công cho app prod.
-
----
-
-## 5. Triển khai Monitoring Stack (Prometheus & Grafana)
-
-Hệ thống sử dụng mô hình **Hub-and-Spoke**: Server tập trung tại `management` và các Agent thu thập tại các cụm workload. Cấu hình Helm values nằm tại `config/monitoring/`.
-
-```bash
-kubectl config use-context kind-management
-
-# 1. Cài đặt Prometheus Server & Grafana trên management (sync-wave 1 — trước Cilium management)
-kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
-
-# 1b. Cilium trên management (GitOps; sync-wave 2 — cùng values mục 1.2; ClusterMesh API server + Hubble hub)
-kubectl apply -f argocd/bootstrap/18-cilium-management.yaml
-
-# 2. Cài đặt các Agent thu thập trên các cụm con
-kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
-kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
-kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
-
-# 2b. Argo Rollouts (CRD + controller) trên mỗi workload cluster — **bắt buộc** nếu chart `template` dùng `Rollout` / `AnalysisTemplate` (backend canary).
-kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
-kubectl apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
-kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
-# Đợi controller Ready (hoặc sync thủ công prod): `argocd app sync argocd/argo-rollouts-prod` nếu cần.
-
-# 3. Cài Cilium (GitOps) trên các workload cluster — trước đó chạy scripts/kind-clustermesh-peer-ip.sh + push Git (mục 5.1)
-kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
-kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
-kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
-
-# 4. MetalLB — cấp IP LoadBalancer cho Gateway Cilium trên Kind (Git: `config/metallb/`)
-kubectl apply -f argocd/bootstrap/01-projects.yaml
-kubectl apply -f argocd/bootstrap/15-metallb-dev.yaml
-kubectl apply -f argocd/bootstrap/16-metallb-staging.yaml
-kubectl apply -f argocd/bootstrap/17-metallb-prod.yaml
-argocd app sync argocd/metallb-prod
-```
-
-Sau khi cài đặt, ArgoCD sẽ tự động kéo Helm chart từ `prometheus-community` và gộp với cấu hình trong `config/monitoring/`. App **`cilium-management`** giữ Cilium trên management (ClusterMesh API server + Hubble) đồng bộ với `config/cilium/cilium-values-management.yaml` (đã bootstrap bằng Helm ở mục 1.2).
-
-### 5.1. ClusterMesh bước 3 — spoke (dev / staging / prod) + IP hub
-
-**Mục tiêu:** Hub = `kind-management` (`cluster.name: management`, `cluster.id: 1`, `clustermesh.useAPIServer: true`). Mỗi workload có `cluster.id` riêng, **Hubble UI tắt** (chỉ agent + relay + metrics), nối tới **clustermesh-apiserver** trên management qua **NodePort `32379`**.
-
-| Cụm        | `cluster.name` | `cluster.id` | File overlay                         |
-| ---------- | -------------- | ------------ | ------------------------------------ |
-| management | `management`   | `1`          | `config/cilium/cilium-values-management.yaml` |
-| dev        | `dev`          | `2`          | `config/cilium/cilium-cluster-dev.yaml`       |
-| staging    | `staging`      | `3`          | `config/cilium/cilium-cluster-staging.yaml`   |
-| prod       | `prod`         | `4`          | `config/cilium/cilium-cluster-prod.yaml`      |
-
-Spoke dùng chung **`config/cilium/clustermesh-management-peer.yaml`**: trường `clustermesh.config.clusters.management.ips` phải là **IP Docker** của container `management-control-plane` trên network `kind` (đổi mỗi lần recreate cluster).
-
-1. Đợi Argo **Healthy** cho `cilium-management` và đã apply bootstrap **09–11** (hoặc refresh sau bước dưới).
-2. Từ thư mục repo:
-
-```bash
-bash scripts/kind-clustermesh-peer-ip.sh
-# Kiểm tra diff: config/cilium/clustermesh-management-peer.yaml
-git add config/cilium/clustermesh-management-peer.yaml
-git commit -m "chore: clustermesh peer IP for management hub"
-git push   # nếu Argo trỏ remote Git
-```
-
-3. **Refresh + sync** các app `cilium-dev`, `cilium-staging`, `cilium-prod` (và prod manual nếu cần). Thứ tự khuyến nghị: **monitoring-*** workload trước (CRD `ServiceMonitor`), rồi **cilium-***.
-
-4. Kiểm tra:
-
-```bash
-bash scripts/kind-clustermesh-status.sh
-# Hoặc tay (cần cilium CLI):
-cilium clustermesh status --context kind-management
-cilium clustermesh status --context kind-dev
-```
-
-5. **Tuỳ chọn** nếu Helm chưa đủ để peers hiện `connected`:
-
-```bash
-bash scripts/kind-clustermesh-connect.sh
-```
-
-**Hubble UI:** dùng **`kind-management`** (`cilium hubble ui --context kind-management`). Trên dev/staging/prod **không** bật UI (xem `config/cilium/cilium-values.yaml`).
-
----
-
-## 6. Kiểm tra
-
-- ClusterMesh: `bash scripts/kind-clustermesh-status.sh` (hoặc `cilium clustermesh status --context kind-management`).
-- UI ArgoCD: https://localhost:8080 → Applications: `dev-*`, `monitoring-*`...
-- UI Grafana:
-  ```bash
-  kubectl -n monitoring port-forward svc/monitoring-management-grafana 3000:80
-  # Truy cập: http://localhost:3000 (admin / admin)
-  ```
-- Management: `kubectl --context kind-management get pods -n monitoring`
-- Dev: `kubectl --context kind-dev get pods -n monitoring`
-- Staging: `kubectl --context kind-staging get pods -A`
-- Prod: `kubectl --context kind-prod get pods -A`
-
----
-
-## Lưu ý
-
-- Replica count / image tag được cấu hình trong `env/<env>.yaml`. Chart workload là `template/`; profile values trong `app/be.yaml`, `app/db.yaml`; config chung `config/base/config.yaml`, override theo môi trường `config/env/<env>.yaml`. **Không** còn đường `.manifest/` trong flow Argo hiện tại.
-- **ClusterMesh:** IP hub trong `config/cilium/clustermesh-management-peer.yaml` phải khớp `management-control-plane` trên Docker — chạy `scripts/kind-clustermesh-peer-ip.sh` sau mỗi lần recreate Kind (rồi push Git nếu Argo dùng remote). Chi tiết **mục 5.1**.
-- **Kind trên Linux:** Argo CD gọi API dev/staging/prod qua **container IP + port 6443** (xem bước 3.4). Lấy IP: `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. **KHÔNG dùng** `host.docker.internal` (không resolve trên Linux) hay gateway `172.18.0.1` (có thể timeout). IP container sẽ thay đổi khi xóa/tạo lại cluster → phải tạo lại secret.
-- Nếu đổi port trong `kind/*-kind-config.yaml` thì nhớ đổi cùng port trong bước 3.4.
-- **Cluster thứ 3** (khi đã có 2 cluster chạy) dễ fail kubelet (connection refused :10248) do thiếu RAM → xem mục tương ứng trong **README.md** (chạy 2 cluster hoặc tăng RAM Docker).
-- **Database/backend trên Kind:** Có hai cách: **ESO + AWS Secrets Manager** (**mục 6.5.1**, khuyến nghị khi đã có secret trên AWS) hoặc **Secret tĩnh bằng kubectl** (**mục 6.5.2**, offline / không AWS). **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên, nếu không namespace sẽ bị tạo nhầm cluster.
-
----
-
-## 6. Khởi động lại môi trường Kind sau khi reboot
+## 1. Khởi động lại môi trường Kind (sau reboot / mỗi ngày)
 
 Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại **không có lệnh "start lại nguyên cụm" đơn giản**. Cách an toàn, ít lỗi nhất:
 
-> **Xóa cụm cũ nếu còn → tạo lại Kind (management trước + Cilium Helm mục 1.2 → rồi dev/staging/prod) → cài lại Argo CD → đăng ký dev/staging/prod → làm lại secrets (6.5.1 ESO+AWS hoặc 6.5.2 kubectl) → sync lại app.**
+> **Xóa cụm cũ (nếu còn) → tạo lại Kind (management + Helm Cilium → dev/staging/prod) → Argo CD → đăng ký cluster → secrets (1.5.1 ESO hoặc 1.5.2 kubectl) → bootstrap Argo → sync app.**
 
 Giả sử đang ở branch `kind` của repo này.
 
-### 6.1. Xóa 4 cluster cũ (nếu còn)
+### 1.1. Xóa 4 cluster cũ (nếu còn)
 
 ```bash
 kind delete cluster --name management
@@ -406,9 +25,9 @@ kind delete cluster --name prod
 
 Không sao cả: mọi config cho Kind đã nằm trong Git (branch `kind`).
 
-### 6.2. Tạo lại 4 cluster Kind
+### 1.2. Tạo lại 4 cluster Kind
 
-Giống **mục 1** + **1.2**: tạo **management** trước, **Helm Cilium management** ngay, rồi **dev / staging / prod**.
+Tạo **management** trước, **Helm Cilium** ngay (sau khi chỉnh kubeconfig), rồi **dev / staging / prod**.
 
 ```bash
 cd ~/Downloads/practice_RKE2   # bắt buộc từ thư mục repo
@@ -416,6 +35,9 @@ cd ~/Downloads/practice_RKE2   # bắt buộc từ thư mục repo
 kind create cluster --name management --config kind/management-kind-config.yaml
 
 kubectl config use-context kind-management
+# Bắt buộc trước helm (tránh TLS 0.0.0.0 và tránh cài Argo khi chưa có CNI)
+kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
+
 helm repo add cilium https://helm.cilium.io 2>/dev/null || true
 helm repo update
 helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
@@ -427,21 +49,21 @@ kind create cluster --name dev        --config kind/dev-kind-config.yaml
 kind create cluster --name staging    --config kind/staging-kind-config.yaml
 kind create cluster --name prod       --config kind/prod-kind-config.yaml
 
-kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-staging, kind-prod
-```
-
-CIDR pod/service không trùng giữa các cụm: xem **mục 1.1** (file `kind/*-kind-config.yaml`). **Cilium management:** xem **mục 1.2**.
-
-**Nếu kubectl báo lỗi TLS** (x509: certificate ... not 0.0.0.0), chạy ngay:
-
-```bash
-kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
 kubectl config set-cluster kind-dev --server=https://127.0.0.1:30443
 kubectl config set-cluster kind-staging --server=https://127.0.0.1:32443
 kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
+# hoặc: bash scripts/kind-fix-kubeconfig-servers.sh
+
+kubectl config get-contexts   # phải thấy kind-management, kind-dev, kind-staging, kind-prod
 ```
 
-### 6.3. Cài lại Argo CD trên `management`
+CIDR pod/service: file `kind/*-kind-config.yaml` (không trùng giữa cụm). Kubeconfig: **mục 1.2** (`127.0.0.1` trước Helm).
+
+**Nếu vẫn lỗi TLS** sau khi đã tạo lại cluster: chạy `bash scripts/kind-fix-kubeconfig-servers.sh` hoặc bốn lệnh `kubectl config set-cluster` như **mục 1.2**.
+
+### 1.3. Cài lại Argo CD trên `management`
+
+Chỉ khi **Cilium đã Ready** trên `kind-management` (mục 1.2). Nếu bỏ qua Helm / lỗi TLS, pod Argo sẽ **Pending**.
 
 ```bash
 kubectl config use-context kind-management
@@ -459,9 +81,9 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 kubectl -n argocd port-forward svc/argocd-server 8080:443
 ```
 
-**Quan trọng (khi chạy lại từ mục 6 sau reboot):** `argocd` CLI có thể vẫn giữ token cũ → lỗi kiểu:
+**Quan trọng (mỗi lần recreate Argo CD):** `argocd` CLI có thể vẫn giữ token cũ → lỗi kiểu:
 `invalid session: token signature is invalid`.
-Sau khi cài lại Argo CD (mục 6.3) **hãy reset token và login lại** trước khi chạy các lệnh `argocd ...`:
+Sau khi cài lại Argo CD (mục 1.3) **hãy reset token và login lại** trước khi chạy các lệnh `argocd ...`:
 
 ```bash
 rm -rf ~/.argocd
@@ -469,7 +91,7 @@ PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-adm
 argocd login localhost:8080 --insecure --username admin --password "$PASS"
 ```
 
-### 6.4. Đăng ký lại cluster `dev` + `staging` + `prod` cho Argo CD
+### 1.4. Đăng ký lại cluster `dev` + `staging` + `prod` cho Argo CD
 
 Trên `kind-dev`, `kind-staging` và `kind-prod`:
 
@@ -512,9 +134,9 @@ kubectl create secret generic cluster-prod -n argocd \
 kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
 ```
 
-### 6.5. Secrets cho database + backend (sau khi recreate cluster)
+### 1.5. Secrets cho database + backend (sau khi recreate cluster)
 
-#### 6.5.1. External Secrets Operator + AWS Secrets Manager (thay cho “ESO giả”)
+#### 1.5.1. External Secrets Operator + AWS Secrets Manager (thay cho “ESO giả”)
 
 Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Secrets Manager (cùng keys như Terraform `modules/secrets`: `POSTGRES_*`, `DATABASE_URL`, `NEXTAUTH_SECRET`).
 
@@ -614,7 +236,7 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
 
 **Staging trên AWS:** Repo có `env-secrets/staging.yaml` trỏ tới `meo-stationery/staging/app-credentials`. Terraform trong repo **chưa** có `environments/staging` — bạn cần tạo secret đó trên AWS (console hoặc thêm module) trước khi ESO sync được.
 
-#### 6.5.2. Secret tĩnh bằng kubectl (không AWS — “giả ESO”)
+#### 1.5.2. Secret tĩnh bằng kubectl (không AWS — “giả ESO”)
 
 Khi không dùng ESO/AWS, tạo Secret thủ công trên từng cluster. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên (`| kubectl --context kind-dev apply -f -`), nếu không namespace sẽ bị tạo nhầm cluster.
 
@@ -669,7 +291,7 @@ kubectl --context kind-prod -n meo-stationery create secret generic meo-statione
   --from-literal=NEXTAUTH_SECRET='kind-prod-nextauth'
 ```
 
-### 6.6. Apply lại bootstrap Argo CD
+### 1.6. Apply lại bootstrap Argo CD
 
 Bootstrap là các file Application; apply lần lượt:
 
@@ -700,7 +322,7 @@ kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
 kubectl apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
 kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
 
-# 3. App Cilium (nhớ peer IP hub — scripts/kind-clustermesh-peer-ip.sh, mục 5.1)
+# 3. App Cilium (nhớ peer IP hub — scripts/kind-clustermesh-peer-ip.sh; commit/push `config/cilium/clustermesh-management-peer.yaml` nếu Argo dùng remote)
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
 kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
@@ -736,7 +358,7 @@ argocd app sync argocd/prod-meostation-database-app
 
 ---
 
-### 6.7. Cài Cilium + Gateway API cho dev/staging/prod (chuẩn bị canary theo HTTPRoute)
+### 1.7. Cài Cilium + Gateway API cho dev/staging/prod (chuẩn bị canary theo HTTPRoute)
 
 Mục tiêu của bước này:
 
@@ -746,7 +368,7 @@ Mục tiêu của bước này:
 
 > **Lưu ý quan trọng:** Có thể cài thử bằng CLI để kiểm tra nhanh, nhưng khi chốt production flow thì đưa cấu hình vào Git/ArgoCD để tránh drift.
 
-#### 6.7.1. Cài Gateway API CRDs (một lần trên mỗi workload cluster)
+#### 1.7.1. Cài Gateway API CRDs (một lần trên mỗi workload cluster)
 
 ```bash
 for ctx in kind-dev kind-staging kind-prod; do
@@ -755,7 +377,7 @@ for ctx in kind-dev kind-staging kind-prod; do
 done
 ```
 
-#### 6.7.2. Cài Cilium bằng Argo CD (GitOps chuẩn)
+#### 1.7.2. Cài Cilium bằng Argo CD (GitOps chuẩn)
 
 Từ cluster `kind-management`, apply 3 bootstrap Application:
 
@@ -778,7 +400,7 @@ argocd app sync argocd/cilium-prod
 
 > Nếu `prod` đang policy `Manual`, giữ nguyên: sync `cilium-prod` thủ công khi bạn muốn rollout.
 
-#### 6.7.2b. MetalLB (GitOps) — LoadBalancer cho Gateway trên Kind
+#### 1.7.2b. MetalLB (GitOps) — LoadBalancer cho Gateway trên Kind
 
 1. Đăng ký Helm repo (một lần): `argocd repo add https://metallb.github.io/metallb --type helm --name metallb`
 2. Cập nhật AppProject (namespace `metallb-system`): `kubectl apply -f argocd/bootstrap/01-projects.yaml`
@@ -812,7 +434,7 @@ for ctx in kind-dev kind-staging kind-prod; do
 done
 ```
 
-#### 6.7.3. (Tuỳ chọn) Cài Cilium CLI cho break-glass
+#### 1.7.3. (Tuỳ chọn) Cài Cilium CLI cho break-glass
 
 ```bash
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
@@ -825,7 +447,7 @@ rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 cilium version
 ```
 
-#### 6.7.4. Chạy một lệnh cho cả 3 cluster (sau reboot)
+#### 1.7.4. Chạy một lệnh cho cả 3 cluster (sau reboot)
 
 `GatewayClass`, `Gateway`, `HTTPRoute` đã được quản lý trong Helm chart (`template/templates/*.yaml`) và sẽ được Argo CD sync từ Git.
 
@@ -850,7 +472,7 @@ done
 Truy cập Hubble UI:
 
 ```bash
-# Hub trên management (ClusterMesh API server + Hubble; bước 2 — traffic mesh đầy đủ sau bước 3)
+# Hub trên management (ClusterMesh + Hubble)
 cilium hubble ui --context kind-management
 
 # Workload (vẫn dùng được khi chỉ quan sát từng cụm)
@@ -861,15 +483,15 @@ kubectl --context kind-management -n kube-system port-forward svc/hubble-ui 1200
 # -> http://localhost:12000
 ```
 
-#### 6.7.5. Truy cập app **không** `kubectl port-forward`
+#### 1.7.5. Truy cập app **không** `kubectl port-forward`
 
-- **Khuyến nghị:** MetalLB GitOps — xem **6.7.2b** (`argocd/bootstrap/15–17`, `config/metallb/`).
+- **Khuyến nghị:** MetalLB GitOps — xem **1.7.2b** (`argocd/bootstrap/15–17`, `config/metallb/`).
 - **Tùy chọn:** NodePort + `extraPortMappings` trong `kind/*-kind-config.yaml` (phải `kind delete`/`create` lại cluster) + `kubectl patch` Service `cilium-gateway-*`; xem các bản ghi cũ trong git nếu cần.
 - **Cloud / RKE2:** dùng LoadBalancer / Ingress có sẵn — không cần MetalLB trên Kind.
 
 > Nếu `GatewayClass` bị `Accepted: Unknown` và message `Waiting for controller`, kiểm tra lại thứ tự: CRDs -> Argo sync Cilium -> rollout restart `cilium-operator`/`cilium` (nếu cần).
 
-### 6.8. Gỡ rối thường gặp (đọc trước khi blame doc)
+### 1.8. Gỡ rối thường gặp (đọc trước khi blame doc)
 
 **Argo CD là source of truth (GitOps)**
 
@@ -910,3 +532,31 @@ kubectl --context kind-management -n kube-system port-forward svc/hubble-ui 1200
 **ServiceAccount “exists and cannot be imported into the current release”**
 
 - Tài nguyên đã được tạo trước đó không thuộc Helm release hiện tại. Trên môi trường practice: ưu tiên **một** luồng (Argo **hoặc** Helm tay); tránh vừa Argo vừa `helm upgrade` cùng release.
+
+---
+
+## 2. Kiểm tra nhanh
+
+- ClusterMesh: `bash scripts/kind-clustermesh-status.sh` (hoặc `cilium clustermesh status --context kind-management`).
+- UI ArgoCD: https://localhost:8080 → Applications: `dev-*`, `monitoring-*`...
+- UI Grafana:
+  ```bash
+  kubectl -n monitoring port-forward svc/monitoring-management-grafana 3000:80
+  # Truy cập: http://localhost:3000 (admin / admin)
+  ```
+- Management: `kubectl --context kind-management get pods -n monitoring`
+- Dev: `kubectl --context kind-dev get pods -n monitoring`
+- Staging: `kubectl --context kind-staging get pods -A`
+- Prod: `kubectl --context kind-prod get pods -A`
+
+---
+
+## 3. Lưu ý
+
+- Replica count / image tag trong `env/<env>.yaml`. Chart workload `template/`; profile `app/be.yaml`, `app/db.yaml`; config `config/base/config.yaml`, override `config/env/<env>.yaml`.
+- **Kind API / TLS:** `bash scripts/kind-fix-kubeconfig-servers.sh` sau `kind create`. Trên **management**, **trước** `helm install cilium` — nếu Helm lỗi TLS thì không có CNI (`disableDefaultCNI`) và Argo CD **Pending**.
+- **ClusterMesh (spoke):** IP hub trong `config/cilium/clustermesh-management-peer.yaml` — `bash scripts/kind-clustermesh-peer-ip.sh` sau mỗi lần recreate Kind (rồi push Git nếu Argo trỏ remote).
+- **Linux:** Argo CD → API dev/staging/prod dùng **container IP + 6443** (mục **1.4**). `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. Không dùng `host.docker.internal` trên Linux.
+- Đổi port trong `kind/*-kind-config.yaml` thì cập nhật tương ứng mục **1.4** và `scripts/kind-fix-kubeconfig-servers.sh` nếu cần.
+- **RAM:** Nhiều cụm Kind song song dễ thiếu bộ nhớ → **kind/README.md**.
+- **Database/backend:** ESO+AWS (**mục 1.5.1**) hoặc Secret tĩnh (**mục 1.5.2**). Lệnh có pipe: `--context` ở **cả hai** phía.

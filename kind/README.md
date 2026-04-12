@@ -9,7 +9,9 @@ Giống kiến trúc cloud: **1 cluster management** (chạy Argo CD) quản lý
 | `prod-kind-config.yaml` | Kind config cho cluster **prod**, API port **31443** |
 | `dev-argocd-manager.yaml` | ServiceAccount + RBAC trên cluster **dev** (token cho Argo CD gọi API dev) |
 | `prod-argocd-manager.yaml` | ServiceAccount + RBAC trên cluster **prod** (token cho Argo CD gọi API prod) |
-| **KIND-THREE-CLUSTERS.md** | **Hướng dẫn từng bước**: tạo 3 cluster → cài Argo CD trên management → đăng ký dev + prod → apply bootstrap |
+| **KIND-THREE-CLUSTERS.md** | **Luồng khởi động mỗi ngày** (sau reboot): 4 cluster → Cilium management → Argo CD → đăng ký dev/staging/prod → secrets → bootstrap → kiểm tra / lưu ý |
+
+**Lưu ý (repo hiện tại):** `management-kind-config.yaml` dùng **`disableDefaultCNI`** — **phải** cài Cilium trước Argo CD, và chỉnh kubeconfig sang `127.0.0.1` **trước** Helm (xem **KIND-THREE-CLUSTERS.md** mục **1.2**). Script gộp: `scripts/kind-fix-kubeconfig-servers.sh`. README dưới đây là bản **3 cluster** rút gọn; luồng đủ **4 cluster + staging** nằm trong **KIND-THREE-CLUSTERS.md**.
 
 ---
 
@@ -96,7 +98,7 @@ Xong. Mở https://localhost:8080 (khi đang port-forward) xem app sync.
 
 ---
 
-Làm theo **KIND-THREE-CLUSTERS.md** nếu cần giải thích chi tiết từng bước.
+Làm theo **KIND-THREE-CLUSTERS.md** cho luồng lab đầy đủ (khởi động lại mỗi ngày).
 
 `KIND-TWO-CLUSTERS.md` là bản cũ (2 cluster, Argo CD trên prod); dùng **KIND-THREE-CLUSTERS.md** cho setup chuẩn.
 
