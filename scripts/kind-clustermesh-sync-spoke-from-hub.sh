@@ -30,6 +30,22 @@ kubectl --context "${HUB_CTX}" -n "${HUB_NS}" get secret "${SECRET_NAME}" -o yam
   | sed '/^\s*resourceVersion:/d;/^\s*uid:/d;/^\s*creationTimestamp:/d;/^\s*selfLink:/d;/^\s*namespace:/d' \
   > "${TMP}"
 
+# CA mỗi cluster Kind thường khác nhau. Ghép CA spoke vào management (client trust bundle)
+# và ghép CA management vào server trust bundle của spoke để mTLS 2 chiều hoạt động.
+echo "==> Đồng bộ CA bundle 2 chiều (management <-> spoke)"
+CA_BUNDLE="$(mktemp)"
+trap 'rm -f "${TMP}" "${CA_BUNDLE}" /tmp/cm-mgmt-ca.pem /tmp/cm-spoke-ca.pem /tmp/cm-spoke-bundle.pem' EXIT
+kubectl --context "${HUB_CTX}" -n "${HUB_NS}" get secret clustermesh-apiserver-remote-cert -o jsonpath='{.data.ca\.crt}' | base64 -d > "${CA_BUNDLE}"
+echo >> "${CA_BUNDLE}"
+for ctx in kind-dev kind-staging kind-prod; do
+  kubectl config get-contexts -o name | grep -qx "${ctx}" || continue
+  kubectl --context "${ctx}" -n "${HUB_NS}" get secret clustermesh-apiserver-remote-cert -o jsonpath='{.data.ca\.crt}' | base64 -d >> "${CA_BUNDLE}"
+  echo >> "${CA_BUNDLE}"
+done
+kubectl --context "${HUB_CTX}" -n "${HUB_NS}" patch secret clustermesh-apiserver-remote-cert \
+  --type=merge -p "{\"data\":{\"ca.crt\":\"$(base64 -w0 "${CA_BUNDLE}")\"}}"
+kubectl --context "${HUB_CTX}" -n "${HUB_NS}" rollout restart ds/cilium deploy/clustermesh-apiserver >/dev/null
+
 for ctx in kind-dev kind-staging kind-prod; do
   if ! kubectl config get-contexts -o name | grep -qx "${ctx}"; then
     echo "Bỏ qua (không có context): ${ctx}"
@@ -37,6 +53,13 @@ for ctx in kind-dev kind-staging kind-prod; do
   fi
   echo "==> ${ctx}: apply ${SECRET_NAME} + rollout restart ds/cilium"
   kubectl --context "${ctx}" -n "${HUB_NS}" apply -f "${TMP}"
+  # Spoke server cần trust CA của management để xác thực client cert từ KVStoreMesh hub.
+  kubectl --context "${HUB_CTX}" -n "${HUB_NS}" get secret clustermesh-apiserver-remote-cert -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/cm-mgmt-ca.pem
+  kubectl --context "${ctx}" -n "${HUB_NS}" get secret clustermesh-apiserver-server-cert -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/cm-spoke-ca.pem
+  cat /tmp/cm-spoke-ca.pem /tmp/cm-mgmt-ca.pem > /tmp/cm-spoke-bundle.pem
+  kubectl --context "${ctx}" -n "${HUB_NS}" patch secret clustermesh-apiserver-server-cert \
+    --type=merge -p "{\"data\":{\"ca.crt\":\"$(base64 -w0 /tmp/cm-spoke-bundle.pem)\"}}"
+  kubectl --context "${ctx}" -n "${HUB_NS}" rollout restart deploy/clustermesh-apiserver >/dev/null 2>&1 || true
   kubectl --context "${ctx}" -n "${HUB_NS}" rollout restart ds/cilium
 done
 
