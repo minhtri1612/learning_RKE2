@@ -9,9 +9,9 @@ ciliumNetworkPolicy:
   # Phase 2: keep auth mode empty, then move to "required" after soak test.
   authenticationMode: ""
   ingress:
-    fromEndpoints:
-      - matchLabels:
-          app.kubernetes.io/name: frontend
+    fromEntities:
+      - world
+      - cluster
     http:
       - method: GET
         path: "/api/.*"

@@ -1,5 +1,6 @@
 {{- if and .Values.ciliumNetworkPolicy.enabled (eq (.Values.currentService | default "backend") "backend") (ne (.Values.workloadKind | default "deployment") "statefulset") }}
 {{- $fromEps := .Values.ciliumNetworkPolicy.ingress.fromEndpoints | default list }}
+{{- $fromEntities := .Values.ciliumNetworkPolicy.ingress.fromEntities | default list }}
 {{- $inHttpRules := .Values.ciliumNetworkPolicy.ingress.http | default list }}
 {{- $toEps := .Values.ciliumNetworkPolicy.egress.toEndpoints | default list }}
 {{- $toEntities := .Values.ciliumNetworkPolicy.egress.toEntities | default list }}
@@ -20,6 +21,9 @@ spec:
     - {{- if gt (len $fromEps) 0 }}
       fromEndpoints:
         {{- toYaml $fromEps | nindent 8 }}
+      {{- else if gt (len $fromEntities) 0 }}
+      fromEntities:
+        {{- toYaml $fromEntities | nindent 8 }}
       {{- else }}
       fromEntities:
         - cluster
