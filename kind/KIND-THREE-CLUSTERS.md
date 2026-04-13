@@ -471,6 +471,14 @@ Mục tiêu của bước này:
 - Giữ nguyên nguyên tắc GitOps: **Argo CD là source of truth**; mọi manifest chính thức phải nằm trong Git.
 
 > **Lưu ý quan trọng:** Có thể cài thử bằng CLI để kiểm tra nhanh, nhưng khi chốt production flow thì đưa cấu hình vào Git/ArgoCD để tránh drift.
+>
+> **Thứ tự bắt buộc (để tránh app Argo bị `Progressing` mãi):**
+> 1. Cài **Gateway API CRDs** trên từng workload cluster (`kind-dev`, `kind-staging`, `kind-prod`).
+> 2. Verify CRD đã tồn tại.
+> 3. Sync/khởi động Cilium gateway controller.
+> 4. Sau cùng mới sync app backend có `Gateway` / `HTTPRoute`.
+>
+> Nếu làm ngược (cài app trước, CRD/controller sau), Argo thường báo `Synced` nhưng `Gateway` / `HTTPRoute` vẫn `Progressing`.
 
 #### 1.7.1. Cài Gateway API CRDs (một lần trên mỗi workload cluster)
 
@@ -478,6 +486,15 @@ Mục tiêu của bước này:
 for ctx in kind-dev kind-staging kind-prod; do
   kubectl --context "$ctx" apply -f \
     https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+done
+```
+
+Verify nhanh CRD:
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  echo "=== $ctx ==="
+  kubectl --context "$ctx" get crd | rg "gatewayclasses|gateways.gateway|httproutes|grpcroutes|referencegrants"
 done
 ```
 
@@ -500,6 +517,14 @@ Sau đó sync ứng dụng Cilium:
 argocd app sync argocd/cilium-dev
 argocd app sync argocd/cilium-staging
 argocd app sync argocd/cilium-prod
+```
+
+Nếu bạn vừa cài CRD sau khi Cilium đã chạy sẵn, restart operator 1 lần để controller nhận đủ Gateway API resources:
+
+```bash
+kubectl --context kind-dev -n kube-system rollout restart deploy/cilium-operator
+kubectl --context kind-staging -n kube-system rollout restart deploy/cilium-operator
+kubectl --context kind-prod -n kube-system rollout restart deploy/cilium-operator
 ```
 
 > Nếu `prod` đang policy `Manual`, giữ nguyên: sync `cilium-prod` thủ công khi bạn muốn rollout.
