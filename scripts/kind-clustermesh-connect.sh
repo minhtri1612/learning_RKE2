@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tuỳ chọn: mô hình **mỗi cluster đều có** clustermesh-apiserver (clustermesh.useAPIServer=true).
-# Lab repo hiện dùng spoke **không** apiserver — dùng: scripts/kind-clustermesh-sync-spoke-from-hub.sh
+# Mô hình chuẩn: mọi cluster đều có clustermesh-apiserver (clustermesh.useAPIServer=true).
+# Nếu spoke tắt apiserver, dùng script fallback: scripts/kind-clustermesh-sync-spoke-from-hub.sh
 #
 # Thứ tự gợi ý: hub trước, rồi từng spoke. Yêu cầu cilium CLI + kubectl contexts.
 #

@@ -1,8 +1,12 @@
 kubeProxyReplacement: true
 
-# Spoke (dev/staging/prod): ClusterMesh tới hub management — không deploy clustermesh-apiserver ở đây.
+# Spoke (dev/staging/prod): deploy clustermesh-apiserver để dùng flow chuẩn
+# `cilium clustermesh connect` hub -> spoke.
 clustermesh:
-  useAPIServer: false
+  useAPIServer: true
+  apiserver:
+    # Kind workload cluster thường 1 node; tránh replica 2 bị Pending.
+    replicas: 1
 
 gatewayAPI:
   enabled: true
