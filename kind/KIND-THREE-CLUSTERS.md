@@ -601,7 +601,7 @@ cilium hubble ui --context kind-management
 - **Tùy chọn:** NodePort + `extraPortMappings` trong `kind/*-kind-config.yaml` (phải `kind delete`/`create` lại cluster) + `kubectl patch` Service `cilium-gateway-*`; xem các bản ghi cũ trong git nếu cần.
 - **Cloud / RKE2:** dùng LoadBalancer / Ingress có sẵn — không cần MetalLB trên Kind.
 
-> Nếu `GatewayClass` bị `Accepted: Unknown` và message `Waiting for controller`, kiểm tra lại thứ tự: CRDs -> Argo sync Cilium -> rollout restart `cilium-operator`/`cilium` (nếu cần).
+> Nếu `GatewayClass` bị `Accepted: Unknown` và `Gateway` báo `Waiting for controller`: xem **mục 1.8.1** (thường chỉ cần `rollout restart` `cilium-operator` trên cluster workload bị kẹt).
 
 ### 1.8. Gỡ rối thường gặp (đọc trước khi blame doc)
 
@@ -617,6 +617,44 @@ cilium hubble ui --context kind-management
 - Argo CD có health check riêng cho Gateway API: thường cần điều kiện kiểu *Programmed=True* / parent *Accepted* mới đánh **Healthy**.
 - Trên **Kind**, Cilium Gateway đôi khi **không** báo đủ điều kiện đó (không có LB cloud, listener chưa “programmed” theo nghĩa Argo) → **HTTPRoute** và **Gateway** treo **Progressing** lâu hoặc mãi, dù manifest đã **Synced** và **Rollout** đã **Healthy**.
 - Đây **không** phải lỗi `ignoreDifferences` (cái đó chỉ giảm **OutOfSync** do `.status`). Muốn cây Argo xanh hẳn: nâng phiên bản Argo CD, hoặc tùy chỉnh health Lua trong ConfigMap `argocd-cm` (`resource.customizations.health.gateway.networking.k8s.io_*`), hoặc chấp nhận **Progressing** khi lab Kind miễn traffic test nội bộ ổn.
+
+**1.8.1.** Gateway kẹt *Waiting for controller* — app Argo Progressing trên dev/staging trong khi prod đã Healthy
+
+Hiện tượng thực tế (so sánh `kubectl` giữa các context):
+
+- Trên cluster **lỗi** (`kind-dev`, `kind-staging`, …): `kubectl -n meo-stationery get gateway meo-gw -o yaml` → `status.conditions` kiểu **Accepted/Programmed = Unknown**, message **`Waiting for controller`**; `kubectl -n meo-stationery get svc` **không** thấy Service **`cilium-gateway-meo-gw`** (LoadBalancer) — chỉ có `backend-stable` / `backend-canary`.
+- Trên cluster **ổn** (ví dụ `kind-prod`): cùng manifest Git nhưng Gateway có **Programmed=True**, có **address**, và có Service **`cilium-gateway-meo-gw`** với **EXTERNAL-IP** (MetalLB).
+
+`kubectl get gatewayclass cilium` có thể hiện cột **ACCEPTED = Unknown** trên cluster đang kẹt — **không** phải do MetalLB hỏng hẳn (pod `metallb-*` vẫn Running): vấn đề là **Cilium gateway controller / operator** chưa program Gateway nên chưa tạo Service LB; MetalLB chỉ gán IP **sau** khi Service đó tồn tại.
+
+**Kiểm tra nhanh (copy paste):**
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  echo "=== $ctx ==="
+  kubectl --context "$ctx" get gatewayclass cilium -o wide 2>/dev/null || true
+  kubectl --context "$ctx" -n kube-system get pods -l name=cilium-operator
+  kubectl --context "$ctx" -n meo-stationery get svc 2>/dev/null | grep -E 'NAME|cilium-gateway|backend-' || kubectl --context "$ctx" -n meo-stationery get svc
+done
+```
+
+**Cách xử lý (thường đủ):** restart `cilium-operator` trên **từng** cluster workload đang kẹt, đợi 1–2 phút, kiểm tra lại `svc` + `gateway`:
+
+```bash
+kubectl --context kind-dev     -n kube-system rollout restart deployment/cilium-operator
+kubectl --context kind-staging -n kube-system rollout restart deployment/cilium-operator
+```
+
+Sau đó mong đợi xuất hiện **`cilium-gateway-meo-gw`** và `Gateway` chuyển **Programmed=True**; trên Argo: **Refresh** app `*-meostation-backend-app`.
+
+**Nếu vẫn kẹt:** xóa resource Gateway để Argo tạo lại (chỉ khi bạn hiểu sync policy):
+
+```bash
+kubectl --context kind-dev -n meo-stationery delete gateway meo-gw --wait=false
+# để auto-sync hoặc: argocd app sync argocd/dev-meostation-backend-app
+```
+
+**Ghi chú:** Log operator kiểu `CiliumEndpointSlice CRD cannot be found` (garbage collection) thường **không** chặn Gateway; có thể bỏ qua khi Gateway đã program được sau restart.
 
 **Context đúng cho từng việc**
 
