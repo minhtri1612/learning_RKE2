@@ -23,6 +23,10 @@ encryption:
 
 clustermesh:
   useAPIServer: true
+  # Kind management 1 node: mặc định chart / bản cũ có thể replicas=2 → pod 2 Pending →
+  # `cilium clustermesh status` lỗi "only 1 of 2 replicas are available".
+  apiserver:
+    replicas: 1
   config:
     enabled: true
     # Phải khớp cluster.name trên spoke (dev / staging / prod). Tạo key trong Secret
