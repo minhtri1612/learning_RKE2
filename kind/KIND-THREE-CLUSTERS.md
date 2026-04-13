@@ -593,7 +593,28 @@ cilium hubble ui --context kind-management
 # hoặc: kubectl --context kind-management -n kube-system port-forward svc/hubble-ui 12000:80
 ```
 
-**CLI flow (tuỳ chọn):** `cilium` không có `hubble observe`. Cần binary **`hubble`**: [cilium/hubble#installation](https://github.com/cilium/hubble#installation). Relay: `cilium hubble port-forward --context kind-dev --port-forward 4245` rồi `hubble observe flows --server localhost:4245 -f` (staging/prod: đổi context; chạy song song thì đổi `--port-forward` local).
+```bash
+# Workload clusters (mỗi context một local port riêng để không trùng)
+cilium hubble ui --context kind-dev --port-forward 12001      # http://localhost:12001
+cilium hubble ui --context kind-staging --port-forward 12002  # http://localhost:12002
+cilium hubble ui --context kind-prod --port-forward 12003     # http://localhost:12003
+```
+
+**CLI flow (tuỳ chọn):** `cilium` không có `hubble observe`. Cần binary **`hubble`**: [cilium/hubble#installation](https://github.com/cilium/hubble#installation).
+
+```bash
+# Port-forward Relay cho từng context (chạy song song thì dùng port khác nhau)
+cilium hubble port-forward --context kind-dev --port-forward 4247
+cilium hubble port-forward --context kind-staging --port-forward 4248
+cilium hubble port-forward --context kind-prod --port-forward 4249
+```
+
+```bash
+# Observe flow qua hubble CLI (ví dụ HTTP)
+hubble observe --server 127.0.0.1:4247 --protocol http --last 50
+hubble observe --server 127.0.0.1:4248 --protocol http --last 50
+hubble observe --server 127.0.0.1:4249 --protocol http --last 50
+```
 
 #### 1.7.5. Truy cập app **không** `kubectl port-forward`
 
