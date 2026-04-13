@@ -47,6 +47,8 @@ done
 
 echo ""
 echo "Đã copy TLS + restart agent. Tiếp theo:"
-echo "  - Commit/push cilium/clustermesh-management-peer.yaml + cilium/cilium-values.yaml (encryption) nếu Argo kéo từ Git."
-echo "  - Sync app: cilium-dev, cilium-staging, cilium-prod (Argo) hoặc helm upgrade tương đương — để hostAliases + encryption khớp values."
-echo "Kiểm hub: cilium clustermesh status --context ${HUB_CTX}"
+echo "  - Hub: cilium-values-management.yaml phải có clustermesh.config.clusters (dev/staging/prod) — không thì"
+echo "    Secret cilium-clustermesh trên management rỗng và 'cilium clustermesh status' luôn 'No cluster connected'."
+echo "  - Commit/push + Sync Argo: cilium-management trước, rồi cilium-dev/staging/prod; hoặc helm upgrade tương đương."
+echo "  - Sau khi hub sync: kubectl --context ${HUB_CTX} -n ${HUB_NS} rollout restart ds/cilium"
+echo "Kiểm: cilium clustermesh status --context ${HUB_CTX}"

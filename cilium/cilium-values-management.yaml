@@ -25,7 +25,22 @@ clustermesh:
   useAPIServer: true
   config:
     enabled: true
-    clusters: {}
+    # Phải khớp cluster.name trên spoke (dev / staging / prod). Tạo key trong Secret
+    # cilium-clustermesh (+ cilium-kvstoremesh) trên hub — không có thì `cilium clustermesh status`
+    # luôn báo "No cluster connected" dù agent spoke đã nối etcd (CLI đọc secret để biết tên peer).
+    # cilium-clustermesh (agent hub): với KVStoreMesh chart dùng endpoint local apiserver.
+    # cilium-kvstoremesh: template vẫn cần address+port từng tên cluster — trỏ nội bộ tới Service
+    # clustermesh-apiserver (cùng cluster), không phải IP từng Kind spoke.
+    clusters:
+      dev:
+        address: clustermesh-apiserver.kube-system.svc
+        port: 2379
+      staging:
+        address: clustermesh-apiserver.kube-system.svc
+        port: 2379
+      prod:
+        address: clustermesh-apiserver.kube-system.svc
+        port: 2379
 
 bpf:
   events:
