@@ -349,22 +349,85 @@ Prometheus trên **management** nhận series từ **Prometheus Agent** trên de
 
 **Sau mỗi lần** `kind delete` / `kind create` lại cluster **management** (hoặc cả bộ lab), IP container `management-control-plane` trên mạng Docker `kind` **đổi**. Nếu Git vẫn để `127.0.0.1` hoặc IP cũ → agent trên workload **không push** được; Grafana trên management **không** có (hoặc thiếu) series theo label `cluster` / `environment` — dễ đi lạc debug chỗ khác.
 
-**Quy trình chuẩn (đừng bỏ bước):**
+**Quy trình chuẩn — copy paste từng khối (đừng bỏ bước):**
 
-1. Tạo xong Kind + sync **`monitoring-management` (05) Healthy** (có Prometheus + NodePort 32090).
-2. Từ **thư mục gốc repo** chạy:
-   ```bash
-   ./scripts/sync-monitoring-remote-write-url.sh
-   ```
-   Script đọc IP bằng `docker inspect management-control-plane` và ghi vào `monitoring/monitoring-workload.yaml` (ưu tiên `yq` nếu có; không thì `sed`).
-3. **Commit + push** (nếu Argo trỏ remote Git) — cùng lúc có thể cần chỉnh `cilium/clustermesh-management-peer.yaml` bằng `scripts/kind-clustermesh-peer-ip.sh`.
-4. Trên Argo: **Refresh + Sync** `monitoring-dev`, `monitoring-staging`, `monitoring-prod` (prod manual nếu policy như bootstrap).
+1. Trên Argo: app **`monitoring-management` (bootstrap 05)** phải **Healthy** (Prometheus management + NodePort **32090**). Cùng lúc có thể cần chỉnh `cilium/clustermesh-management-peer.yaml` (`bash scripts/kind-clustermesh-peer-ip.sh` rồi commit/push) nếu dùng ClusterMesh từ Git.
 
-**Kiểm tra nhanh từ máy host (không đoán mù):**
+2. Vào **thư mục gốc repo** (nơi có `monitoring/`, `scripts/`):
 
 ```bash
-./scripts/sync-monitoring-remote-write-url.sh --check   # GET /-/ready management Prometheus, expect HTTP 200
-./scripts/sync-monitoring-remote-write-url.sh --print-only
+cd ~/Downloads/practice_RKE2   # đổi đúng path máy bạn
+```
+
+3. **Quyền thực thi script** (lần đầu hoặc nếu gặp `permission denied`):
+
+```bash
+chmod +x scripts/sync-monitoring-remote-write-url.sh
+# (tuỳ chọn, lưu mode vào git) git add --chmod=+x scripts/sync-monitoring-remote-write-url.sh
+```
+
+4. **Ghi URL `remote_write`** vào `monitoring/monitoring-workload.yaml` (đọc IP từ `docker inspect management-control-plane`; có `yq` thì dùng `yq`, không thì `sed`):
+
+```bash
+./scripts/sync-monitoring-remote-write-url.sh
+```
+
+5. **Kiểm tra Prometheus management** từ máy host (mong đợi `HTTP 200`):
+
+```bash
+./scripts/sync-monitoring-remote-write-url.sh --check
+```
+
+6. **Đẩy lên Git** (bắt buộc nếu Argo trỏ remote như bootstrap `learning_RKE2` / `main`) — chọn **một** trong hai cách:
+
+   **Cách A — một lệnh (sau bước 5; script **ghi lại** file rồi `git add` → `commit` chỉ khi có diff → `push`):**
+
+```bash
+./scripts/sync-monitoring-remote-write-url.sh --commit-push
+```
+
+   (Nếu URL không đổi, không tạo commit rỗng; `git push` vẫn chạy — thường báo *up to date*. Đã làm bước 4+5 rồi thì **cách B** cũng đủ, không bắt buộc chạy thêm `--commit-push`.)
+
+   **Cách B — tay (review diff trước khi push):**
+
+```bash
+git add monitoring/monitoring-workload.yaml
+git status
+git commit -m "chore(monitoring): sync remote_write URL for Kind"
+git push
+```
+
+7. Trên Argo (context **kind-management**): **Refresh + Sync** `monitoring-dev`, `monitoring-staging`, `monitoring-prod` (prod **Manual** trong bootstrap thì sync tay).
+
+```bash
+kubectl config use-context kind-management
+argocd app sync monitoring-dev
+argocd app sync monitoring-staging
+argocd app sync monitoring-prod
+```
+
+**Một dải lệnh copy paste (đủ bước 2→7, sau khi `monitoring-management` đã Healthy):**
+
+```bash
+cd ~/Downloads/practice_RKE2
+chmod +x scripts/sync-monitoring-remote-write-url.sh
+./scripts/sync-monitoring-remote-write-url.sh
+./scripts/sync-monitoring-remote-write-url.sh --check
+git add monitoring/monitoring-workload.yaml
+git commit -m "chore(monitoring): sync remote_write URL for Kind" || true
+git push
+kubectl config use-context kind-management
+argocd app sync monitoring-dev
+argocd app sync monitoring-staging
+argocd app sync monitoring-prod
+```
+
+*(Nếu không có thay đổi so với commit trước, `git commit` báo lỗi “nothing to commit” — `|| true` để dải lệnh không dừng; `git push` vẫn chạy. Muốn chắc chắn có commit: dùng cách A `./scripts/sync-monitoring-remote-write-url.sh --commit-push` **thay cho** ba lệnh `git` ở trên — lệnh đó vừa ghi file vừa `add`/`commit` chỉ khi có diff rồi `push`.)*
+
+**Lệnh phụ (tuỳ chọn):**
+
+```bash
+./scripts/sync-monitoring-remote-write-url.sh --print-only   # chỉ in URL write, không sửa file
 ```
 
 **Override khi không dùng Docker / tên container khác:**
@@ -373,7 +436,7 @@ Prometheus trên **management** nhận series từ **Prometheus Agent** trên de
 - `MGMT_CONTROL_PLANE_CONTAINER=...` — tên container control-plane management.
 - `MONITORING_WORKLOAD_VALUES=...` — đường dẫn tương đối repo tới file values workload (mặc định `monitoring/monitoring-workload.yaml`).
 
-**Không cần** chạy script mỗi ngày nếu **không** recreate Kind và remote_write vẫn đúng. Trên **RKE2 / cloud** thường dùng hostname hoặc IP cố định — có thể ghi URL ổn định trong Git, không phụ thuộc script Docker.
+**Không cần** chạy lại toàn bộ bước trên mỗi ngày nếu **không** recreate Kind và remote_write vẫn đúng. Trên **RKE2 / cloud** thường dùng hostname hoặc IP cố định — có thể ghi URL ổn định trong Git, không phụ thuộc script Docker.
 
 Sau khi sync xong, sẽ có:
 

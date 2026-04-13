@@ -7,6 +7,7 @@
 #   ./scripts/sync-monitoring-remote-write-url.sh --print-only # chỉ in URL write
 #   ./scripts/sync-monitoring-remote-write-url.sh --print-ready-url
 #   ./scripts/sync-monitoring-remote-write-url.sh --check        # GET /-/ready từ máy host
+#   ./scripts/sync-monitoring-remote-write-url.sh --commit-push  # sau khi ghi file: git add/commit (nếu có diff) + push
 #   ./scripts/sync-monitoring-remote-write-url.sh --help
 #
 # Biến môi trường:
@@ -21,6 +22,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="${ROOT}/${MONITORING_WORKLOAD_VALUES:-monitoring/monitoring-workload.yaml}"
 CONTAINER_NAME="${MGMT_CONTROL_PLANE_CONTAINER:-management-control-plane}"
 NODEPORT="${MGMT_PROMETHEUS_NODEPORT:-32090}"
+
+COMMIT_PUSH=false
+argv=()
+for arg in "$@"; do
+  if [[ "$arg" == --commit-push ]]; then
+    COMMIT_PUSH=true
+    continue
+  fi
+  argv+=("$arg")
+done
+set -- "${argv[@]}"
 
 usage() {
   sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
@@ -52,6 +64,27 @@ resolve_url() {
 write_ready_url() {
   local w="$1"
   echo "${w%/api/v1/write}/-/ready"
+}
+
+git_commit_push_values() {
+  local rel="${TARGET#$ROOT/}"
+  if [[ "$rel" == "$TARGET" ]] || [[ "$rel" == /* ]]; then
+    echo "Không suy ra đường dẫn tương đối cho git add (TARGET ngoài ROOT?)." >&2
+    exit 1
+  fi
+  cd "$ROOT"
+  if ! git rev-parse --git-dir &>/dev/null; then
+    echo "Thư mục không phải git repo: $ROOT" >&2
+    exit 1
+  fi
+  git add -- "$rel"
+  if git diff --cached --quiet; then
+    echo "Git: không có thay đổi để commit (URL đã trùng hoặc file không đổi)."
+  else
+    git commit -m "chore(monitoring): sync remote_write URL for Kind"
+  fi
+  git push
+  echo "Git: đã push (hoặc remote đã up to date)."
 }
 
 case "${1:-}" in
@@ -104,3 +137,7 @@ fi
 echo "Đã ghi remote_write URL: $URL"
 echo "File: $TARGET"
 echo "Kiểm tra: $0 --check"
+
+if $COMMIT_PUSH; then
+  git_commit_push_values
+fi

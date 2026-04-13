@@ -23,10 +23,8 @@
 #   ví dụ: up{cluster="dev"}, kube_pod_*{cluster="staging"}
 
 fullnameOverride: kps-wl
-
 grafana:
   enabled: false
-
 prometheus:
   enabled: true
   agentMode: true
@@ -37,7 +35,7 @@ prometheus:
         medium: ""
     remoteWrite:
       # Chạy ./scripts/sync-monitoring-remote-write-url.sh trước khi commit/sync (default tạm: localhost — sai trên workload).
-      - url: http://127.0.0.1:32090/api/v1/write
+      - url: http://172.18.0.2:32090/api/v1/write
         name: management
         queueConfig:
           capacity: 10000
@@ -47,23 +45,18 @@ prometheus:
           batchSendDeadline: 5s
           minBackoff: 30ms
           maxBackoff: 5s
-
 alertmanager:
   enabled: false
-
 prometheusOperator:
   enabled: true
-
 prometheus-node-exporter:
   enabled: true
   service:
     type: ClusterIP
-
 kube-state-metrics:
   enabled: true
   service:
     type: ClusterIP
-
 # Disable system components to avoid 'kube-system' namespace permission issues in Kind
 kubeApiServer:
   enabled: false
