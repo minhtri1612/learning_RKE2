@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Tuỳ chọn: dùng cilium CLI để nối mesh (một số bản cần sau khi Helm đã lên).
+# Tuỳ chọn: mô hình **mỗi cluster đều có** clustermesh-apiserver (clustermesh.useAPIServer=true).
+# Lab repo hiện dùng spoke **không** apiserver — dùng: scripts/kind-clustermesh-sync-spoke-from-hub.sh
+#
 # Thứ tự gợi ý: hub trước, rồi từng spoke. Yêu cầu cilium CLI + kubectl contexts.
 #
 # Xem thêm: https://docs.cilium.io/en/stable/network/clustermesh/

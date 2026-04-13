@@ -16,10 +16,9 @@ l7Proxy: true
 loadBalancer:
   algorithm: maglev
 
+# Phải khớp hub (cilium-values-management.yaml): ClusterMesh không ổn định khi hub tắt encryption mà spoke bật WireGuard.
 encryption:
-  enabled: true
-  type: wireguard
-  nodeEncryption: true
+  enabled: false
 
 # BPF events → monitor/Hubble (drop / policy verdict / trace). Bật rõ ràng để debug policy trên UI.
 bpf:

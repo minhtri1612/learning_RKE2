@@ -1,9 +1,8 @@
-# IP container management-control-plane (mạng Docker `kind`) — NodePort clustermesh-apiserver = 32379.
-# Cập nhật đúng IP: bash scripts/kind-clustermesh-peer-ip.sh  rồi commit/push trước khi sync cilium-{dev,staging,prod}.
+# AUTO — scripts/kind-clustermesh-peer-ip.sh — IP mạng Docker kind của management-control-plane
 clustermesh:
   config:
     clusters:
       management:
         port: 32379
         ips:
-          - 172.18.0.50
+          - 172.18.0.2
