@@ -1,24 +1,21 @@
 #!/usr/bin/env bash
-# Mô hình chuẩn: mọi cluster đều có clustermesh-apiserver (clustermesh.useAPIServer=true).
-# Nếu spoke tắt apiserver, dùng script fallback: scripts/kind-clustermesh-sync-spoke-from-hub.sh
+# GitOps thuần của repo này: spoke không deploy clustermesh-apiserver
+# (clustermesh.useAPIServer=false), nên `cilium clustermesh connect` không phù hợp.
+# Script này giữ tên cũ để tương thích, nhưng sẽ chạy flow sync declarative.
 #
 # Thứ tự gợi ý: hub trước, rồi từng spoke. Yêu cầu cilium CLI + kubectl contexts.
 #
 # Xem thêm: https://docs.cilium.io/en/stable/network/clustermesh/
 set -euo pipefail
-if ! command -v cilium >/dev/null 2>&1; then
-  echo "Cần cilium CLI trong PATH." >&2
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SYNC_SCRIPT="${ROOT}/scripts/kind-clustermesh-sync-spoke-from-hub.sh"
+if [[ ! -x "${SYNC_SCRIPT}" ]]; then
+  chmod +x "${SYNC_SCRIPT}" 2>/dev/null || true
+fi
+if [[ ! -f "${SYNC_SCRIPT}" ]]; then
+  echo "Thiếu ${SYNC_SCRIPT}" >&2
   exit 1
 fi
-echo "Bật / đồng bộ clustermesh (idempotent nếu đã bật)..."
-cilium clustermesh enable --context kind-management 2>/dev/null || true
-for ctx in kind-dev kind-staging kind-prod; do
-  kubectl config get-contexts -o name | grep -qx "${ctx}" || continue
-  cilium clustermesh enable --context "${ctx}" 2>/dev/null || true
-done
-echo "Connect hub -> spoke..."
-for ctx in kind-dev kind-staging kind-prod; do
-  kubectl config get-contexts -o name | grep -qx "${ctx}" || continue
-  cilium clustermesh connect --context kind-management --destination-context "${ctx}" || true
-done
-echo "Xong. Chạy: scripts/kind-clustermesh-status.sh"
+echo "Repo đang dùng GitOps flow, chuyển qua ${SYNC_SCRIPT}..."
+"${SYNC_SCRIPT}"
+echo "Xong. Kiểm tra: cilium clustermesh status --context kind-management"

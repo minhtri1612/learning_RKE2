@@ -1,12 +1,9 @@
 kubeProxyReplacement: true
 
-# Spoke (dev/staging/prod): deploy clustermesh-apiserver để dùng flow chuẩn
-# `cilium clustermesh connect` hub -> spoke.
+# Spoke (dev/staging/prod): GitOps flow, không dùng `cilium clustermesh connect`.
+# Chỉ cần endpoint hub trong cilium/clustermesh-management-peer.yaml + sync TLS secret từ hub.
 clustermesh:
-  useAPIServer: true
-  apiserver:
-    # Kind workload cluster thường 1 node; tránh replica 2 bị Pending.
-    replicas: 1
+  useAPIServer: false
 
 gatewayAPI:
   enabled: true
