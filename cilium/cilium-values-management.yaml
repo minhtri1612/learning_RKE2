@@ -32,19 +32,21 @@ clustermesh:
     # Phải khớp cluster.name trên spoke (dev / staging / prod). Tạo key trong Secret
     # cilium-clustermesh (+ cilium-kvstoremesh) trên hub — không có thì `cilium clustermesh status`
     # luôn báo "No cluster connected" dù agent spoke đã nối etcd (CLI đọc secret để biết tên peer).
-    # cilium-clustermesh (agent hub): với KVStoreMesh chart dùng endpoint local apiserver.
-    # cilium-kvstoremesh: template vẫn cần address+port từng tên cluster — trỏ nội bộ tới Service
-    # clustermesh-apiserver (cùng cluster), không phải IP từng Kind spoke.
+    # GitOps ClusterMesh: management phải trỏ tới endpoint clustermesh-apiserver thực của spoke.
+    # Các IP dưới là control-plane IP trên Docker network kind (NodePort 32379).
     clusters:
       dev:
-        address: clustermesh-apiserver.kube-system.svc
-        port: 2379
+        ips:
+          - 172.18.0.3
+        port: 32379
       staging:
-        address: clustermesh-apiserver.kube-system.svc
-        port: 2379
+        ips:
+          - 172.18.0.4
+        port: 32379
       prod:
-        address: clustermesh-apiserver.kube-system.svc
-        port: 2379
+        ips:
+          - 172.18.0.6
+        port: 32379
 
 bpf:
   events:
