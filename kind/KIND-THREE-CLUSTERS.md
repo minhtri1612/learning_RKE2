@@ -641,6 +641,55 @@ hubble observe --server 127.0.0.1:4248 --protocol http --last 50
 hubble observe --server 127.0.0.1:4249 --protocol http --last 50
 ```
 
+#### 1.7.4b. Tạo traffic HTTP GET để nhìn rõ trên Hubble (dev/staging/prod)
+
+Mục tiêu: tạo flow `GET` ổn định để Hubble UI/CLI hiển thị rõ method `GET` cho backend stable/canary.
+
+```bash
+# 1) Tạo pod curl test trong namespace app cho từng cluster
+for ctx in kind-dev kind-staging kind-prod; do
+  kubectl --context "$ctx" -n meo-stationery run curlbox --image=curlimages/curl:8.7.1 --restart=Never -- sleep 3600 || true
+  kubectl --context "$ctx" -n meo-stationery wait --for=condition=Ready pod/curlbox --timeout=120s
+done
+```
+
+```bash
+# 2) Tạo traffic GET in-cluster vào stable + canary service
+for ctx in kind-dev kind-staging kind-prod; do
+  kubectl --context "$ctx" -n meo-stationery exec curlbox -- sh -lc '
+  for i in $(seq 1 80); do
+    curl -sS "http://backend-stable/api/health" >/dev/null || true
+    curl -sS "http://backend-canary/api/health" >/dev/null || true
+    sleep 0.2
+  done
+  '
+done
+```
+
+```bash
+# 3) (Tuỳ chọn) Tạo GET từ host qua Gateway (world -> backend)
+# Thay IP nếu pool MetalLB của bạn khác.
+for i in $(seq 1 80); do
+  curl -sS -H "Host: dev.meo.local" "http://172.18.255.10/api/health" >/dev/null || true
+  curl -sS -H "Host: staging.meo.local" "http://172.18.255.20/api/health" >/dev/null || true
+  curl -sS -H "Host: prod.meo.local" "http://172.18.255.30/api/health" >/dev/null || true
+  sleep 0.2
+done
+```
+
+```bash
+# 4) Verify nhanh bằng hubble CLI (ví dụ dev)
+cilium hubble port-forward --context kind-dev --port-forward 4247
+hubble observe --server 127.0.0.1:4247 --protocol http --verdict FORWARDED --last 100 | rg " GET "
+```
+
+```bash
+# 5) Dọn pod test
+for ctx in kind-dev kind-staging kind-prod; do
+  kubectl --context "$ctx" -n meo-stationery delete pod curlbox --force --grace-period=0 --ignore-not-found
+done
+```
+
 #### 1.7.5. Truy cập app **không** `kubectl port-forward`
 
 - **Khuyến nghị:** MetalLB GitOps — xem **1.7.2b** (`argocd/bootstrap/15–17`, `config/metallb/`).
