@@ -1,5 +1,9 @@
 # Management: Prometheus đầy đủ + Grafana; nhận remote_write từ agent trên workload (NodePort 32090).
-# Workload dùng config/monitoring/monitoring-workload.yaml (agentMode + remoteWrite).
+# Workload: monitoring-workload.yaml + monitoring-workload-labels-<env>.yaml (externalLabels cluster/environment).
+#
+# Grafana: một datasource Prometheus trỏ in-cluster; filter theo label, ví dụ:
+#   sum(rate(container_cpu_usage_seconds_total{cluster="dev"}[5m]))
+#   hoặc biến dashboard: label_values(up, cluster)
 
 grafana:
   adminPassword: "admin"

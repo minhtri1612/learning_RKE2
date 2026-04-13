@@ -1,0 +1,79 @@
+# Workload clusters: Prometheus Agent (scrape in-cluster) + remote_write to management Prometheus.
+# Management: prometheus.prometheusSpec.enableRemoteWriteReceiver + Service NodePort 32090 (monitoring-mgmt.yaml).
+#
+# remoteWrite URL — KHÔNG hardcode IP lâu dài. Cập nhật bằng:
+#   ./scripts/sync-monitoring-remote-write-url.sh
+# hoặc:
+#   MGMT_PROMETHEUS_REMOTE_WRITE_URL='http://<ip>:32090/api/v1/write' ./scripts/sync-monitoring-remote-write-url.sh
+#
+# IP mặc định script lấy từ: docker inspect management-control-plane (đổi tên bằng MGMT_CONTROL_PLANE_CONTAINER).
+# Port mặc định: 32090 (monitoring-mgmt.yaml NodePort → prometheus 9090).
+# MetalLB không bắt buộc cho luồng này: traffic là workload → management qua Docker bridge, không cần LB trên spoke.
+#
+# Lưu ý mạng Kind: pod trên kind-dev có thể KHÔNG route tới IP container management-control-plane
+# (mỗi cluster thường một Docker network riêng) → curl từ `kubectl run` trên dev có thể treo tới timeout.
+# Test Prometheus management (từ máy host):
+#   ./scripts/sync-monitoring-remote-write-url.sh --check
+# URL /-/ready:
+#   curl -sS -o /dev/null -w "%{http_code}\n" "$(./scripts/sync-monitoring-remote-write-url.sh --print-ready-url)"
+# Trong container management:
+#   docker exec management-control-plane curl -sS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:32090/-/ready"
+#
+# Phân tách env trong Grafana: dùng label từ monitoring-workload-labels-{dev,staging,prod}.yaml
+#   ví dụ: up{cluster="dev"}, kube_pod_*{cluster="staging"}
+
+fullnameOverride: kps-wl
+
+grafana:
+  enabled: false
+
+prometheus:
+  enabled: true
+  agentMode: true
+  prometheusSpec:
+    retention: 1d
+    storageSpec:
+      emptyDir:
+        medium: ""
+    remoteWrite:
+      # Chạy ./scripts/sync-monitoring-remote-write-url.sh trước khi commit/sync (default tạm: localhost — sai trên workload).
+      - url: http://127.0.0.1:32090/api/v1/write
+        name: management
+        queueConfig:
+          capacity: 10000
+          maxShards: 50
+          minShards: 1
+          maxSamplesPerSend: 2000
+          batchSendDeadline: 5s
+          minBackoff: 30ms
+          maxBackoff: 5s
+
+alertmanager:
+  enabled: false
+
+prometheusOperator:
+  enabled: true
+
+prometheus-node-exporter:
+  enabled: true
+  service:
+    type: ClusterIP
+
+kube-state-metrics:
+  enabled: true
+  service:
+    type: ClusterIP
+
+# Disable system components to avoid 'kube-system' namespace permission issues in Kind
+kubeApiServer:
+  enabled: false
+kubelet:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false

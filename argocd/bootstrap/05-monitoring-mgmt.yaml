@@ -13,7 +13,7 @@ spec:
       targetRevision: 61.3.2
       helm:
         valueFiles:
-          - $values/config/monitoring/monitoring-mgmt.yaml
+          - $values/monitoring/monitoring-mgmt.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: main
       ref: values

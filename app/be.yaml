@@ -235,7 +235,7 @@ rollout:
             failureCondition: result[0] < 0.82
             provider:
               prometheus:
-                # Trùng fullnameOverride trong config/monitoring/monitoring-workload.yaml (Prometheus Agent vẫn có Service :9090).
+                # Trùng fullnameOverride trong monitoring/monitoring-workload.yaml (Prometheus Agent vẫn có Service :9090).
                 address: http://kps-wl-prometheus.monitoring.svc:9090
                 query: |
                   avg(meo_backend_up{namespace="meo-stationery",pod=~"{{args.service-name}}-.*"}) or vector(0)

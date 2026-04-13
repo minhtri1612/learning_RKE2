@@ -13,8 +13,8 @@ spec:
       targetRevision: 61.3.2
       helm:
         valueFiles:
-          - $values/config/monitoring/monitoring-workload.yaml
-          - $values/config/monitoring/monitoring-workload-labels-dev.yaml
+          - $values/monitoring/monitoring-workload.yaml
+          - $values/monitoring/monitoring-workload-labels-dev.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: main
       ref: values

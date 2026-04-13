@@ -44,8 +44,8 @@ helm repo update
 # "no matches for kind ServiceMonitor" và Cilium không cài → không CNI → Argo CD Pending.
 helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
   --version 1.19.2 \
-  -f config/cilium/cilium-values-management.yaml \
-  -f config/cilium/cilium-values-management-bootstrap.yaml \
+  -f cilium/cilium-values-management.yaml \
+  -f cilium/cilium-values-management-bootstrap.yaml \
   --wait --timeout 15m
 
 kind create cluster --name dev        --config kind/dev-kind-config.yaml
@@ -320,18 +320,14 @@ kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
 kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
 
-# Monitoring Kind: Prometheus trên management nhận `remote_write` từ agent trên dev/staging/prod.
-# Sau mỗi lần `kind create`, chỉnh IP trong `config/monitoring/monitoring-workload.yaml` (`remoteWrite[0].url`)
-# cho khớp IP control-plane management trên mạng Docker `kind`, ví dụ:
-#   docker inspect management-control-plane --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
-# Thứ tự sync: `monitoring-management` (05) healthy trước khi agent workload (06–08) push được.
+# Monitoring: sau mỗi lần recreate Kind — remote_write → xem mục 1.6.1 trong KIND-THREE-CLUSTERS.md (đừng bỏ qua).
 
 # 2b. Argo Rollouts (backend dùng Rollout / AnalysisTemplate)
 kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
 kubectl apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
 kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
 
-# 3. App Cilium (nhớ peer IP hub — scripts/kind-clustermesh-peer-ip.sh; commit/push `config/cilium/clustermesh-management-peer.yaml` nếu Argo dùng remote)
+# 3. App Cilium (nhớ peer IP hub — scripts/kind-clustermesh-peer-ip.sh; commit/push `cilium/clustermesh-management-peer.yaml` nếu Argo dùng remote)
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
 kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
@@ -342,6 +338,42 @@ kubectl apply -f argocd/bootstrap/15-metallb-dev.yaml
 kubectl apply -f argocd/bootstrap/16-metallb-staging.yaml
 kubectl apply -f argocd/bootstrap/17-metallb-prod.yaml
 ```
+
+#### 1.6.1. Monitoring `remote_write` — script `scripts/sync-monitoring-remote-write-url.sh` (**bắt buộc đọc sau recreate Kind**)
+
+Prometheus trên **management** nhận series từ **Prometheus Agent** trên dev/staging/prod qua `remote_write`. URL ghi trong `monitoring/monitoring-workload.yaml` (`prometheus.prometheusSpec.remoteWrite[0].url`) phải là:
+
+`http://<IP-container-management-control-plane>:32090/api/v1/write`
+
+(32090 = NodePort Prometheus trên management, xem `monitoring/monitoring-mgmt.yaml`.)
+
+**Sau mỗi lần** `kind delete` / `kind create` lại cluster **management** (hoặc cả bộ lab), IP container `management-control-plane` trên mạng Docker `kind` **đổi**. Nếu Git vẫn để `127.0.0.1` hoặc IP cũ → agent trên workload **không push** được; Grafana trên management **không** có (hoặc thiếu) series theo label `cluster` / `environment` — dễ đi lạc debug chỗ khác.
+
+**Quy trình chuẩn (đừng bỏ bước):**
+
+1. Tạo xong Kind + sync **`monitoring-management` (05) Healthy** (có Prometheus + NodePort 32090).
+2. Từ **thư mục gốc repo** chạy:
+   ```bash
+   ./scripts/sync-monitoring-remote-write-url.sh
+   ```
+   Script đọc IP bằng `docker inspect management-control-plane` và ghi vào `monitoring/monitoring-workload.yaml` (ưu tiên `yq` nếu có; không thì `sed`).
+3. **Commit + push** (nếu Argo trỏ remote Git) — cùng lúc có thể cần chỉnh `cilium/clustermesh-management-peer.yaml` bằng `scripts/kind-clustermesh-peer-ip.sh`.
+4. Trên Argo: **Refresh + Sync** `monitoring-dev`, `monitoring-staging`, `monitoring-prod` (prod manual nếu policy như bootstrap).
+
+**Kiểm tra nhanh từ máy host (không đoán mù):**
+
+```bash
+./scripts/sync-monitoring-remote-write-url.sh --check   # GET /-/ready management Prometheus, expect HTTP 200
+./scripts/sync-monitoring-remote-write-url.sh --print-only
+```
+
+**Override khi không dùng Docker / tên container khác:**
+
+- `MGMT_PROMETHEUS_REMOTE_WRITE_URL='http://IP:32090/api/v1/write' ./scripts/sync-monitoring-remote-write-url.sh`
+- `MGMT_CONTROL_PLANE_CONTAINER=...` — tên container control-plane management.
+- `MONITORING_WORKLOAD_VALUES=...` — đường dẫn tương đối repo tới file values workload (mặc định `monitoring/monitoring-workload.yaml`).
+
+**Không cần** chạy script mỗi ngày nếu **không** recreate Kind và remote_write vẫn đúng. Trên **RKE2 / cloud** thường dùng hostname hoặc IP cố định — có thể ghi URL ổn định trong Git, không phụ thuộc script Docker.
 
 Sau khi sync xong, sẽ có:
 
@@ -481,7 +513,7 @@ done
 **Hubble UI**
 
 - **`kind-management`:** ClusterIP — mở bằng CLI hoặc port-forward **localhost:12000** (mặc định của `cilium hubble ui`).
-- **dev / staging / prod:** `hubble-ui` kiểu **NodePort** cố định trong Git (`config/cilium/cilium-cluster-*.yaml`): **31201** (dev), **31202** (staging), **31203** (prod). Trên Kind (Linux), lấy IP node rồi mở trình duyệt:
+- **dev / staging / prod:** `hubble-ui` kiểu **NodePort** cố định trong Git (`cilium/cilium-cluster-*.yaml`): **31201** (dev), **31202** (staging), **31203** (prod). Trên Kind (Linux), lấy IP node rồi mở trình duyệt:
 
 ```bash
 DEV_IP=$(docker inspect dev-control-plane        --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
@@ -546,6 +578,11 @@ cilium hubble ui --context kind-management
 
 - Kiểm tra `config/env/<env>.yaml`: `database.secrets.remoteKey` phải **trùng tên secret thật** trên AWS. Nếu Terraform chỉ tạo một JSON `.../app-credentials`, đừng trỏ DB sang `.../database` khi secret đó chưa tồn tại.
 
+**Grafana không thấy (hoặc thiếu) metrics từ cluster dev/staging/prod**
+
+- Xem **mục 1.6.1**: sau recreate Kind, URL `remote_write` trong Git thường **sai**. Chạy `./scripts/sync-monitoring-remote-write-url.sh`, commit/push, sync lại `monitoring-{dev,staging,prod}`. Kiểm `./scripts/sync-monitoring-remote-write-url.sh --check`.
+- Thứ tự: `monitoring-management` (05) phải **Healthy** trước khi kỳ vọng agent push. Pod trên workload cluster **không** nhất thiết `curl` được tới IP management (mạng Kind tách cluster) — đừng dùng `kubectl run curl` trên dev để kết luận Prometheus management chết; test từ **host** hoặc `--check` như trên.
+
 **ServiceAccount “exists and cannot be imported into the current release”**
 
 - Tài nguyên đã được tạo trước đó không thuộc Helm release hiện tại. Trên môi trường practice: ưu tiên **một** luồng (Argo **hoặc** Helm tay); tránh vừa Argo vừa `helm upgrade` cùng release.
@@ -554,6 +591,7 @@ cilium hubble ui --context kind-management
 
 ## 2. Kiểm tra nhanh
 
+- Remote write (sau recreate Kind): `./scripts/sync-monitoring-remote-write-url.sh --check` — xem **1.6.1**.
 - ClusterMesh: `bash scripts/kind-clustermesh-status.sh` (hoặc `cilium clustermesh status --context kind-management`).
 - UI ArgoCD: https://localhost:8080 → Applications: `dev-*`, `monitoring-*`...
 - UI Grafana (tập trung; series từ workload có nhãn `cluster` / `environment` từ remote_write):
@@ -574,8 +612,8 @@ cilium hubble ui --context kind-management
 - **Kind API / TLS:** `bash scripts/kind-fix-kubeconfig-servers.sh` sau `kind create`. Trên **management**, **trước** `helm install cilium` — nếu Helm lỗi TLS thì không có CNI (`disableDefaultCNI`) và Argo CD **Pending**.
 - **Helm Cilium + ServiceMonitor:** Lần đầu trên management **chưa** có kube-prometheus-stack → dùng **hai** file values: `cilium-values-management.yaml` + `cilium-values-management-bootstrap.yaml` (mục **1.2**). Lỗi `no matches for kind "ServiceMonitor"` = thiếu bước này hoặc chưa cài CRD Prometheus Operator.
 - **Hubble UI / CLI:** Management → port-forward **12000**. Workload → NodePort **31201 / 31202 / 31203** (IP `docker inspect *-control-plane`). CLI flow: `cilium hubble port-forward` + **`hubble observe flows`** — **mục 1.7.4**.
-- **ClusterMesh (spoke):** IP hub trong `config/cilium/clustermesh-management-peer.yaml` — `bash scripts/kind-clustermesh-peer-ip.sh` sau mỗi lần recreate Kind (rồi push Git nếu Argo trỏ remote).
-- **Monitoring remote_write:** Cập nhật IP management trong `config/monitoring/monitoring-workload.yaml` sau mỗi lần recreate Kind (mục **1.6**). Management không còn scrape tĩnh node-exporter/kube-state từ các workload cluster.
+- **ClusterMesh (spoke):** IP hub trong `cilium/clustermesh-management-peer.yaml` — `bash scripts/kind-clustermesh-peer-ip.sh` sau mỗi lần recreate Kind (rồi push Git nếu Argo trỏ remote).
+- **Monitoring remote_write:** Sau mỗi lần recreate Kind, chạy `./scripts/sync-monitoring-remote-write-url.sh` rồi commit/push và sync agent — chi tiết **1.6.1**. Management không còn scrape tĩnh node-exporter/kube-state từ các workload cluster; nếu bỏ bước này, Grafana thiếu series theo `cluster`/`environment`.
 - **Linux:** Argo CD → API dev/staging/prod dùng **container IP + 6443** (mục **1.4**). `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. Không dùng `host.docker.internal` trên Linux.
 - Đổi port trong `kind/*-kind-config.yaml` thì cập nhật tương ứng mục **1.4** và `scripts/kind-fix-kubeconfig-servers.sh` nếu cần.
 - **RAM:** Nhiều cụm Kind song song dễ thiếu bộ nhớ → **kind/README.md**.

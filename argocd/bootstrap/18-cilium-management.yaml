@@ -13,7 +13,7 @@ spec:
       targetRevision: 1.19.2
       helm:
         valueFiles:
-          - $values/config/cilium/cilium-values-management.yaml
+          - $values/cilium/cilium-values-management.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: main
       ref: values
