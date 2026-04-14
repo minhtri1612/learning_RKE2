@@ -26,9 +26,6 @@ fi
 
 TMP="$(mktemp)"
 trap 'rm -f "${TMP}"' EXIT
-kubectl --context "${HUB_CTX}" -n "${HUB_NS}" get secret "${SECRET_NAME}" -o yaml \
-  | sed '/^\s*resourceVersion:/d;/^\s*uid:/d;/^\s*creationTimestamp:/d;/^\s*selfLink:/d;/^\s*namespace:/d' \
-  > "${TMP}"
 
 # CA mỗi cluster Kind thường khác nhau. Ghép CA spoke vào management (client trust bundle)
 # và ghép CA management vào server trust bundle của spoke để mTLS 2 chiều hoạt động.
@@ -45,6 +42,11 @@ done
 kubectl --context "${HUB_CTX}" -n "${HUB_NS}" patch secret clustermesh-apiserver-remote-cert \
   --type=merge -p "{\"data\":{\"ca.crt\":\"$(base64 -w0 "${CA_BUNDLE}")\"}}"
 kubectl --context "${HUB_CTX}" -n "${HUB_NS}" rollout restart ds/cilium deploy/clustermesh-apiserver >/dev/null
+
+# Lấy lại secret sau khi đã patch CA bundle để copy đúng bản mới nhất xuống spoke.
+kubectl --context "${HUB_CTX}" -n "${HUB_NS}" get secret "${SECRET_NAME}" -o yaml \
+  | sed '/^\s*resourceVersion:/d;/^\s*uid:/d;/^\s*creationTimestamp:/d;/^\s*selfLink:/d;/^\s*namespace:/d' \
+  > "${TMP}"
 
 for ctx in kind-dev kind-staging kind-prod; do
   if ! kubectl config get-contexts -o name | grep -qx "${ctx}"; then
