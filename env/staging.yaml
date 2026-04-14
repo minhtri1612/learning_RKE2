@@ -7,6 +7,9 @@ backend:
   image:
     tag: "3.0.1"
   replicaCount: 6
+  rollout:
+    enabled: true
+    strategy: canary
 database:
   image:
     tag: "16"

@@ -194,10 +194,18 @@ useExternalSecrets: true
 # -- Environment name (dev, staging, prod)
 env: ""
 
-# -- Argo Rollouts config for canary deployments.
+# -- Deployment strategy/kind (deployment, statefulset, rollout).
+# Default to deployment if not set.
+workloadKind: deployment
+
+# -- Argo Rollouts config (only used if workloadKind is rollout).
 rollout:
   enabled: false
+  # -- Per-service override is supported via <service>.rollout (e.g. backend.rollout.strategy).
+  # -- Strategy to use: canary or blueGreen.
+  strategy: canary
   revisionHistoryLimit: 3
+  # -- Canary strategy configuration.
   canary:
     stableService: ""
     canaryService: ""
@@ -211,6 +219,14 @@ rollout:
       - pause:
           duration: 120s
       - setWeight: 100
+  # -- Blue-Green strategy configuration.
+  blueGreen:
+    activeService: ""
+    previewService: ""
+    autoPromotionEnabled: true
+    # -- Seconds to wait before scaling down the old ReplicaSet.
+    scaleDownDelaySeconds: 30
+  # -- Automated analysis templates.
   analysis:
     enabled: false
     templates: []

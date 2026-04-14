@@ -1,8 +1,17 @@
 {{- if and .Values.httpRoute.enabled (eq (.Values.currentService | default "backend") "backend") (ne (.Values.workloadKind | default "deployment") "statefulset") -}}
 {{- $fullName := include "template.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
-{{- $stableSvc := .Values.rollout.canary.stableService | default (printf "%s-stable" $fullName) -}}
-{{- $canarySvc := .Values.rollout.canary.canaryService | default (printf "%s-canary" $fullName) -}}
+{{- $svcName := .Values.currentService | default "backend" -}}
+{{- $svc := (index .Values $svcName) | default dict -}}
+{{- $rolloutCfg := deepCopy (.Values.rollout | default dict) -}}
+{{- if hasKey $svc "rollout" -}}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($svc.rollout | default dict) -}}
+{{- end -}}
+{{- $rolloutEnabled := $rolloutCfg.enabled | default false -}}
+{{- $strategy := $rolloutCfg.strategy | default "canary" | lower -}}
+{{- $stableSvc := $rolloutCfg.canary.stableService | default (printf "%s-stable" $fullName) -}}
+{{- $canarySvc := $rolloutCfg.canary.canaryService | default (printf "%s-canary" $fullName) -}}
+{{- $activeSvc := $rolloutCfg.blueGreen.activeService | default $fullName -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -32,7 +41,7 @@ spec:
       filters:
       {{- toYaml . | nindent 8 }}
     {{- end }}
-      {{- if and $.Values.rollout.enabled ($.Values.httpRoute.useRolloutCanaryBackends | default true) }}
+      {{- if and $rolloutEnabled ($.Values.httpRoute.useRolloutCanaryBackends | default true) (eq $strategy "canary") }}
       backendRefs:
         - name: {{ $stableSvc }}
           port: {{ $svcPort }}
@@ -40,6 +49,11 @@ spec:
         - name: {{ $canarySvc }}
           port: {{ $svcPort }}
           weight: {{ $.Values.httpRoute.canaryWeight | default 10 }}
+      {{- else if and $rolloutEnabled (eq $strategy "bluegreen") }}
+      backendRefs:
+        - name: {{ $activeSvc }}
+          port: {{ $svcPort }}
+          weight: 1
       {{- else }}
       backendRefs:
         - name: {{ $fullName }}

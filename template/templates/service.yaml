@@ -1,8 +1,62 @@
 {{- $fullName := include "template.fullname" . }}
 {{- $selectors := include "template.selectorLabels" . }}
 {{- if ne (.Values.workloadKind | default "deployment") "statefulset" }}
-{{- $stableName := .Values.rollout.canary.stableService | default (printf "%s-stable" $fullName) }}
-{{- $canaryName := .Values.rollout.canary.canaryService | default (printf "%s-canary" $fullName) }}
+{{- $svcName := .Values.currentService | default "backend" }}
+{{- $svc := (index .Values $svcName) | default dict }}
+{{- $rolloutCfg := deepCopy (.Values.rollout | default dict) }}
+{{- if hasKey $svc "rollout" }}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($svc.rollout | default dict) }}
+{{- end }}
+{{- $rolloutEnabled := $rolloutCfg.enabled | default false }}
+{{- $strategy := $rolloutCfg.strategy | default "canary" | lower }}
+{{- if not $rolloutEnabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort | default (.Values.service.portName | default "http") }}
+      protocol: TCP
+      name: {{ .Values.service.portName | default "http" }}
+  selector:
+    {{- $selectors | nindent 4 }}
+{{- else if eq $strategy "bluegreen" }}
+{{- $activeName := $rolloutCfg.blueGreen.activeService | default $fullName }}
+{{- $previewName := $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" $fullName) }}
+{{- range $svcName := list $activeName $previewName }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svcName }}
+  labels:
+    {{- include "template.labels" $ | nindent 4 }}
+  {{- with $.Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $.Values.service.type }}
+  ports:
+    - port: {{ $.Values.service.port }}
+      targetPort: {{ $.Values.service.targetPort | default ($.Values.service.portName | default "http") }}
+      protocol: TCP
+      name: {{ $.Values.service.portName | default "http" }}
+  selector:
+    {{- $selectors | nindent 4 }}
+---
+{{- end }}
+{{- else }}
+{{- $stableName := $rolloutCfg.canary.stableService | default (printf "%s-stable" $fullName) }}
+{{- $canaryName := $rolloutCfg.canary.canaryService | default (printf "%s-canary" $fullName) }}
 {{- range $svcName := list $stableName $canaryName }}
 apiVersion: v1
 kind: Service
@@ -24,6 +78,7 @@ spec:
   selector:
     {{- $selectors | nindent 4 }}
 ---
+{{- end }}
 {{- end }}
 {{- else }}
 apiVersion: v1

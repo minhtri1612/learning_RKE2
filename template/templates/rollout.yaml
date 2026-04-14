@@ -1,6 +1,12 @@
 {{- if ne (.Values.workloadKind | default "deployment") "statefulset" }}
 {{- $svcName := .Values.currentService | default "backend" }}
 {{- $svc := (index .Values $svcName) | default dict }}
+{{- $rolloutCfg := deepCopy (.Values.rollout | default dict) }}
+{{- if hasKey $svc "rollout" }}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($svc.rollout | default dict) }}
+{{- end }}
+{{- if ($rolloutCfg.enabled | default false) }}
+{{- $strategy := $rolloutCfg.strategy | default "canary" | lower }}
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -14,17 +20,26 @@ spec:
     matchLabels:
       {{- include "template.selectorLabels" . | nindent 6 }}
   strategy:
+    {{- if eq $strategy "bluegreen" }}
+    blueGreen:
+      activeService: {{ $rolloutCfg.blueGreen.activeService | default (include "template.fullname" .) }}
+      previewService: {{ $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" (include "template.fullname" .) ) }}
+      autoPromotionEnabled: {{ $rolloutCfg.blueGreen.autoPromotionEnabled | default true }}
+      scaleDownDelaySeconds: {{ $rolloutCfg.blueGreen.scaleDownDelaySeconds | default 30 }}
+    {{- else }}
     canary:
-      stableService: {{ .Values.rollout.canary.stableService | default (printf "%s-stable" (include "template.fullname" .)) }}
-      canaryService: {{ .Values.rollout.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .)) }}
-      {{- with .Values.rollout.canary.maxSurge }}
+      stableService: {{ $rolloutCfg.canary.stableService | default (printf "%s-stable" (include "template.fullname" .) ) }}
+      canaryService: {{ $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .) ) }}
+      {{- with $rolloutCfg.canary.maxSurge }}
       maxSurge: {{ . }}
       {{- end }}
-      {{- with .Values.rollout.canary.maxUnavailable }}
+      {{- with $rolloutCfg.canary.maxUnavailable }}
       maxUnavailable: {{ . }}
       {{- end }}
       steps:
-        {{- toYaml .Values.rollout.canary.steps | nindent 8 }}
+        {{- toYaml $rolloutCfg.canary.steps | nindent 8 }}
+    {{- end }}
   template:
     {{- include "template.workloadPodSpec" . | nindent 4 }}
+{{- end }}
 {{- end }}
