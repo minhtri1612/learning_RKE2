@@ -35,7 +35,7 @@ prometheus:
         medium: ""
     remoteWrite:
       # Chạy ./scripts/sync-monitoring-remote-write-url.sh trước khi commit/sync (default tạm: localhost — sai trên workload).
-      - url: http://172.18.0.3:32090/api/v1/write
+      - url: http://172.18.0.2:32090/api/v1/write
         name: management
         queueConfig:
           capacity: 10000
