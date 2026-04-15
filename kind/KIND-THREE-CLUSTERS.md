@@ -40,8 +40,10 @@ kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
 
 helm repo add cilium https://helm.cilium.io 2>/dev/null || true
 helm repo update
-# Lần đầu: chưa có CRD ServiceMonitor (Prometheus Operator) → phải tắt ServiceMonitor trong chart, nếu không Helm lỗi
-# "no matches for kind ServiceMonitor" và Cilium không cài → không CNI → Argo CD Pending.
+# Bootstrap file tắt 2 thứ chưa có lúc này:
+# 1) ServiceMonitor CRD (chưa cài Prometheus Operator) → Helm lỗi "no matches for kind ServiceMonitor"
+# 2) LoadBalancer → NodePort (chưa cài MetalLB → Helm --wait treo chờ EXTERNAL-IP mãi không có)
+# Sau khi Argo sync monitoring + metallb-management + cilium-management, Git sẽ chuyển lại LoadBalancer.
 helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
   --version 1.19.2 \
   -f cilium/cilium-values-management.yaml \
@@ -839,7 +841,7 @@ kubectl --context kind-dev -n meo-stationery delete gateway meo-gw --wait=false
 
 - Replica count / image tag trong `env/<env>.yaml`. Chart workload `template/`; profile `app/be.yaml`, `app/db.yaml`; config `config/base/config.yaml`, override `config/env/<env>.yaml`.
 - **Kind API / TLS:** `bash scripts/kind-fix-kubeconfig-servers.sh` sau `kind create`. Trên **management**, **trước** `helm install cilium` — nếu Helm lỗi TLS thì không có CNI (`disableDefaultCNI`) và Argo CD **Pending**.
-- **Helm Cilium + ServiceMonitor:** Lần đầu trên management **chưa** có kube-prometheus-stack → dùng **hai** file values: `cilium-values-management.yaml` + `cilium-values-management-bootstrap.yaml` (mục **1.2**). Lỗi `no matches for kind "ServiceMonitor"` = thiếu bước này hoặc chưa cài CRD Prometheus Operator.
+- **Helm Cilium bootstrap:** Lần đầu trên management **chưa** có kube-prometheus-stack và MetalLB → **bắt buộc** dùng thêm file `cilium-values-management-bootstrap.yaml` (mục **1.2**). File này tắt ServiceMonitor (chưa có CRD) và override `clustermesh.apiserver.service.type` về `NodePort` (chưa có MetalLB → Helm `--wait` sẽ treo chờ EXTERNAL-IP mãi). Sau khi Argo sync monitoring + metallb-management + cilium-management, ArgoCD sẽ chuyển lại `LoadBalancer` + MetalLB IP tĩnh.
 - **Hubble UI / CLI:** Management → port-forward **12000**. Workload → NodePort **31201 / 31202 / 31203** (IP `docker inspect *-control-plane`). CLI flow: `cilium hubble port-forward` + **`hubble observe flows`** — **mục 1.7.4**.
 - **ClusterMesh:** Tất cả 4 cluster đều dùng `clustermesh-apiserver` kiểu **LoadBalancer** với IP tĩnh MetalLB (`management: 172.18.255.41`, `dev: .11`, `staging: .21`, `prod: .31`), **không phụ thuộc Docker IP/NodePort** — khi recreate Kind, IP Docker đổi nhưng IP MetalLB giữ nguyên.
   - **Hub** (management): khai báo endpoint spoke trong `cilium-values-management.yaml` → `clustermesh.config.clusters` (dev/staging/prod: `172.18.255.11/21/31:2379`).
