@@ -35,15 +35,15 @@ clustermesh:
     # GitOps ClusterMesh: management phải trỏ tới endpoint clustermesh-apiserver thực của spoke.
     # Các IP dưới là control-plane IP trên Docker network kind (NodePort 32379).
     clusters:
-      dev:
+      - name: dev
         ips:
           - 172.18.255.11
         port: 2379
-      staging:
+      - name: staging
         ips:
           - 172.18.255.21
         port: 2379
-      prod:
+      - name: prod
         ips:
           - 172.18.255.31
         port: 2379
