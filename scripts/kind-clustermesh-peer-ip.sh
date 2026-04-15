@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
-# Ghi IP Docker (mạng kind) của management-control-plane vào
+# Ghi endpoint LB của clustermesh-apiserver management vào
 # cilium/clustermesh-management-peer.yaml để spoke (dev/staging/prod) Helm
-# trỏ tới clustermesh-apiserver NodePort 32379 trên hub.
+# trỏ tới cổng 2379 ổn định, không phụ thuộc IP Docker node.
 #
 # Sau khi chạy: git add/commit/push (Argo remote) hoặc sync từ repo local.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${ROOT}/cilium/clustermesh-management-peer.yaml"
-IP="$(docker inspect management-control-plane --format '{{(index .NetworkSettings.Networks "kind").IPAddress}}' 2>/dev/null || true)"
+HUB_CTX="${HUB_CTX:-kind-management}"
+HUB_NS="${HUB_NS:-kube-system}"
+SERVICE_NAME="${SERVICE_NAME:-clustermesh-apiserver}"
+IP="$(kubectl --context "${HUB_CTX}" -n "${HUB_NS}" get svc "${SERVICE_NAME}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 if [[ -z "${IP}" ]]; then
-  echo "Lỗi: không đọc được IP của management-control-plane (container có tên đúng không?)." >&2
+  echo "Lỗi: chưa đọc được EXTERNAL-IP của ${SERVICE_NAME} trên ${HUB_CTX}/${HUB_NS}." >&2
+  echo "Hãy đảm bảo MetalLB management đã chạy và service đã được cấp IP LoadBalancer." >&2
   exit 1
 fi
 cat >"${TARGET}" <<EOF
-# AUTO — scripts/kind-clustermesh-peer-ip.sh — IP mạng Docker kind của management-control-plane
+# AUTO — scripts/kind-clustermesh-peer-ip.sh — endpoint clustermesh-apiserver của management
 clustermesh:
   config:
     clusters:
-      management:
-        port: 32379
+      - name: management
+        port: 2379
         ips:
           - ${IP}
 EOF

@@ -22,6 +22,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="${ROOT}/${MONITORING_WORKLOAD_VALUES:-monitoring/monitoring-workload.yaml}"
 CONTAINER_NAME="${MGMT_CONTROL_PLANE_CONTAINER:-management-control-plane}"
 NODEPORT="${MGMT_PROMETHEUS_NODEPORT:-32090}"
+CHECK_RETRIES="${MGMT_READY_CHECK_RETRIES:-12}"
+CHECK_SLEEP_SECONDS="${MGMT_READY_CHECK_SLEEP_SECONDS:-5}"
 
 COMMIT_PUSH=false
 argv=()
@@ -112,9 +114,21 @@ fi
 
 if $CHECK; then
   ready="$(write_ready_url "$URL")"
-  code="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 "$ready" || true)"
-  echo "GET $ready → HTTP $code"
-  [[ "$code" == "200" ]] && exit 0
+  code=""
+  for i in $(seq 1 "$CHECK_RETRIES"); do
+    code="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 "$ready" || true)"
+    echo "[$i/$CHECK_RETRIES] GET $ready → HTTP $code"
+    if [[ "$code" == "200" ]]; then
+      exit 0
+    fi
+    sleep "$CHECK_SLEEP_SECONDS"
+  done
+  echo "Prometheus management chưa sẵn sàng sau $CHECK_RETRIES lần thử." >&2
+  if command -v kubectl &>/dev/null; then
+    echo "Gợi ý chẩn đoán:" >&2
+    echo "  kubectl --context kind-management -n monitoring get pods" >&2
+    echo "  kubectl --context kind-management -n monitoring get svc monitoring-management-kube-prometheus -o wide" >&2
+  fi
   exit 1
 fi
 
