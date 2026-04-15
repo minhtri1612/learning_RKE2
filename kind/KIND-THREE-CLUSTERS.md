@@ -788,7 +788,24 @@ kubectl --context kind-dev -n meo-stationery delete gateway meo-gw --wait=false
 ## 2. Kiểm tra nhanh
 
 - Remote write (sau recreate Kind): `./scripts/sync-monitoring-remote-write-url.sh --check` — xem **1.6.1**.
-- ClusterMesh: `bash scripts/kind-clustermesh-status.sh` (hoặc `cilium clustermesh status --context kind-management`). Sau recreate Kind chạy `./scripts/kind-clustermesh-sync-spoke-from-hub.sh` để sync TLS bundle 2 chiều + restart agent, rồi sync `cilium-management` trước, sau đó `cilium-{dev,staging,prod}`.
+- ClusterMesh: `bash scripts/kind-clustermesh-status.sh` (hoặc `cilium clustermesh status --context kind-management`). Mô hình hiện tại: spoke `clustermesh-apiserver` chạy `LoadBalancer` với IP tĩnh MetalLB (`172.18.255.11/21/31`) để tránh phụ thuộc IP Node Docker/NodePort sau recreate Kind. Khi có drift/CA rotate: sync `cilium-management` -> chạy `./scripts/kind-clustermesh-sync-spoke-from-hub.sh` -> sync `cilium-{dev,staging,prod}` -> kiểm lại status.
+  Verify nhanh (copy/paste):
+  ```bash
+  # 1) Kiểm endpoint LB của clustermesh-apiserver trên spoke
+  kubectl --context kind-dev     -n kube-system get svc clustermesh-apiserver -o wide
+  kubectl --context kind-staging -n kube-system get svc clustermesh-apiserver -o wide
+  kubectl --context kind-prod    -n kube-system get svc clustermesh-apiserver -o wide
+
+  # 2) Kiểm hostAliases trên management (phải map về 172.18.255.11/21/31)
+  kubectl --context kind-management -n kube-system get deploy clustermesh-apiserver \
+    -o jsonpath='{range .spec.template.spec.hostAliases[*]}{.ip} {.hostnames}{"\n"}{end}'
+
+  # 3) Kiểm kết nối ClusterMesh 4 cụm
+  cilium clustermesh status --context kind-management
+  cilium clustermesh status --context kind-dev
+  cilium clustermesh status --context kind-staging
+  cilium clustermesh status --context kind-prod
+  ```
 - UI ArgoCD: https://localhost:8080 → Applications: `dev-*`, `monitoring-*`...
 - UI Grafana (tập trung; series từ workload có nhãn `cluster` / `environment` từ remote_write):
   ```bash
@@ -808,7 +825,7 @@ kubectl --context kind-dev -n meo-stationery delete gateway meo-gw --wait=false
 - **Kind API / TLS:** `bash scripts/kind-fix-kubeconfig-servers.sh` sau `kind create`. Trên **management**, **trước** `helm install cilium` — nếu Helm lỗi TLS thì không có CNI (`disableDefaultCNI`) và Argo CD **Pending**.
 - **Helm Cilium + ServiceMonitor:** Lần đầu trên management **chưa** có kube-prometheus-stack → dùng **hai** file values: `cilium-values-management.yaml` + `cilium-values-management-bootstrap.yaml` (mục **1.2**). Lỗi `no matches for kind "ServiceMonitor"` = thiếu bước này hoặc chưa cài CRD Prometheus Operator.
 - **Hubble UI / CLI:** Management → port-forward **12000**. Workload → NodePort **31201 / 31202 / 31203** (IP `docker inspect *-control-plane`). CLI flow: `cilium hubble port-forward` + **`hubble observe flows`** — **mục 1.7.4**.
-- **ClusterMesh (spoke):** Hub/spoke cần **cùng** cấu hình encryption với management (`cilium/cilium-values.yaml`). **Hub** phải khai báo đúng endpoint workload trong `cilium-values-management.yaml` → `clustermesh.config.clusters` (dev/staging/prod). Nếu IP sai (ví dụ `prod` đổi node IP sau recreate Kind), KVStoreMesh sẽ báo `connection refused` / `remote cluster configuration required but not found`. Sau khi sửa values, sync `cilium-management`, rồi chạy `./scripts/kind-clustermesh-sync-spoke-from-hub.sh` để copy CA bundle mới xuống spoke, cuối cùng sync `cilium-{dev,staging,prod}` và kiểm bằng `cilium clustermesh status`.
+- **ClusterMesh (spoke):** Hub/spoke cần **cùng** cấu hình encryption với management (`cilium/cilium-values.yaml`). **Hub** phải khai báo đúng endpoint workload trong `cilium-values-management.yaml` -> `clustermesh.config.clusters` (dev/staging/prod), trỏ tới IP MetalLB tĩnh của spoke (`172.18.255.11/21/31:2379`). Nếu pool MetalLB đổi/subnet đổi mà chưa cập nhật values, KVStoreMesh sẽ báo `connection refused` / `remote cluster configuration required but not found`. Sau khi sửa values: sync `cilium-management`, chạy `./scripts/kind-clustermesh-sync-spoke-from-hub.sh` để đồng bộ CA bundle 2 chiều, rồi sync `cilium-{dev,staging,prod}` và kiểm bằng `cilium clustermesh status`.
 - **Monitoring remote_write:** Sau mỗi lần recreate Kind, chạy `./scripts/sync-monitoring-remote-write-url.sh` rồi commit/push và sync agent — chi tiết **1.6.1**. Management không còn scrape tĩnh node-exporter/kube-state từ các workload cluster; nếu bỏ bước này, Grafana thiếu series theo `cluster`/`environment`.
 - **Linux:** Argo CD → API dev/staging/prod dùng **container IP + 6443** (mục **1.4**). `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. Không dùng `host.docker.internal` trên Linux.
 - Đổi port trong `kind/*-kind-config.yaml` thì cập nhật tương ứng mục **1.4** và `scripts/kind-fix-kubeconfig-servers.sh` nếu cần.
