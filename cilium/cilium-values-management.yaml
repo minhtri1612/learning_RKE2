@@ -37,16 +37,16 @@ clustermesh:
     clusters:
       dev:
         ips:
-          - 172.18.0.3
-        port: 32379
+          - 172.18.255.11
+        port: 2379
       staging:
         ips:
-          - 172.18.0.4
-        port: 32379
+          - 172.18.255.21
+        port: 2379
       prod:
         ips:
-          - 172.18.0.5
-        port: 32379
+          - 172.18.255.31
+        port: 2379
 
 bpf:
   events:
