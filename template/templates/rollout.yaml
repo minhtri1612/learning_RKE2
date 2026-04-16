@@ -30,6 +30,13 @@ spec:
     canary:
       stableService: {{ $rolloutCfg.canary.stableService | default (printf "%s-stable" (include "template.fullname" .) ) }}
       canaryService: {{ $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .) ) }}
+      {{- if $.Values.httpRoute.enabled }}
+      trafficRouting:
+        plugins:
+          argoproj-labs/gatewayAPI:
+            httpRoute: {{ include "template.fullname" . }}
+            namespace: {{ .Release.Namespace }}
+      {{- end }}
       {{- with $rolloutCfg.canary.maxSurge }}
       maxSurge: {{ . }}
       {{- end }}
