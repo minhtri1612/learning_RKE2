@@ -9,7 +9,7 @@ backend:
   replicaCount: 5
   rollout:
     enabled: true
-    strategy: canary
+    strategy: blueGreen
 
 database:
   image:
