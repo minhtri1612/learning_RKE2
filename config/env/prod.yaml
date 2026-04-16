@@ -40,6 +40,7 @@ database:
     refreshInterval: 1h
 
 rollout:
+  strategy: canary
   canary:
     steps:
       - setWeight: 5
@@ -52,4 +53,9 @@ rollout:
       - setWeight: 20
       - setWeight: 50
       - setWeight: 100
+  blueGreen:
+    activeService: ""
+    previewService: ""
+    autoPromotionEnabled: true
+    scaleDownDelaySeconds: 30
 
