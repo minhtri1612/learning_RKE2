@@ -21,7 +21,7 @@ httpRoute:
             type: PathPrefix
             value: /api
 ciliumNetworkPolicy:
-  enabled: true
+  enabled: false
   # Phase 1: keep auth mode empty to avoid hard blocking while validating traffic.
   authenticationMode: ""
   ingress:
