@@ -6,7 +6,7 @@ env: dev
 backend:
   image:
     tag: "4.0.2"
-  replicaCount: 5
+  replicaCount: 2
   rollout:
     enabled: true
     strategy: canary
@@ -14,6 +14,6 @@ backend:
 database:
   image:
     tag: "16"
-  replicaCount: 3
+  replicaCount: 1
 
 # Cùng image repo với backend (app/be.yaml); tag phải tồn tại trên registry — 1.0.0 thường gây ErrImagePull
