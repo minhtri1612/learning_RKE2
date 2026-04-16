@@ -377,6 +377,12 @@ chmod +x scripts/sync-monitoring-remote-write-url.sh
 
 5. **Kiểm tra Prometheus management** từ máy host (mong đợi `HTTP 200`):
 
+> **Quan trọng:** Sau recreate Kind, Prometheus pod trên management phải pull image từ `quay.io` / `registry.k8s.io` — mất **3–5 phút** (tuỳ mạng). Trong lúc pod còn `PodInitializing`, NodePort 32090 chưa có process lắng nghe → `--check` sẽ nhận `HTTP 000` (connection refused) liên tục. **Đợi pod Ready trước** rồi mới chạy `--check`:
+>
+> ```bash
+> kubectl --context kind-management -n monitoring wait --for=condition=Ready pod -l app.kubernetes.io/name=prometheus --timeout=600s
+> ```
+
 ```bash
 ./scripts/sync-monitoring-remote-write-url.sh --check
 ```
@@ -415,6 +421,8 @@ argocd app sync monitoring-prod
 cd ~/Downloads/practice_RKE2
 chmod +x scripts/sync-monitoring-remote-write-url.sh
 ./scripts/sync-monitoring-remote-write-url.sh
+# Đợi Prometheus pod Ready (pull image lần đầu mất 3-5 phút, không đợi → --check trả 000)
+kubectl --context kind-management -n monitoring wait --for=condition=Ready pod -l app.kubernetes.io/name=prometheus --timeout=600s
 ./scripts/sync-monitoring-remote-write-url.sh --check
 git add monitoring/monitoring-workload.yaml
 git commit -m "chore(monitoring): sync remote_write URL for Kind" || true
