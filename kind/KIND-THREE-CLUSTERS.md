@@ -782,9 +782,22 @@ kubectl --context kind-dev -n meo-stationery delete gateway meo-gw --wait=false
 - Chart `template` chỉ tạo ConfigMap khi **có** `runtimeConfig.enabled` **và** `runtimeConfig.data` (xem `template/templates/configmap.yaml`). `app/be.yaml` / `app/db.yaml` trong repo này đã có `data` — nếu trên cluster vẫn không thấy ConfigMap, gần như chắc **Argo đang sync revision Git cũ** (bootstrap trỏ `https://github.com/minhtri1612/learning_RKE2.git` `main` — phải **push** đúng repo/branch đó). Sau khi push: Refresh + Sync app trên Argo.
 - Từ bản chart đã cập nhật: Deployment/StatefulSet **chỉ mount** volume `app-config` khi có `runtimeConfig.data` (khớp điều kiện tạo ConfigMap) — tránh pod kẹt vĩnh viễn khi Git chưa có `data` (pod có thể lên nhưng thiếu file config cho tới khi bạn sync đúng Git).
 
+**DATABASE_URL hostname `postgres` vs service name `database`**
+
+- AWS Secrets Manager (và mục 1.5.2 static secrets) lưu `DATABASE_URL` với hostname **`postgres.database.svc.cluster.local`**.
+- Nhưng ArgoCD template set `fullnameOverride: database` → K8s service tên **`database`**, không phải `postgres`.
+- **Fix đã có trong Git:** `config/base/config.yaml` khai báo `database.service.aliases: [postgres]`, template `service-alias.yaml` tự tạo ExternalName service `postgres` → `database.database.svc.cluster.local`. ArgoCD quản lý, không mất khi recreate Kind.
+- Nếu vẫn lỗi DNS `NXDOMAIN` cho `postgres.database.svc...`: sync lại database app (`argocd app sync argocd/*-meostation-database-app`).
+
 **ExternalSecret database `SecretSyncedError`**
 
 - Kiểm tra `config/env/<env>.yaml`: `database.secrets.remoteKey` phải **trùng tên secret thật** trên AWS. Nếu Terraform chỉ tạo một JSON `.../app-credentials`, đừng trỏ DB sang `.../database` khi secret đó chưa tồn tại.
+
+**Backend CrashLoopBackOff — probe timeout trên Kind**
+
+- CiliumNetworkPolicy L7 HTTP rules route tất cả traffic qua Envoy proxy. Trên Kind single-node, Envoy bị overload → kubelet health probe timeout → liveness kill container → CrashLoopBackOff.
+- **Fix:** `ciliumNetworkPolicy.enabled: false` trong `config/env/{dev,staging,prod}.yaml` khi chạy trên Kind. Bật lại trên cluster multi-node / RKE2.
+- Probe config nên có `initialDelaySeconds` và `timeoutSeconds` >= 5s (xem `app/be.yaml`).
 
 **Grafana không thấy (hoặc thiếu) metrics từ cluster dev/staging/prod**
 
