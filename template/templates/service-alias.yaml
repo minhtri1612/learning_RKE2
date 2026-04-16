@@ -1,0 +1,16 @@
+{{- $fullName := include "template.fullname" . }}
+{{- $svcName := .Values.currentService | default "backend" }}
+{{- $svc := (index .Values $svcName) | default dict }}
+{{- $svcCfg := $svc.service | default dict }}
+{{- range $svcCfg.aliases | default list }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ . }}
+  labels:
+    {{- include "template.labels" $ | nindent 4 }}
+spec:
+  type: ExternalName
+  externalName: {{ $fullName }}.{{ $.Release.Namespace }}.svc.cluster.local
+{{- end }}

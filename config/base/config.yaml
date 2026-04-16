@@ -35,6 +35,11 @@ database:
   # Metadata
   namespace: database
   syncWave: "-3"
+  # AWS secret dùng hostname "postgres" nhưng Helm tạo service tên "database" (fullnameOverride).
+  # Alias này tạo ExternalName service "postgres" → "database.database.svc.cluster.local".
+  service:
+    aliases:
+      - postgres
 
   # Cấu hình biến môi trường
   configs:
