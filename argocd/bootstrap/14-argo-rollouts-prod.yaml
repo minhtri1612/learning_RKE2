@@ -5,10 +5,16 @@ metadata:
   namespace: argocd
 spec:
   project: prod
-  source:
-    repoURL: https://argoproj.github.io/argo-helm
-    chart: argo-rollouts
-    targetRevision: 2.40.9
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-rollouts
+      targetRevision: 2.40.9
+      helm:
+        valueFiles:
+          - $values/argocd/argo-rollouts-values.yaml
+    - repoURL: https://github.com/minhtri1612/learning_RKE2.git
+      targetRevision: main
+      ref: values
   destination:
     name: prod
     namespace: argo-rollouts
