@@ -18,6 +18,12 @@ spec:
     matchLabels:
       {{- include "template.selectorLabels" . | nindent 6 }}
   ingress:
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: {{ .Values.service.containerPort | default .Values.service.port | quote }}
+              protocol: TCP
     - {{- if gt (len $fromEps) 0 }}
       fromEndpoints:
         {{- toYaml $fromEps | nindent 8 }}
@@ -43,6 +49,16 @@ spec:
           {{- end }}
   {{- if or (gt (len $toEps) 0) (gt (len $toEntities) 0) }}
   egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
     - {{- if gt (len $toEps) 0 }}
       toEndpoints:
         {{- toYaml $toEps | nindent 8 }}
