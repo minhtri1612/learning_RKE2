@@ -1,5 +1,4 @@
 controller:
   trafficRouterPlugins:
-    trafficRouterPlugins: |-
-      - name: "argoproj-labs/gatewayAPI"
-        location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.12.0/gatewayapi-plugin-linux-amd64"
+    - name: "argoproj-labs/gatewayAPI"
+      location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.12.0/gatewayapi-plugin-linux-amd64"
