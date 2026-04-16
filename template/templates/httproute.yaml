@@ -33,6 +33,7 @@ spec:
   {{- end }}
   rules:
     {{- range .Values.httpRoute.rules }}
+    {{- $routeTo := .routeTo | default "" | lower }}
     {{- with .matches }}
     - matches:
       {{- toYaml . | nindent 8 }}
@@ -41,7 +42,22 @@ spec:
       filters:
       {{- toYaml . | nindent 8 }}
     {{- end }}
-      {{- if and $rolloutEnabled ($.Values.httpRoute.useRolloutCanaryBackends | default true) (eq $strategy "canary") }}
+      {{- if and $rolloutEnabled (eq $strategy "canary") (eq $routeTo "canary") }}
+      backendRefs:
+        - name: {{ $canarySvc }}
+          port: {{ $svcPort }}
+          weight: 1
+      {{- else if and $rolloutEnabled (eq $strategy "canary") (eq $routeTo "stable") }}
+      backendRefs:
+        - name: {{ $stableSvc }}
+          port: {{ $svcPort }}
+          weight: 1
+      {{- else if and $rolloutEnabled (eq $strategy "bluegreen") (eq $routeTo "preview") }}
+      backendRefs:
+        - name: {{ $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" $fullName) }}
+          port: {{ $svcPort }}
+          weight: 1
+      {{- else if and $rolloutEnabled ($.Values.httpRoute.useRolloutCanaryBackends | default true) (eq $strategy "canary") }}
       backendRefs:
         - name: {{ $stableSvc }}
           port: {{ $svcPort }}

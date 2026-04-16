@@ -110,6 +110,9 @@ httpRoute:
     - path:
         type: PathPrefix
         value: /headers
+    # Optional explicit backend selection when rollout is enabled:
+    # routeTo: canary | stable | preview
+    # If omitted, chart uses default behavior (weighted canary split or active service).
   #   filters:
   #   - type: RequestHeaderModifier
   #     requestHeaderModifier:

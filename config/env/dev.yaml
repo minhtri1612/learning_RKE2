@@ -4,6 +4,22 @@ projectName: meo-stationery
 httpRoute:
   hostnames:
     - dev.meo.local
+  rules:
+    # Smart canary: chỉ request có header x-canary=1 mới vào canary.
+    - routeTo: canary
+      matches:
+        - path:
+            type: PathPrefix
+            value: /api
+          headers:
+            - name: x-canary
+              value: "1"
+    # Mặc định đi stable để tách biệt rõ với canary header-based.
+    - routeTo: stable
+      matches:
+        - path:
+            type: PathPrefix
+            value: /api
 ciliumNetworkPolicy:
   enabled: true
   # Phase 1: keep auth mode empty to avoid hard blocking while validating traffic.
