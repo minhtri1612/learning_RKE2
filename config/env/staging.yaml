@@ -5,7 +5,7 @@ httpRoute:
   hostnames:
     - staging.meo.local
 ciliumNetworkPolicy:
-  enabled: true
+  enabled: false
   # Phase 2: keep auth mode empty, then move to "required" after soak test.
   authenticationMode: ""
   ingress:
