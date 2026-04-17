@@ -97,27 +97,9 @@ httpRoute:
   # Hostnames matching HTTP header.
   hostnames:
   - dev.meo.local
-  # List of rules and filters applied.
-  rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /headers
-  #   filters:
-  #   - type: RequestHeaderModifier
-  #     requestHeaderModifier:
-  #       set:
-  #       - name: My-Overwrite-Header
-  #         value: this-is-the-only-value
-  #       remove:
-  #       - User-Agent
-  # - matches:
-  #   - path:
-  #       type: PathPrefix
-  #       value: /echo
-  #     headers:
-  #     - name: version
-  #       value: v2
+  # Route rules are environment-owned.
+  # Define `httpRoute.rules` in `config/env/<env>.yaml` to avoid list override surprises.
+  rules: []
   useRolloutCanaryBackends: true
   stableWeight: 90
   canaryWeight: 10

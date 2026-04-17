@@ -2,24 +2,26 @@
 env: dev
 projectName: meo-stationery
 httpRoute:
+  # DEV owns the full HTTPRoute rule set (base `app/be.yaml` keeps `rules: []`).
+  # Reason: Helm replaces lists, so defining rules in both base and env causes silent overrides.
   hostnames:
     - dev.meo.local
   rules:
-    # Smart canary: chỉ request có header x-canary=1 mới vào canary.
+    # Rule 1: Header-based canary cho QA/beta test chủ động.
     - routeTo: canary
       matches:
         - path:
             type: PathPrefix
-            value: /api
+            value: /
           headers:
             - name: x-canary
-              value: "1"
-    # Mặc định đi stable để tách biệt rõ với canary header-based.
-    - routeTo: stable
-      matches:
+              value: "true"
+    # Rule 2: Fallback weighted split cho traffic không có header canary.
+    # routeTo để trống để chart render backendRefs stable/canary theo stableWeight/canaryWeight.
+    - matches:
         - path:
             type: PathPrefix
-            value: /api
+            value: /
 ciliumNetworkPolicy:
   enabled: false
   # Phase 1: keep auth mode empty to avoid hard blocking while validating traffic.
