@@ -9,7 +9,7 @@ backend:
   replicaCount: 7
   rollout:
     enabled: true
-    strategy: blueGreen
+    strategy: canary
 database:
   image:
     tag: "16"
