@@ -69,13 +69,14 @@ rollout:
   strategy: canary
   canary:
     steps:
-      - setWeight: 50
+      - setWeight: 20
       - analysis:
           templates:
             - templateName: success-rate
           args:
             - name: service-name
               value: backend
+      - setWeight: 50
       - setWeight: 100
   blueGreen:
     activeService: ""
