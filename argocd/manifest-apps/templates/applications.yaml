@@ -55,7 +55,7 @@ spec:
       - CreateNamespace=true
   ignoreDifferences:
     - group: apps
-      kind: Deployment
+      kind: Rollout
       jsonPointers:
         - /spec/replicas
     # Cilium (và Gateway API) ghi status trên cluster; Git không có → dễ OutOfSync dù spec đúng.
