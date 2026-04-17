@@ -5,7 +5,7 @@ env: dev
 
 backend:
   image:
-    tag: "4.0.3"
+    tag: "4.0.1"
   replicaCount: 10
   rollout:
     enabled: true
