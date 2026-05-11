@@ -25,7 +25,7 @@ output "cluster_api_url" {
 
 output "web_nlb_dns_name" {
   value       = module.loadbalancers.web_nlb_dns_name
-  description = "NLB DNS cho web (meo-stationery.local, argocd.local, rancher.local)"
+  description = "NLB DNS cho web (meo-stationery*.local, argocd.local)"
 }
 
 output "ssh_key_file" {
