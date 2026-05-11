@@ -1,5 +1,5 @@
 # Cilium trên cluster **management** (hub ClusterMesh + Hubble UI). GitOps / Argo: app `cilium-management`.
-# cluster.id/name: management / 1. Spoke: cilium-cluster-*.yaml (id 2–4) + clustermesh-management-peer.yaml.
+# cluster.id/name: management / 1. Spoke: cilium-cluster-*.yaml (id 2–3) + clustermesh-management-peer.yaml.
 # Helm **tay** lần đầu (trước Prometheus Operator): thêm `-f cilium-values-management-bootstrap.yaml` để tắt ServiceMonitor.
 
 cluster:
@@ -33,19 +33,15 @@ clustermesh:
         metallb.universe.tf/loadBalancerIPs: "172.18.255.41"
   config:
     enabled: true
-    # Phải khớp cluster.name trên spoke (dev / staging / prod). Tạo key trong Secret
+    # Phải khớp cluster.name trên spoke (dev / prod). Tạo key trong Secret
     # cilium-clustermesh (+ cilium-kvstoremesh) trên hub — không có thì `cilium clustermesh status`
     # luôn báo "No cluster connected" dù agent spoke đã nối etcd (CLI đọc secret để biết tên peer).
     # GitOps ClusterMesh: management phải trỏ tới endpoint clustermesh-apiserver thực của spoke.
-    # Các IP dưới là control-plane IP trên Docker network kind (NodePort 32379).
+    # Trên Cloud (AWS): thay bằng Private IP của NLB/instance thật, không dùng Docker IP.
     clusters:
       - name: dev
         ips:
           - 172.18.255.11
-        port: 2379
-      - name: staging
-        ips:
-          - 172.18.255.21
         port: 2379
       - name: prod
         ips:

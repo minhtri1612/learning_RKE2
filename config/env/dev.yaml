@@ -69,7 +69,7 @@ database:
   secrets:
     target:
       name: meo-stationery-database-secrets-dev
-    # Cùng JSON AWS như backend (khớp terraform_secret / staging); đừng trỏ /database nếu secret đó chưa tạo.
+    # Cùng JSON AWS như backend (khớp terraform_secret); đừng trỏ /database nếu secret đó chưa tạo.
     remoteKey: meo-stationery/dev/app-credentials
     refreshInterval: 1h
 

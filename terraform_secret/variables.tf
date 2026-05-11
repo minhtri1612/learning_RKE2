@@ -10,8 +10,8 @@ variable "project_name" {
 
 variable "environments" {
   type        = set(string)
-  description = "dev / staging / prod"
-  default     = ["dev", "staging", "prod"]
+  description = "dev / prod"
+  default     = ["dev", "prod"]
 }
 
 variable "postgres_service_host" {

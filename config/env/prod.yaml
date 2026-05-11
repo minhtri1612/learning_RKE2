@@ -11,7 +11,7 @@ httpRoute:
     - prod.meo.local
 ciliumNetworkPolicy:
   enabled: false
-  # Giống dev/staging cho đến khi mesh/mTLS Cilium được cấu hình xong; "required" chặn traffic nếu chưa có cert SPIRE/Auth.
+  # Giống dev cho đến khi mesh/mTLS Cilium được cấu hình xong; "required" chặn traffic nếu chưa có cert SPIRE/Auth.
   authenticationMode: ""
   ingress:
     fromEntities:

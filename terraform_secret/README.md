@@ -1,4 +1,4 @@
-# terraform_secret — chỉ AWS Secrets Manager (dev / staging / prod)
+# terraform_secret — chỉ AWS Secrets Manager (dev / prod)
 
 Root Terraform **tách hẳn** khỏi `terraform/` (RKE2, VPC, …). Một `apply` tạo **ba secret** JSON trên Secrets Manager:
 

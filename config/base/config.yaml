@@ -1,5 +1,5 @@
 # Base config dùng chung cho mọi môi trường.
-# Mọi giá trị khác nhau theo môi trường được override ở config/env/{dev,staging,prod}.yaml
+# Mọi giá trị khác nhau theo môi trường được override ở config/env/{dev,prod}.yaml
 
 backend:
   # Metadata cho Deployment/Secret (ArgoCD Sync Wave, Namespace)

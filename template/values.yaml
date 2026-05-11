@@ -194,7 +194,7 @@ runtimeConfig:
 # Default true for Argo deploys; local tests without secrets: --set useExternalSecrets=false or a small values file.
 useExternalSecrets: true
 
-# -- Environment name (dev, staging, prod)
+# -- Environment name (dev, prod)
 env: ""
 
 # -- Deployment strategy/kind (deployment, statefulset, rollout).

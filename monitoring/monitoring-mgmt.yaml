@@ -24,7 +24,7 @@ prometheus:
     storageSpec:
       emptyDir:
         medium: ""
-    # Nhận remote_write từ Prometheus Agent trên dev/staging/prod (cổng Service NodePort 32090).
+    # Nhận remote_write từ Prometheus Agent trên dev/prod (cổng Service NodePort 32090).
     enableRemoteWriteReceiver: true
 
 # Disable components that we don't need for management

@@ -19,8 +19,8 @@
 # Trong container management:
 #   docker exec management-control-plane curl -sS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:32090/-/ready"
 #
-# Phân tách env trong Grafana: dùng label từ monitoring-workload-labels-{dev,staging,prod}.yaml
-#   ví dụ: up{cluster="dev"}, kube_pod_*{cluster="staging"}
+# Phân tách env trong Grafana: dùng label từ monitoring-workload-labels-{dev,prod}.yaml
+#   ví dụ: up{cluster="dev"}, kube_pod_*{cluster="prod"}
 
 fullnameOverride: kps-wl
 grafana:

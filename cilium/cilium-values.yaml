@@ -1,6 +1,6 @@
 kubeProxyReplacement: true
 
-# Spoke (dev/staging/prod): bật clustermesh-apiserver để management có endpoint remote thật
+# Spoke (dev/prod): bật clustermesh-apiserver để management có endpoint remote thật
 # (NodePort trên mỗi spoke) trong mô hình GitOps declarative.
 clustermesh:
   useAPIServer: true
@@ -49,7 +49,7 @@ hubble:
   skipUnknownCGroupIDs: false
   relay:
     enabled: true
-  # UI workload: bật + NodePort riêng trong cilium-cluster-{dev,staging,prod}.yaml (31201–31203).
+  # UI workload: bật + NodePort riêng trong cilium-cluster-{dev,prod}.yaml (31201/31203).
   # Management: cilium-values-management.yaml (UI ClusterIP / port-forward 12000).
   ui:
     enabled: false

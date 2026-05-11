@@ -27,24 +27,6 @@ environments:
       - group: "*"
         kind: "*"
 
-  - name: staging
-    cluster: staging
-    namespaces:
-      - meo-stationery
-      - database
-      - monitoring
-      - metallb-system
-      - argo-rollouts
-      - kube-system
-      - cilium-secrets
-    clusterResourceWhitelist:
-      - group: ""
-        kind: Namespace
-      - group: "*"
-        kind: "*"
-    namespaceResourceWhitelist:
-      - group: "*"
-        kind: "*"
 
   - name: prod
     cluster: prod
