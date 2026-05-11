@@ -23,14 +23,14 @@ encryption:
 
 clustermesh:
   useAPIServer: true
-  # Kind management 1 node: mặc định chart / bản cũ có thể replicas=2 → pod 2 Pending →
-  # `cilium clustermesh status` lỗi "only 1 of 2 replicas are available".
+  # Lab 1 node: giữ replicas=1 (chart mặc định 2 có thể khiến pod 2 Pending trên single-node).
   apiserver:
     replicas: 1
+    # AWS / RKE2: NodePort. Spoke trỏ hub qua private IP + cổng này (clustermesh-management-peer.yaml).
     service:
-      type: LoadBalancer
-      annotations:
-        metallb.universe.tf/loadBalancerIPs: "172.18.255.41"
+      type: NodePort
+      nodePort: 32379
+      annotations: {}
   config:
     enabled: true
     # Phải khớp cluster.name trên spoke (dev / prod). Tạo key trong Secret
@@ -41,12 +41,12 @@ clustermesh:
     clusters:
       - name: dev
         ips:
-          - 172.18.255.11
-        port: 2379
+          - PLACEHOLDER_DEV_NODE_IP
+        port: 32379
       - name: prod
         ips:
-          - 172.18.255.31
-        port: 2379
+          - PLACEHOLDER_PROD_NODE_IP
+        port: 32380
 
 bpf:
   events:

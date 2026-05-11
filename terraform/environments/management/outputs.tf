@@ -8,6 +8,11 @@ output "master_private_ip" {
   description = "Private IPs master nodes (sau khi VPN: ssh ubuntu@<ip>)"
 }
 
+output "worker_private_ips" {
+  value       = module.rke2.worker_private_ips
+  description = "Private IPs worker nodes (ClusterMesh / NLB targets)"
+}
+
 output "master_public_ip" {
   value = module.rke2.master_public_ips
 }

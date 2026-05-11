@@ -14,7 +14,7 @@ grafana:
 
 prometheus:
   enabled: true
-  # Expose for cross-cluster Rollouts analysis; IP in config/env/*.yaml = mgmt control-plane on kind network.
+  # Expose cho remote_write / Rollouts analysis; workload trỏ tới private IP node management (VPC peering + SG).
   service:
     type: NodePort
     nodePort: 32090

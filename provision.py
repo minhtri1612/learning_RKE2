@@ -15,6 +15,7 @@ Sau khi chạy xong:
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -26,6 +27,12 @@ ANSIBLE_DIR = os.path.join(_SCRIPT_DIR, "ansible")
 
 _VALID_ENVS = ("dev", "prod", "management")
 SSH_KEY_FILE_NAME = "k8s-key.pem"
+# Giống Ansible: IPv4, không multiplex (tránh socket ControlMaster hỏng), timeout dài.
+OPENVPN_SSH_OPTS = (
+    "-o IdentitiesOnly=yes -o StrictHostKeyChecking=no "
+    "-o ConnectTimeout=60 -o ConnectionAttempts=3 -o AddressFamily=inet "
+    "-o ControlMaster=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+)
 
 
 def _get_env():
@@ -77,6 +84,48 @@ def get_management_openvpn_ip():
         return data.get("openvpn_public_ip", {}).get("value", "")
     except Exception:
         return ""
+
+
+def _push_ssh_key_to_jump_host(openvpn_ip, jump_identity_key, local_key_path, remote_key_name, timeout=90):
+    """Đẩy private key lên jump (~/.ssh/<remote_key_name>) trong một phiên SSH.
+
+    Tránh `scp` mở kết nối thứ hai ngay sau khi Ansible restart OpenVPN — hay gặp timeout tới :22.
+    """
+    with open(local_key_path, "rb") as f:
+        key_bytes = f.read()
+    # OpenSSH ghép argv sau user@host bằng dấu cách *không* tự quote →
+    # `ssh host bash -c "mkdir -p ..."` bị hiểu thành bash -c nhận *một từ* `mkdir` → "mkdir: missing operand".
+    # Cách ổn: **một** chuỗi lệnh xa: bash -c '...' (toàn bộ đã quote).
+    remote_dir = "/home/ubuntu/.ssh"
+    remote_path = f"{remote_dir}/{remote_key_name}"
+    remote_script = (
+        f"mkdir -p {remote_dir} && chmod 700 {remote_dir} "
+        f"&& cat > {remote_path} && chmod 600 {remote_path}"
+    )
+    remote_one_liner = f"/bin/bash -c {shlex.quote(remote_script)}"
+    ssh_cmd = (
+        ["ssh", "-T", "-i", jump_identity_key]
+        + shlex.split(OPENVPN_SSH_OPTS)
+        + [f"ubuntu@{openvpn_ip}", remote_one_liner]
+    )
+    for attempt in range(1, 5):
+        print(f"  Đẩy k8s private key lên jump (1×SSH), thử {attempt}/4...")
+        try:
+            res = subprocess.run(ssh_cmd, input=key_bytes, capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            print(f"  ⚠ SSH timeout sau {timeout}s")
+            time.sleep(5 * attempt)
+            continue
+        if res.returncode == 0:
+            print("  ✓ Key đã nằm trên OpenVPN server (~/.ssh/).")
+            return
+        err = (res.stderr or res.stdout or b"").decode(errors="replace").strip()[:500]
+        print(f"  ⚠ Lỗi: {err}")
+        time.sleep(5 * attempt)
+    print("  ✗ Không đẩy được key lên jump host.")
+    print("      Kiểm tra: terraform.tfvars → my_ip phải cho phép SSH từ IP máy bạn (hoặc 0.0.0.0/0 khi lab).")
+    print(f"      Thử tay: ssh -i {jump_identity_key} ubuntu@{openvpn_ip}")
+    sys.exit(1)
 
 
 # ── Phase 1 Functions ─────────────────────────────────────────────────────────
@@ -133,16 +182,25 @@ def run_openvpn_ansible(openvpn_public_ip):
     max_wait = 300
     print(f"  Waiting for OpenVPN instance to accept SSH (tối đa {max_wait // 60} phút)...")
     ssh_ok = False
+    probe_cmd = (
+        f"ssh -i {ssh_key_path} {OPENVPN_SSH_OPTS} "
+        f"ubuntu@{openvpn_public_ip} 'echo ready'"
+    )
     for waited in range(0, max_wait, 10):
         try:
             res = subprocess.run(
-                f"ssh -i {ssh_key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@{openvpn_public_ip} 'echo ready'",
-                shell=True, capture_output=True, timeout=15,
+                probe_cmd,
+                shell=True,
+                capture_output=True,
+                timeout=90,
             )
-            if res.returncode == 0:
+            out = (res.stdout or b"").strip()
+            if res.returncode == 0 and b"ready" in out:
                 print(f"  ✓ OpenVPN server SSH ready (waited {waited}s)")
                 ssh_ok = True
                 break
+        except subprocess.TimeoutExpired:
+            pass
         except Exception:
             pass
         if waited % 30 == 0 and waited > 0:
@@ -151,8 +209,13 @@ def run_openvpn_ansible(openvpn_public_ip):
 
     if not ssh_ok:
         print(f"  ✗ OpenVPN server SSH timeout after {max_wait}s.")
-        print(f"  Kiểm tra SSH thủ công: ssh -o IdentitiesOnly=yes -i {ssh_key_path} ubuntu@{openvpn_public_ip}")
+        print(f"  Kiểm tra: terraform.tfvars → my_ip = IP máy bạn /32 (hoặc 0.0.0.0/0 khi lab).")
+        print(f"  Thử tay: {probe_cmd}")
         sys.exit(1)
+
+    # Tránh race: probe xong → Ansible mở kênh mới ngay (đôi khi flake sau EIP/NLB).
+    print("  Nghỉ 8s trước khi chạy Ansible...")
+    time.sleep(8)
 
     vpn_server_yml = os.path.join(ANSIBLE_DIR, "group_vars", "vpn_server.yml")
     with open(vpn_server_yml, "r") as f:
@@ -162,11 +225,23 @@ def run_openvpn_ansible(openvpn_public_ip):
         vpn_cfg = re.sub(r"ansible_ssh_private_key_file:\s*[^\n]+", key_line, vpn_cfg)
     else:
         vpn_cfg = vpn_cfg.rstrip() + "\n" + key_line + "\n"
-    if "IdentitiesOnly" not in vpn_cfg:
-        if "ansible_ssh_common_args:" in vpn_cfg:
-            vpn_cfg = re.sub(r'(ansible_ssh_common_args:\s*)"', r'\1"-o IdentitiesOnly=yes ', vpn_cfg)
-        else:
-            vpn_cfg = vpn_cfg.rstrip() + '\nansible_ssh_common_args: "-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=30"\n'
+    # Đồng bộ SSH args với probe (quote YAML).
+    common_args_line = (
+        'ansible_ssh_common_args: "'
+        "-o StrictHostKeyChecking=no -o IdentitiesOnly=yes "
+        "-o ConnectTimeout=60 -o ConnectionAttempts=3 -o AddressFamily=inet "
+        "-o ControlMaster=no -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+        '"'
+    )
+    if re.search(r"^ansible_ssh_common_args:\s*", vpn_cfg, re.MULTILINE):
+        vpn_cfg = re.sub(
+            r"^ansible_ssh_common_args:\s*.+$",
+            common_args_line,
+            vpn_cfg,
+            flags=re.MULTILINE,
+        )
+    else:
+        vpn_cfg = vpn_cfg.rstrip() + "\n" + common_args_line + "\n"
     with open(vpn_server_yml, "w") as f:
         f.write(vpn_cfg)
 
@@ -177,11 +252,38 @@ def run_openvpn_ansible(openvpn_public_ip):
     env = os.environ.copy()
     env["ANSIBLE_HOST_KEY_CHECKING"] = "False"
     env["ANSIBLE_PRIVATE_KEY_FILE"] = ssh_key_path
-    run_command(
-        f"ansible-playbook -i inventory_openvpn.yml -e openvpn_public_ip={openvpn_public_ip} openvpn-server.yml",
-        cwd=ANSIBLE_DIR, env=env, timeout=600,
+    # Tránh pipelining / multiplex gây lỗi ngẫu nhiên trên một số máy.
+    env.setdefault("ANSIBLE_PIPELINING", "False")
+    env.setdefault("ANSIBLE_SSH_RETRIES", "4")
+
+    pb_cmd = (
+        f"ansible-playbook -i inventory_openvpn.yml "
+        f"-e openvpn_public_ip={openvpn_public_ip} openvpn-server.yml"
     )
-    print("  ✓ OpenVPN server configured; .ovpn file downloaded to project root.")
+    last_err = ""
+    for attempt in range(1, 5):
+        print(f"  ansible-playbook (thử {attempt}/4)...")
+        try:
+            subprocess.run(
+                pb_cmd,
+                shell=True,
+                cwd=ANSIBLE_DIR,
+                env=env,
+                check=True,
+                timeout=600,
+            )
+            print("  ✓ OpenVPN server configured; .ovpn file downloaded to project root.")
+            return
+        except subprocess.CalledProcessError as e:
+            last_err = str(e)
+        except subprocess.TimeoutExpired:
+            last_err = "ansible-playbook timeout (600s)"
+        print(f"  ⚠ Ansible lỗi, chờ {15 * attempt}s rồi thử lại...")
+        time.sleep(15 * attempt)
+
+    print(f"  ✗ ansible-playbook thất bại sau 4 lần: {last_err}")
+    print(f"  SSH tay: {probe_cmd}")
+    sys.exit(1)
 
 
 def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns, jump_ssh_key_path=None, key_on_jump="k8s-key.pem"):
@@ -194,20 +296,21 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns, jump_ssh_key_path=N
     for waited in range(0, 120, 5):
         try:
             res = subprocess.run(
-                f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} 'echo ready'",
-                shell=True, capture_output=True, timeout=10,
+                f"ssh -i {key_to_jump} {OPENVPN_SSH_OPTS} ubuntu@{openvpn_ip} 'echo ready'",
+                shell=True,
+                capture_output=True,
+                timeout=90,
             )
-            if res.returncode == 0:
+            if res.returncode == 0 and b"ready" in (res.stdout or b""):
                 print(f"  ✓ OpenVPN server ready (waited {waited}s)")
                 break
         except Exception:
             pass
         time.sleep(5)
 
-    print("  Copying SSH key to OpenVPN server...")
-    run_command(f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'", timeout=15)
-    run_command(f"scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i {key_to_jump} {master_key_path} ubuntu@{openvpn_ip}:~/.ssh/{key_on_jump}", timeout=30)
-    run_command(f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} 'chmod 600 ~/.ssh/{key_on_jump}'", timeout=15)
+    print("  Nghỉ 20s sau khi Ansible restart OpenVPN (tránh flake SSH ngay sau đó)...")
+    time.sleep(20)
+    _push_ssh_key_to_jump_host(openvpn_ip, key_to_jump, master_key_path, key_on_jump)
 
     print("  Waiting for RKE2 to generate kubeconfig (user_data is running)...")
     time.sleep(180)
@@ -217,9 +320,11 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns, jump_ssh_key_path=N
     for waited in range(0, 420, 15):
         try:
             res = subprocess.run(
-                f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@{openvpn_ip} "
+                f"ssh -i {key_to_jump} {OPENVPN_SSH_OPTS} ubuntu@{openvpn_ip} "
                 f"'{inner_ssh} \"test -f /home/ubuntu/.kube/config || sudo test -f /etc/rancher/rke2/rke2.yaml\" && echo ready'",
-                shell=True, capture_output=True, timeout=25,
+                shell=True,
+                capture_output=True,
+                timeout=90,
             )
             if res.returncode == 0 and b"ready" in (res.stdout or b""):
                 print(f"  ✓ kubeconfig ready (waited {waited}s)")
@@ -234,14 +339,18 @@ def fetch_kubeconfig(openvpn_ip, master_private_ip, nlb_dns, jump_ssh_key_path=N
     kubeconfig_content = None
     try:
         kubeconfig_content = subprocess.check_output(
-            f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} '{inner_ssh} cat /home/ubuntu/.kube/config'",
-            shell=True, timeout=30, stderr=subprocess.PIPE,
+            f"ssh -i {key_to_jump} {OPENVPN_SSH_OPTS} ubuntu@{openvpn_ip} '{inner_ssh} cat /home/ubuntu/.kube/config'",
+            shell=True,
+            timeout=90,
+            stderr=subprocess.PIPE,
         )
     except subprocess.CalledProcessError:
         try:
             kubeconfig_content = subprocess.check_output(
-                f"ssh -i {key_to_jump} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no ubuntu@{openvpn_ip} '{inner_ssh} sudo cat /etc/rancher/rke2/rke2.yaml'",
-                shell=True, timeout=30, stderr=subprocess.PIPE,
+                f"ssh -i {key_to_jump} {OPENVPN_SSH_OPTS} ubuntu@{openvpn_ip} '{inner_ssh} sudo cat /etc/rancher/rke2/rke2.yaml'",
+                shell=True,
+                timeout=90,
+                stderr=subprocess.PIPE,
             )
             print("  ✓ Used /etc/rancher/rke2/rke2.yaml (fallback)")
         except subprocess.CalledProcessError as e2:
@@ -291,9 +400,11 @@ def wait_for_api_from_openvpn(openvpn_ip, master_private_ip, max_wait=600, jump_
     for waited in range(0, max_wait, 15):
         try:
             res = subprocess.run(
-                f"ssh -i {key_path} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@{openvpn_ip} "
+                f"ssh -i {key_path} {OPENVPN_SSH_OPTS} ubuntu@{openvpn_ip} "
                 f"curl -k -s -o /dev/null -w '%{{http_code}}' --connect-timeout 5 https://{master_private_ip}:6443/readyz 2>&1; echo ' exit='$?",
-                shell=True, capture_output=True, timeout=20,
+                shell=True,
+                capture_output=True,
+                timeout=90,
             )
             out = (res.stdout or b"").decode(errors="replace").strip()
             err = (res.stderr or b"").decode(errors="replace").strip()

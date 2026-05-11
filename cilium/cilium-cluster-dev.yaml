@@ -3,7 +3,7 @@ cluster:
   name: dev
   id: 2
 
-# Hubble UI: NodePort cố định — từ host Kind: http://<IP dev-control-plane>:31201
+# Hubble UI: NodePort cố định — http://<node-private-ip>:31201 (VPN / bastion).
 hubble:
   ui:
     enabled: true
@@ -16,6 +16,5 @@ clustermesh:
     enabled: true
   apiserver:
     service:
-      type: LoadBalancer
-      annotations:
-        metallb.universe.tf/loadBalancerIPs: "172.18.255.11"
+      type: NodePort
+      nodePort: 32379

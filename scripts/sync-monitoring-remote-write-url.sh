@@ -2,25 +2,23 @@
 # Đồng bộ remote_write URL (Prometheus Agent workload → Prometheus management) — không hardcode IP trong Git.
 #
 # Cách dùng:
-#   ./scripts/sync-monitoring-remote-write-url.sh              # đọc IP từ Docker
+#   ./scripts/sync-monitoring-remote-write-url.sh              # đọc IP từ terraform/environments/management
 #   MGMT_PROMETHEUS_REMOTE_WRITE_URL='http://x:32090/api/v1/write' ./scripts/sync-monitoring-remote-write-url.sh
-#   ./scripts/sync-monitoring-remote-write-url.sh --print-only # chỉ in URL write
+#   ./scripts/sync-monitoring-remote-write-url.sh --print-only
 #   ./scripts/sync-monitoring-remote-write-url.sh --print-ready-url
-#   ./scripts/sync-monitoring-remote-write-url.sh --check        # GET /-/ready từ máy host
-#   ./scripts/sync-monitoring-remote-write-url.sh --commit-push  # sau khi ghi file: git add/commit (nếu có diff) + push
+#   ./scripts/sync-monitoring-remote-write-url.sh --check
+#   ./scripts/sync-monitoring-remote-write-url.sh --commit-push
 #   ./scripts/sync-monitoring-remote-write-url.sh --help
 #
 # Biến môi trường:
-#   MGMT_PROMETHEUS_REMOTE_WRITE_URL  — bỏ qua Docker, set URL đầy đủ
-#   MGMT_CONTROL_PLANE_CONTAINER        — mặc định: management-control-plane
-#   MGMT_PROMETHEUS_NODEPORT            — mặc định: 32090
-#   MONITORING_WORKLOAD_VALUES          — mặc định: monitoring/monitoring-workload.yaml (đường dẫn tương đối repo)
+#   MGMT_PROMETHEUS_REMOTE_WRITE_URL  — bỏ qua terraform, set URL đầy đủ
+#   MGMT_PROMETHEUS_NODEPORT          — mặc định: 32090
+#   MONITORING_WORKLOAD_VALUES        — mặc định: monitoring/monitoring-workload.yaml
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="${ROOT}/${MONITORING_WORKLOAD_VALUES:-monitoring/monitoring-workload.yaml}"
-CONTAINER_NAME="${MGMT_CONTROL_PLANE_CONTAINER:-management-control-plane}"
 NODEPORT="${MGMT_PROMETHEUS_NODEPORT:-32090}"
 CHECK_RETRIES="${MGMT_READY_CHECK_RETRIES:-12}"
 CHECK_SLEEP_SECONDS="${MGMT_READY_CHECK_SLEEP_SECONDS:-5}"
@@ -46,18 +44,38 @@ resolve_url() {
     echo "${MGMT_PROMETHEUS_REMOTE_WRITE_URL}"
     return 0
   fi
-  if ! docker inspect "$CONTAINER_NAME" &>/dev/null; then
-    echo "Không tìm thấy container Docker '$CONTAINER_NAME'." >&2
-    echo "Đặt MGMT_PROMETHEUS_REMOTE_WRITE_URL hoặc MGMT_CONTROL_PLANE_CONTAINER." >&2
+  local tf_dir="${ROOT}/terraform"
+  if [[ ! -d "${tf_dir}/environments/management" ]]; then
+    echo "Không thấy ${tf_dir}/environments/management." >&2
+    echo "Đặt MGMT_PROMETHEUS_REMOTE_WRITE_URL hoặc chạy terraform apply cho management." >&2
     exit 1
   fi
-  # Nhiều network: lấy IP đầu tiên
-  local raw
-  raw="$(docker inspect "$CONTAINER_NAME" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}')"
+  if ! command -v terraform &>/dev/null; then
+    echo "Cần terraform trên PATH hoặc đặt MGMT_PROMETHEUS_REMOTE_WRITE_URL." >&2
+    exit 1
+  fi
+  local tf_json
+  tf_json="$(cd "$tf_dir" && terraform -chdir=environments/management output -json 2>/dev/null || true)"
+  if [[ -z "$tf_json" ]]; then
+    echo "Không đọc được terraform output management (init/apply chưa?)." >&2
+    echo "Đặt MGMT_PROMETHEUS_REMOTE_WRITE_URL hoặc: cd terraform/environments/management && terraform init" >&2
+    exit 1
+  fi
   local ip
-  ip="$(echo "$raw" | awk '{print $1}')"
+  ip="$(echo "$tf_json" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+w = (d.get('worker_private_ips') or {}).get('value') or []
+m = (d.get('master_private_ip') or {}).get('value') or []
+node = (w or m or [None])[0]
+print(node or '', end='')
+" 2>/dev/null || true)"
   if [[ -z "$ip" ]]; then
-    echo "Không đọc được IP của $CONTAINER_NAME" >&2
+    echo "Terraform management không có worker_private_ips / master_private_ip." >&2
+    echo "Đặt MGMT_PROMETHEUS_REMOTE_WRITE_URL." >&2
     exit 1
   fi
   echo "http://${ip}:${NODEPORT}/api/v1/write"
@@ -83,7 +101,7 @@ git_commit_push_values() {
   if git diff --cached --quiet; then
     echo "Git: không có thay đổi để commit (URL đã trùng hoặc file không đổi)."
   else
-    git commit -m "chore(monitoring): sync remote_write URL for Kind"
+    git commit -m "chore(monitoring): sync remote_write URL for RKE2 management"
   fi
   git push
   echo "Git: đã push (hoặc remote đã up to date)."
@@ -125,9 +143,10 @@ if $CHECK; then
   done
   echo "Prometheus management chưa sẵn sàng sau $CHECK_RETRIES lần thử." >&2
   if command -v kubectl &>/dev/null; then
-    echo "Gợi ý chẩn đoán:" >&2
-    echo "  kubectl --context kind-management -n monitoring get pods" >&2
-    echo "  kubectl --context kind-management -n monitoring get svc monitoring-management-kube-prometheus -o wide" >&2
+    kc="${ROOT}/kube_config_rke2_management.yaml"
+    echo "Gợi ý chẩn đoán (VPN + KUBECONFIG=$kc):" >&2
+    echo "  kubectl --kubeconfig=$kc -n monitoring get pods" >&2
+    echo "  kubectl --kubeconfig=$kc -n monitoring get svc -o wide | head" >&2
   fi
   exit 1
 fi
@@ -144,7 +163,6 @@ else
     echo "Không tìm thấy dòng remote_write trong $TARGET" >&2
     exit 1
   fi
-  # URL chuẩn http://IP:port/api/v1/write không chứa ký tự đặc biệt của sed khi dùng | làm delimiter
   sed -i "s|^[[:space:]]*- url: http://[^[:space:]]*api/v1/write|      - url: ${URL}|" "$TARGET"
 fi
 

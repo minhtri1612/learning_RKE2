@@ -3,7 +3,7 @@ cluster:
   name: prod
   id: 4
 
-# Hubble UI: http://<IP prod-control-plane>:31203
+# Hubble UI: NodePort — http://<node-private-ip>:31203 (VPN / bastion).
 hubble:
   ui:
     enabled: true
@@ -16,6 +16,5 @@ clustermesh:
     enabled: true
   apiserver:
     service:
-      type: LoadBalancer
-      annotations:
-        metallb.universe.tf/loadBalancerIPs: "172.18.255.31"
+      type: NodePort
+      nodePort: 32380

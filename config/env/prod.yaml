@@ -8,7 +8,8 @@ gatewayAPI:
 
 httpRoute:
   hostnames:
-    - prod.meo.local
+    # Khớp HOSTNAMES_FOR_NLB_BY_ENV / configure.py (/etc/hosts → meo-stationery-prod.local).
+    - meo-stationery-prod.local
 ciliumNetworkPolicy:
   enabled: false
   # Giống dev cho đến khi mesh/mTLS Cilium được cấu hình xong; "required" chặn traffic nếu chưa có cert SPIRE/Auth.
@@ -45,6 +46,8 @@ database:
     refreshInterval: 1h
 
 rollout:
+  analysis:
+    enabled: false
   strategy: canary
   canary:
     steps:

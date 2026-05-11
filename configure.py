@@ -14,6 +14,7 @@ Usage:
 import glob
 import json
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -78,6 +79,42 @@ def get_terraform_output():
 
 def _kubeconfig_for_deploy():
     return os.path.abspath(KUBECONFIG_FILE)
+
+
+def _apply_argocd_projects_manifests(env):
+    """`argocd/projects` là Helm chart — không được `kubectl apply -f` cả thư mục (Chart.yaml/values.yaml không phải manifest)."""
+    chart_dir = os.path.join(_SCRIPT_DIR, "argocd", "projects")
+    values_file = os.path.join(chart_dir, "values.yaml")
+    chart_yaml = os.path.join(chart_dir, "Chart.yaml")
+    if not os.path.isdir(chart_dir) or not os.path.isfile(chart_yaml):
+        print("  ⚠ Bỏ qua Argo CD Projects — không thấy Helm chart tại argocd/projects.")
+        return False
+    if not os.path.isfile(values_file):
+        print("  ⚠ Bỏ qua Argo CD Projects — thiếu values.yaml.")
+        return False
+    run_command(
+        f"helm template argocd-projects {shlex.quote(chart_dir)} -f {shlex.quote(values_file)} | kubectl apply -f -",
+        cwd=_SCRIPT_DIR,
+        env=env,
+        timeout=120,
+    )
+    return True
+
+
+def _apply_argocd_rbac_manifests(env):
+    """Chỉ apply *.yaml / *.yml phẳng trong argocd/rbac (bỏ qua thư mục rỗng / không phải manifest)."""
+    rbac_dir = os.path.join(_SCRIPT_DIR, "argocd", "rbac")
+    if not os.path.isdir(rbac_dir):
+        return False
+    files = sorted(
+        glob.glob(os.path.join(rbac_dir, "*.yaml"))
+        + glob.glob(os.path.join(rbac_dir, "*.yml"))
+    )
+    if not files:
+        return False
+    apply_args = " ".join(f"-f {shlex.quote(p)}" for p in files)
+    run_command(f"kubectl apply {apply_args}", cwd=_SCRIPT_DIR, env=env, timeout=60)
+    return True
 
 
 def check_vpn_connectivity():
@@ -241,14 +278,10 @@ def apply_argocd_projects_and_rbac():
     kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
-    projects_dir = os.path.join(_SCRIPT_DIR, "argocd", "projects")
-    rbac_dir = os.path.join(_SCRIPT_DIR, "argocd", "rbac")
-    if os.path.isdir(projects_dir):
-        run_command(f"kubectl apply -f {projects_dir}/", cwd=_SCRIPT_DIR, env=env, timeout=30)
-        print("  ✓ ArgoCD Projects applied")
-    if os.path.isdir(rbac_dir):
-        run_command(f"kubectl apply -f {rbac_dir}/", cwd=_SCRIPT_DIR, env=env, timeout=30)
-        print("  ✓ ArgoCD RBAC applied")
+    if _apply_argocd_projects_manifests(env):
+        print("  ✓ Argo CD Projects applied (helm template argocd/projects | kubectl apply)")
+    if _apply_argocd_rbac_manifests(env):
+        print("  ✓ Argo CD RBAC applied")
 
 
 def install_external_secrets_operator():
@@ -442,12 +475,8 @@ def deploy_argocd_applications():
     env["KUBECONFIG"] = kubeconfig_path
     wait_for_argocd_ready()
     time.sleep(10)
-    projects_dir = os.path.join(_SCRIPT_DIR, "argocd", "projects")
-    rbac_dir = os.path.join(_SCRIPT_DIR, "argocd", "rbac")
-    if os.path.isdir(projects_dir):
-        run_command(f"kubectl apply -f {projects_dir}/", env=env, timeout=30)
-    if os.path.isdir(rbac_dir):
-        run_command(f"kubectl apply -f {rbac_dir}/", env=env, timeout=30)
+    _apply_argocd_projects_manifests(env)
+    _apply_argocd_rbac_manifests(env)
     bootstrap_dir = os.path.join(_SCRIPT_DIR, "argocd", "bootstrap")
     root_app = os.path.join(bootstrap_dir, "02-root-app.yaml")
     if os.path.isfile(root_app):
@@ -593,6 +622,115 @@ def trigger_argocd_app_sync(app_names, mgmt_kubeconfig):
         # else bỏ qua (argocd CLI có thể chưa cài)
 
 
+def _management_private_ip_from_terraform():
+    """Private IP đầu tiên (worker rồi master) từ terraform output management."""
+    mgmt_dir = os.path.join(TERRAFORM_DIR, "environments", "management")
+    if not os.path.isdir(mgmt_dir):
+        return None
+    try:
+        out = subprocess.check_output(
+            "terraform -chdir=environments/management output -json",
+            shell=True,
+            cwd=TERRAFORM_DIR,
+            timeout=15,
+        )
+        data = json.loads(out)
+        worker_ips = data.get("worker_private_ips", {}).get("value", [])
+        master_ips = data.get("master_private_ip", {}).get("value", [])
+        return (worker_ips or master_ips or [None])[0]
+    except Exception:
+        return None
+
+
+def _patch_clustermesh_peer_management_ip():
+    """
+    Thay PLACEHOLDER_MGMT_PRIVATE_IP (terraform management) trong:
+    - cilium/clustermesh-management-peer.yaml (ClusterMesh spoke→hub :32379)
+    - app/be.yaml (Rollouts analysis Prometheus :32090 trên management)
+    """
+    placeholder = "PLACEHOLDER_MGMT_PRIVATE_IP"
+    mgmt_dir = os.path.join(TERRAFORM_DIR, "environments", "management")
+    if not os.path.isdir(mgmt_dir):
+        print("  ⚠ Bỏ qua patch PLACEHOLDER_MGMT_PRIVATE_IP — không có terraform/environments/management.")
+        return
+    mgmt_ip = _management_private_ip_from_terraform()
+    if not mgmt_ip:
+        print("  ⚠ Không lấy được IP management (terraform worker_private_ips / master_private_ip) — bỏ qua patch placeholder.")
+        return
+
+    targets = [
+        os.path.join(_SCRIPT_DIR, "cilium", "clustermesh-management-peer.yaml"),
+        os.path.join(_SCRIPT_DIR, "app", "be.yaml"),
+    ]
+    for path in targets:
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r") as f:
+            content = f.read()
+        if placeholder not in content:
+            continue
+        with open(path, "w") as f:
+            f.write(content.replace(placeholder, mgmt_ip))
+        rel = os.path.relpath(path, _SCRIPT_DIR)
+        print(f"  ✓ Patched {rel}: {placeholder} → {mgmt_ip}")
+
+
+def patch_clustermesh_management_config():
+    """
+    Lấy private IP của master/worker node từ dev + prod terraform output,
+    patch cilium-values-management.yaml để management ClusterMesh
+    trỏ đúng vào AWS EC2 IP (thay PLACEHOLDER).
+    Cuối cùng patch clustermesh-management-peer.yaml (spoke trỏ về hub).
+    """
+    values_file = os.path.join(_SCRIPT_DIR, "cilium", "cilium-values-management.yaml")
+    if not os.path.isfile(values_file):
+        return
+
+    print("--- Step 1.5: Patching ClusterMesh management config ---")
+    for env_name, placeholder, node_port in [
+        ("dev", "PLACEHOLDER_DEV_NODE_IP", "32379"),
+        ("prod", "PLACEHOLDER_PROD_NODE_IP", "32380"),
+    ]:
+        try:
+            # Kiểm tra xem folder terraform của env có tồn tại không
+            tf_env_dir = os.path.join(TERRAFORM_DIR, "environments", env_name)
+            if not os.path.isdir(tf_env_dir):
+                continue
+
+            out = subprocess.check_output(
+                f"terraform -chdir=environments/{env_name} output -json",
+                shell=True, cwd=TERRAFORM_DIR, timeout=15,
+            )
+            data = json.loads(out)
+            # Lấy private IP của worker[0] hoặc master[0]
+            # Lưu ý: output master_private_ip trả về một list
+            worker_ips = data.get("worker_private_ips", {}).get("value", [])
+            master_ips = data.get("master_private_ip", {}).get("value", [])
+            node_ip = (worker_ips or master_ips or [None])[0]
+            
+            if not node_ip:
+                print(f"  ⚠ Không lấy được IP của {env_name} cluster, bỏ qua patch.")
+                continue
+                
+            with open(values_file, "r") as f:
+                content = f.read()
+            
+            if placeholder in content:
+                content = content.replace(placeholder, node_ip)
+                with open(values_file, "w") as f:
+                    f.write(content)
+                print(f"  ✓ Patched ClusterMesh {env_name}: {placeholder} → {node_ip}:{node_port}")
+            else:
+                # Nếu placeholder không có (có thể đã patch rồi), thử regex để cập nhật IP mới nếu cần
+                # Nhưng tạm thời placeholder là đủ cho lab.
+                pass
+        except Exception as e:
+            # Thường fail nếu terraform env đó chưa init/apply
+            pass
+
+    _patch_clustermesh_peer_management_ip()
+
+
 def main():
     print("\n" + "=" * 60)
     print(f"  CONFIGURE — Phase 2 (VPN Required) — env: {TERRAFORM_ENV}")
@@ -607,6 +745,7 @@ def main():
     install_ebs_csi_driver()
 
     if TERRAFORM_ENV == "management":
+        patch_clustermesh_management_config()
         install_argocd()
         wait_for_argocd_ready()
         apply_argocd_projects_and_rbac()
@@ -616,6 +755,7 @@ def main():
         print("     bash scripts/create-argocd-cluster-secrets.sh")
         print("     bash scripts/deploy-argocd-bootstrap.sh")
     else:
+        _patch_clustermesh_peer_management_ip()
         install_external_secrets_operator()
         ensure_aws_secrets_credentials()
         apply_external_secrets_manifests()
@@ -646,12 +786,19 @@ def main():
     print(f"     export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
     print(f"     kubectl get nodes")
     if TERRAFORM_ENV == "management":
-        print(f"\n  🌐 ArgoCD UI:  http://argocd.local")
-        print(f"     kubectl port-forward svc/argocd-server -n argocd 8080:443 (backup)")
+        print(f"\n  🌐 ArgoCD UI (cloud — VPN bật, dùng kube_config_rke2_management.yaml trong repo):")
+        print(f"     Cách an toàn (luôn đúng file repo):")
+        print(f"       bash scripts/argocd-ui-forward.sh")
+        print(f"       → https://localhost:8443  (admin + password từ secret argocd-initial-admin-secret)")
+        print(f"     Hoặc tay: export KUBECONFIG={os.path.abspath(KUBECONFIG_FILE)}")
+        print(f"       rồi: kubectl config view --minify -o jsonpath='{{.clusters[0].cluster.server}}' ; echo")
+        print(f"       → phải là https://<IP-private>:6443 (RKE2), không phải http://localhost:8080.")
+        print(f"  🌐 ArgoCD qua NLB (khi đã Ingress + /etc/hosts): http://argocd.local")
     else:
-        print(f"\n  🌐 App (Gateway): https://meo-stationery-{TERRAFORM_ENV}.local")
+        # NLB (terraform loadbalancers) chỉ listener TCP :80 → NodePort 32080; không có :443.
+        print(f"\n  🌐 App (Gateway): http://meo-stationery-{TERRAFORM_ENV}.local/")
     print(f"\n  🔧 Update /etc/hosts: ./scripts/update-hosts.sh {TERRAFORM_ENV}")
-    print("\n  ⚠️  TLS note: self-signed cert → browser warning is expected.")
+    print("\n  ⚠️  Dùng http:// (port 80). HTTPS trên NLB chưa bật — đừng gõ https:// hoặc sẽ không kết nối được.")
     print("=" * 60)
 
 

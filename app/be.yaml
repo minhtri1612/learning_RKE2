@@ -94,9 +94,9 @@ httpRoute:
   - name: meo-gw
     sectionName: http
     # namespace: default
-  # Hostnames matching HTTP header.
+  # Hostnames matching HTTP header (env override trong config/env/*.yaml).
   hostnames:
-  - dev.meo.local
+  - meo-stationery-dev.local
   # Route rules are environment-owned.
   # Define `httpRoute.rules` in `config/env/<env>.yaml` to avoid list override surprises.
   rules: []
@@ -126,7 +126,7 @@ gatewayAPI:
     # Tên K8s Secret chứa TLS cert (cert-manager hoặc tạo tay).
     # certificateRef: meo-gw-tls
   # NodePort Service để expose Envoy ra ngoài (Path 2: NLB Terraform → NodePort → Envoy).
-  # Tắt khi dùng Kind/local hoặc khi có AWS CCM tự cấp LB.
+  # Tắt khi không cần NodePort (ví dụ chỉ ClusterIP / LB do cloud cấp).
   nodePortService:
     enabled: false
     httpNodePort: 32080
@@ -240,7 +240,7 @@ rollout:
             failureCondition: result[0] < 0.82
             provider:
               prometheus:
-                # Trùng fullnameOverride trong monitoring/monitoring-workload.yaml (Prometheus Agent vẫn có Service :9090).
-                address: http://172.18.0.3:32090
+                # Management Prometheus NodePort (monitoring-mgmt.yaml). IP: terraform management private — ./configure.py thay PLACEHOLDER_MGMT_PRIVATE_IP.
+                address: http://PLACEHOLDER_MGMT_PRIVATE_IP:32090
                 query: |
                   avg(meo_backend_up{namespace="meo-stationery",pod=~"{{args.service-name}}-.*"}) or vector(0)

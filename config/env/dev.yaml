@@ -2,7 +2,6 @@
 env: dev
 projectName: meo-stationery
 # Cloud deploy (Path 2): bật NodePort để NLB (Terraform) → NodePort 32080/32443 → Envoy.
-# Tắt lại khi chạy Kind/local (Kind dùng MetalLB hoặc port-forward).
 gatewayAPI:
   nodePortService:
     enabled: true
@@ -11,7 +10,8 @@ httpRoute:
   # DEV owns the full HTTPRoute rule set (base `app/be.yaml` keeps `rules: []`).
   # Reason: Helm replaces lists, so defining rules in both base and env causes silent overrides.
   hostnames:
-    - dev.meo.local
+    # Khớp HOSTNAMES_FOR_NLB_BY_ENV / configure.py (/etc/hosts → meo-stationery-dev.local).
+    - meo-stationery-dev.local
   rules:
     # Rule 1: Header-based canary cho QA/beta test chủ động.
     - routeTo: canary
@@ -38,8 +38,7 @@ ciliumNetworkPolicy:
     fromEntities:
       - world
       - cluster
-    # L7 HTTP rules tạm tắt trên Kind — Envoy proxy single-node gây timeout cho kubelet probe.
-    # Bật lại trên cluster nhiều node / RKE2.
+    # L7 HTTP rules có thể tắt trên cluster nhỏ / single-node (Envoy + probe). Bật lại khi ổn định.
     # http:
     #   - method: GET
     #     path: "/api/.*"
@@ -74,6 +73,8 @@ database:
     refreshInterval: 1h
 
 rollout:
+  analysis:
+    enabled: false
   strategy: canary
   canary:
     steps:
