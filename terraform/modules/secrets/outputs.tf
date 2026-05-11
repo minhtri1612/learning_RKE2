@@ -1,6 +1,6 @@
 output "rke2_token" {
-  value     = random_password.rke2_token.result
-  sensitive  = true
+  value       = random_password.rke2_token.result
+  sensitive   = true
   description = "RKE2 cluster token (cũng lưu trong Secrets Manager)"
 }
 

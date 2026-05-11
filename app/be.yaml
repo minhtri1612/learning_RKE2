@@ -116,6 +116,21 @@ gatewayAPI:
     protocol: HTTP
     port: 80
     allowedRoutesFrom: Same
+  # HTTPS listener — bật khi có TLS cert (Secret trong cluster).
+  httpsListener:
+    enabled: false
+    name: https
+    protocol: HTTPS
+    port: 443
+    allowedRoutesFrom: Same
+    # Tên K8s Secret chứa TLS cert (cert-manager hoặc tạo tay).
+    # certificateRef: meo-gw-tls
+  # NodePort Service để expose Envoy ra ngoài (Path 2: NLB Terraform → NodePort → Envoy).
+  # Tắt khi dùng Kind/local hoặc khi có AWS CCM tự cấp LB.
+  nodePortService:
+    enabled: false
+    httpNodePort: 32080
+    httpsNodePort: 32443
 
 resources:
   # We usually recommend not to specify default resources and to leave this as a conscious

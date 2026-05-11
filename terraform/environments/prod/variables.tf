@@ -46,7 +46,7 @@ variable "worker_count" {
 
 variable "use_spot_instances" {
   type    = bool
-  default = false   # On-Demand: tránh prod bị AWS terminate (Spot)
+  default = false # On-Demand: tránh prod bị AWS terminate (Spot)
 }
 
 variable "vpc_cidr" {

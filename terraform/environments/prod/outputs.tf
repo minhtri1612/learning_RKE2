@@ -23,9 +23,9 @@ output "cluster_api_url" {
   description = "Kubernetes API URL cho ArgoCD đăng ký cluster (management deploy xuống env này)"
 }
 
-output "web_alb_dns_name" {
-  value       = module.loadbalancers.web_alb_dns_name
-  description = "ALB DNS cho web (meo-stationery.local, argocd.local, rancher.local)"
+output "web_nlb_dns_name" {
+  value       = module.loadbalancers.web_nlb_dns_name
+  description = "NLB DNS cho web (meo-stationery.local, argocd.local, rancher.local)"
 }
 
 output "ssh_key_file" {

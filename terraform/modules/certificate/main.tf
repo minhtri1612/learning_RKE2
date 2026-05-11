@@ -18,8 +18,8 @@ resource "tls_self_signed_cert" "web" {
 }
 
 resource "aws_acm_certificate" "web" {
-  private_key       = tls_private_key.web.private_key_pem
-  certificate_body  = tls_self_signed_cert.web.cert_pem
+  private_key      = tls_private_key.web.private_key_pem
+  certificate_body = tls_self_signed_cert.web.cert_pem
 
   tags = {
     Name = "k8s-web-cert-${var.environment}"

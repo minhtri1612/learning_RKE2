@@ -6,6 +6,14 @@ metadata:
   namespace: {{ .Values.gatewayAPI.gatewayNamespace | default .Release.Namespace }}
   labels:
     {{- include "template.labels" . | nindent 4 }}
+  annotations:
+    # Cilium sẽ tạo Service "cilium-gateway-<name>" kiểu LoadBalancer.
+    # Trên AWS Cloud (Path 2): AWS NLB (Terraform quản lý) → NodePort trên Node.
+    # Annotation dưới đây là hint cho AWS LB Controller nếu có cài.
+    # Nếu không có AWS LB Controller, NodePort được expose qua gateway-nodeport-service.yaml.
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
   gatewayClassName: {{ .Values.gatewayAPI.gatewayClassName | default "cilium" }}
   listeners:
@@ -15,4 +23,19 @@ spec:
       allowedRoutes:
         namespaces:
           from: {{ .Values.gatewayAPI.listener.allowedRoutesFrom | default "Same" }}
+    {{- if .Values.gatewayAPI.httpsListener.enabled }}
+    - name: {{ .Values.gatewayAPI.httpsListener.name | default "https" }}
+      protocol: {{ .Values.gatewayAPI.httpsListener.protocol | default "HTTPS" }}
+      port: {{ .Values.gatewayAPI.httpsListener.port | default 443 }}
+      {{- if .Values.gatewayAPI.httpsListener.certificateRef }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ .Values.gatewayAPI.httpsListener.certificateRef }}
+            kind: Secret
+      {{- end }}
+      allowedRoutes:
+        namespaces:
+          from: {{ .Values.gatewayAPI.httpsListener.allowedRoutesFrom | default "Same" }}
+    {{- end }}
 {{- end }}

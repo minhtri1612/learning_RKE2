@@ -30,16 +30,16 @@ locals {
 # Modules
 # -----------------------------------------------------------------------------
 module "vpc" {
-  source       = "../../modules/vpc"
-  environment  = var.environment
-  name_prefix  = var.name_prefix
-  vpc_cidr     = var.vpc_cidr
-  my_ip        = var.my_ip
+  source      = "../../modules/vpc"
+  environment = var.environment
+  name_prefix = var.name_prefix
+  vpc_cidr    = var.vpc_cidr
+  my_ip       = var.my_ip
   # Prod nằm VPC riêng (10.2.0.0/16)
   public_subnet_cidrs  = ["10.2.1.0/24", "10.2.2.0/24"]
   private_subnet_cidrs = ["10.2.101.0/24", "10.2.102.0/24"]
   # Cho phép VPC management (10.0.0.0/16) gọi API prod qua peering
-  peer_vpc_cidrs       = ["10.0.0.0/16"]
+  peer_vpc_cidrs = ["10.0.0.0/16"]
 }
 
 module "iam" {
@@ -50,9 +50,9 @@ module "iam" {
 }
 
 module "keys" {
-  source      = "../../modules/keys"
-  environment = var.environment
-  name_prefix = var.name_prefix
+  source       = "../../modules/keys"
+  environment  = var.environment
+  name_prefix  = var.name_prefix
   key_filename = "${path.module}/k8s-key.pem"
 }
 
@@ -68,13 +68,12 @@ module "secrets" {
 }
 
 module "loadbalancers" {
-  source               = "../../modules/loadbalancers"
-  environment          = var.environment
-  name_prefix          = var.name_prefix
-  vpc_id               = module.vpc.vpc_id
-  public_subnet_ids    = module.vpc.public_subnet_ids
-  web_alb_sg_id        = module.vpc.web_alb_sg_id
-  alb_certificate_arn  = module.certificate.certificate_arn
+  source            = "../../modules/loadbalancers"
+  environment       = var.environment
+  name_prefix       = var.name_prefix
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+  web_nlb_sg_id     = module.vpc.web_nlb_sg_id
 }
 
 # OpenVPN chỉ có ở Management; dev/prod truy cập qua VPC peering từ Management.
@@ -111,23 +110,23 @@ resource "aws_lb_target_group_attachment" "web_http_masters" {
   count            = length(module.rke2.master_ids)
   target_group_arn = module.loadbalancers.web_http_tg_arn
   target_id        = module.rke2.master_ids[count.index]
-  port             = 80
+  port             = 32080
 }
 resource "aws_lb_target_group_attachment" "web_http_workers" {
   count            = length(module.rke2.worker_ids)
   target_group_arn = module.loadbalancers.web_http_tg_arn
   target_id        = module.rke2.worker_ids[count.index]
-  port             = 80
+  port             = 32080
 }
 resource "aws_lb_target_group_attachment" "web_https_masters" {
   count            = length(module.rke2.master_ids)
   target_group_arn = module.loadbalancers.web_https_tg_arn
   target_id        = module.rke2.master_ids[count.index]
-  port             = 443
+  port             = 32443
 }
 resource "aws_lb_target_group_attachment" "web_https_workers" {
   count            = length(module.rke2.worker_ids)
   target_group_arn = module.loadbalancers.web_https_tg_arn
   target_id        = module.rke2.worker_ids[count.index]
-  port             = 443
+  port             = 32443
 }

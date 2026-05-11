@@ -1,6 +1,11 @@
 # STAGING override — Environment-specific Secret/Config mapping.
 env: staging
 projectName: meo-stationery
+# Cloud deploy (Path 2): bật NodePort để NLB (Terraform) → NodePort 32080/32443 → Envoy.
+gatewayAPI:
+  nodePortService:
+    enabled: true
+
 httpRoute:
   hostnames:
     - staging.meo.local

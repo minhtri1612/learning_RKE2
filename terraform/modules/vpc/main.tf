@@ -190,10 +190,10 @@ resource "aws_security_group" "k8s_common" {
   tags = { Name = "${var.name_prefix}-common-sg-${var.environment}" }
 }
 
-resource "aws_security_group" "web_alb" {
-  name        = "${var.name_prefix}-web-alb-sg-${var.environment}"
+resource "aws_security_group" "web_nlb" {
+  name        = "${var.name_prefix}-web-nlb-sg-${var.environment}"
   vpc_id      = aws_vpc.main.id
-  description = "ALB HTTP/HTTPS"
+  description = "NLB HTTP/HTTPS"
 
   ingress {
     from_port   = 80
@@ -213,7 +213,7 @@ resource "aws_security_group" "web_alb" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  tags = { Name = "${var.name_prefix}-web-alb-sg-${var.environment}" }
+  tags = { Name = "${var.name_prefix}-web-nlb-sg-${var.environment}" }
 }
 
 resource "aws_security_group" "k8s_master" {
@@ -264,16 +264,16 @@ resource "aws_security_group" "k8s_master" {
     cidr_blocks = [for s in aws_subnet.private : s.cidr_block]
   }
   ingress {
-    from_port       = 80
-    to_port         = 80
+    from_port       = 32080
+    to_port         = 32080
     protocol        = "tcp"
-    security_groups = [aws_security_group.web_alb.id]
+    security_groups = [aws_security_group.web_nlb.id]
   }
   ingress {
-    from_port       = 443
-    to_port         = 443
+    from_port       = 32443
+    to_port         = 32443
     protocol        = "tcp"
-    security_groups = [aws_security_group.web_alb.id]
+    security_groups = [aws_security_group.web_nlb.id]
   }
   egress {
     from_port   = 0
@@ -289,16 +289,16 @@ resource "aws_security_group" "k8s_worker" {
   vpc_id = aws_vpc.main.id
 
   ingress {
-    from_port       = 80
-    to_port         = 80
+    from_port       = 32080
+    to_port         = 32080
     protocol        = "tcp"
-    security_groups = [aws_security_group.web_alb.id]
+    security_groups = [aws_security_group.web_nlb.id]
   }
   ingress {
-    from_port       = 443
-    to_port         = 443
+    from_port       = 32443
+    to_port         = 32443
     protocol        = "tcp"
-    security_groups = [aws_security_group.web_alb.id]
+    security_groups = [aws_security_group.web_nlb.id]
   }
   ingress {
     from_port   = 10250

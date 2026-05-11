@@ -23,18 +23,18 @@ locals {
 }
 
 module "vpc" {
-  source       = "../../modules/vpc"
-  environment  = var.environment
-  name_prefix  = var.name_prefix
-  vpc_cidr     = var.vpc_cidr
-  my_ip        = var.my_ip
+  source      = "../../modules/vpc"
+  environment = var.environment
+  name_prefix = var.name_prefix
+  vpc_cidr    = var.vpc_cidr
+  my_ip       = var.my_ip
 }
 
 module "iam" {
-  source        = "../../modules/iam"
-  environment   = var.environment
-  name_prefix   = var.name_prefix
-  project_name  = var.project_name
+  source       = "../../modules/iam"
+  environment  = var.environment
+  name_prefix  = var.name_prefix
+  project_name = var.project_name
 }
 
 module "keys" {
@@ -50,32 +50,31 @@ module "certificate" {
 }
 
 module "secrets" {
-  source                       = "../../modules/secrets"
-  environment                  = var.environment
-  project_name                 = var.project_name
-  secret_name_suffix           = "rke2-token-v4"
-  app_credentials_name_suffix  = "-v2"
+  source                      = "../../modules/secrets"
+  environment                 = var.environment
+  project_name                = var.project_name
+  secret_name_suffix          = "rke2-token-v4"
+  app_credentials_name_suffix = "-v2"
 }
 
 module "loadbalancers" {
-  source               = "../../modules/loadbalancers"
-  environment          = var.environment
-  name_prefix          = var.name_prefix
-  vpc_id               = module.vpc.vpc_id
-  public_subnet_ids    = module.vpc.public_subnet_ids
-  web_alb_sg_id        = module.vpc.web_alb_sg_id
-  alb_certificate_arn  = module.certificate.certificate_arn
+  source            = "../../modules/loadbalancers"
+  environment       = var.environment
+  name_prefix       = var.name_prefix
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+  web_nlb_sg_id     = module.vpc.web_nlb_sg_id
 }
 
 module "openvpn" {
-  source              = "../../modules/openvpn"
-  environment         = var.environment
-  name_prefix         = var.name_prefix
-  ami_id              = local.ami_id
-  instance_type       = var.instance_type
-  subnet_id           = module.vpc.public_subnet_a_id
-  security_group_ids  = [module.vpc.openvpn_sg_id]
-  key_name            = module.keys.key_name
+  source             = "../../modules/openvpn"
+  environment        = var.environment
+  name_prefix        = var.name_prefix
+  ami_id             = local.ami_id
+  instance_type      = var.instance_type
+  subnet_id          = module.vpc.public_subnet_a_id
+  security_group_ids = [module.vpc.openvpn_sg_id]
+  key_name           = module.keys.key_name
 }
 
 resource "aws_route" "vpn_reply" {
@@ -95,7 +94,7 @@ module "rke2" {
   private_subnet_ids        = module.vpc.private_subnet_ids
   k8s_common_sg_id          = module.vpc.k8s_common_sg_id
   k8s_master_sg_id          = module.vpc.k8s_master_sg_id
-  k8s_worker_sg_id         = module.vpc.k8s_worker_sg_id
+  k8s_worker_sg_id          = module.vpc.k8s_worker_sg_id
   iam_instance_profile_name = module.iam.instance_profile_name
   key_name                  = module.keys.key_name
   nlb_dns_name              = module.loadbalancers.nlb_dns_name
@@ -114,23 +113,23 @@ resource "aws_lb_target_group_attachment" "web_http_masters" {
   count            = length(module.rke2.master_ids)
   target_group_arn = module.loadbalancers.web_http_tg_arn
   target_id        = module.rke2.master_ids[count.index]
-  port             = 80
+  port             = 32080
 }
 resource "aws_lb_target_group_attachment" "web_http_workers" {
   count            = length(module.rke2.worker_ids)
   target_group_arn = module.loadbalancers.web_http_tg_arn
   target_id        = module.rke2.worker_ids[count.index]
-  port             = 80
+  port             = 32080
 }
 resource "aws_lb_target_group_attachment" "web_https_masters" {
   count            = length(module.rke2.master_ids)
   target_group_arn = module.loadbalancers.web_https_tg_arn
   target_id        = module.rke2.master_ids[count.index]
-  port             = 443
+  port             = 32443
 }
 resource "aws_lb_target_group_attachment" "web_https_workers" {
   count            = length(module.rke2.worker_ids)
   target_group_arn = module.loadbalancers.web_https_tg_arn
   target_id        = module.rke2.worker_ids[count.index]
-  port             = 443
+  port             = 32443
 }

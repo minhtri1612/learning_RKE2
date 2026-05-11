@@ -1,6 +1,12 @@
 # DEV override — Environment-specific Secret/Config mapping.
 env: dev
 projectName: meo-stationery
+# Cloud deploy (Path 2): bật NodePort để NLB (Terraform) → NodePort 32080/32443 → Envoy.
+# Tắt lại khi chạy Kind/local (Kind dùng MetalLB hoặc port-forward).
+gatewayAPI:
+  nodePortService:
+    enabled: true
+
 httpRoute:
   # DEV owns the full HTTPRoute rule set (base `app/be.yaml` keeps `rules: []`).
   # Reason: Helm replaces lists, so defining rules in both base and env causes silent overrides.

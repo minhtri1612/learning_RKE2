@@ -68,8 +68,8 @@ resource "aws_instance" "workers" {
   }
 
   user_data = templatefile("${path.module}/userdata_worker.sh", {
-    rke2_token   = var.rke2_token
-    master_ip    = aws_instance.masters[0].private_ip
+    rke2_token = var.rke2_token
+    master_ip  = aws_instance.masters[0].private_ip
   })
   # Spot one-time instances cannot be stopped for in-place user_data updates.
   # Force replacement when user_data changes.
@@ -79,6 +79,6 @@ resource "aws_instance" "workers" {
     create_before_destroy = true
   }
 
-  tags = { Name = "${var.name_prefix}-worker-${count.index + 1}-${var.environment}" }
+  tags       = { Name = "${var.name_prefix}-worker-${count.index + 1}-${var.environment}" }
   depends_on = [aws_instance.masters]
 }

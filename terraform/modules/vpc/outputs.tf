@@ -43,6 +43,6 @@ output "k8s_worker_sg_id" {
   value = aws_security_group.k8s_worker.id
 }
 
-output "web_alb_sg_id" {
-  value = aws_security_group.web_alb.id
+output "web_nlb_sg_id" {
+  value = aws_security_group.web_nlb.id
 }

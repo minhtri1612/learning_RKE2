@@ -21,9 +21,9 @@ output "nlb_dns_name" {
   description = "NLB DNS cho Kubernetes API"
 }
 
-output "web_alb_dns_name" {
-  value       = module.loadbalancers.web_alb_dns_name
-  description = "ALB DNS cho ArgoCD UI (argocd.local)"
+output "web_nlb_dns_name" {
+  value       = module.loadbalancers.web_nlb_dns_name
+  description = "NLB DNS cho ArgoCD UI (argocd.local)"
 }
 
 output "ssh_key_file" {
@@ -41,6 +41,6 @@ output "eso_access_key_id" {
 }
 
 output "eso_secret_access_key" {
-  value       = module.iam.eso_secret_access_key
-  sensitive   = true
+  value     = module.iam.eso_secret_access_key
+  sensitive = true
 }

@@ -5,8 +5,8 @@ resource "aws_iam_role" "k8s" {
     Version = "2012-10-17"
     Statement = [
       {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
+        Action    = "sts:AssumeRole"
+        Effect    = "Allow"
         Principal = { Service = "ec2.amazonaws.com" }
       }
     ]
@@ -36,14 +36,14 @@ resource "aws_iam_user" "eso" {
 }
 
 resource "aws_iam_user_policy" "eso_secrets_manager" {
-  name   = "SecretsManagerGetSecretValue"
-  user   = aws_iam_user.eso.name
+  name = "SecretsManagerGetSecretValue"
+  user = aws_iam_user.eso.name
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
         Resource = [
           "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}/*",
           "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:/${var.project_name}/*"
