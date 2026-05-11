@@ -118,15 +118,3 @@ resource "aws_lb_target_group_attachment" "web_http_workers" {
   target_id        = module.rke2.worker_ids[count.index]
   port             = 32080
 }
-resource "aws_lb_target_group_attachment" "web_https_masters" {
-  count            = length(module.rke2.master_ids)
-  target_group_arn = module.loadbalancers.web_https_tg_arn
-  target_id        = module.rke2.master_ids[count.index]
-  port             = 32443
-}
-resource "aws_lb_target_group_attachment" "web_https_workers" {
-  count            = length(module.rke2.worker_ids)
-  target_group_arn = module.loadbalancers.web_https_tg_arn
-  target_id        = module.rke2.worker_ids[count.index]
-  port             = 32443
-}

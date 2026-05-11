@@ -12,10 +12,6 @@ metadata:
   labels:
     {{- include "template.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway-nodeport
-  annotations:
-    # Giải thích: Service này không thay thế "cilium-gateway-*", chỉ là cổng vào phụ
-    # từ NLB Terraform. Envoy pod được chọn bằng label io.cilium/gateway=<gatewayName>.
-    kubectl.kubernetes.io/last-applied-configuration: ""
 spec:
   type: NodePort
   selector:

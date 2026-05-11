@@ -61,23 +61,6 @@ resource "aws_lb_target_group" "web_http" {
   tags = { Name = "${var.name_prefix}-web-http-tg-${var.environment}" }
 }
 
-resource "aws_lb_target_group" "web_https" {
-  name        = "${var.name_prefix}-web-https-tg-${var.environment}"
-  port        = 32443
-  protocol    = "TCP"
-  vpc_id      = var.vpc_id
-  target_type = "instance"
-  health_check {
-    enabled             = true
-    healthy_threshold   = 3
-    unhealthy_threshold = 3
-    interval            = 10
-    port                = "traffic-port"
-    protocol            = "TCP"
-  }
-  tags = { Name = "${var.name_prefix}-web-https-tg-${var.environment}" }
-}
-
 resource "aws_lb_listener" "web_http" {
   load_balancer_arn = aws_lb.web_nlb.arn
   port              = "80"
@@ -85,16 +68,5 @@ resource "aws_lb_listener" "web_http" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.web_http.arn
-  }
-}
-
-resource "aws_lb_listener" "web_https" {
-  load_balancer_arn = aws_lb.web_nlb.arn
-  port              = "443"
-  protocol          = "TCP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.web_https.arn
   }
 }
