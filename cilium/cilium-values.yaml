@@ -1,4 +1,7 @@
 kubeProxyReplacement: true
+# RKE2 disable-kube-proxy: Cilium cần địa chỉ apiserver trước khi ClusterIP kubernetes hoạt động. configure.py thay PLACEHOLDER.
+k8sServiceHost: "PLACEHOLDER_MASTER_PRIVATE_IP"
+k8sServicePort: 6443
 
 # Spoke (dev/prod): bật clustermesh-apiserver để management có endpoint remote thật
 # (NodePort trên mỗi spoke) trong mô hình GitOps declarative.

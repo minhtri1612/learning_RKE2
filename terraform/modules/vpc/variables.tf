@@ -36,3 +36,13 @@ variable "peer_vpc_cidrs" {
   default     = []
   description = "CIDR các VPC peering (ví dụ VPC management) được phép truy cập API master (6443)."
 }
+
+variable "clustermesh_peer_cidrs" {
+  type        = list(string)
+  default     = []
+  description = <<-EOT
+    VPC CIDRs được phép tới TCP 32379-32380 trên node (clustermesh-apiserver NodePorts).
+    Để trống → dùng cùng danh sách peer_vpc_cidrs (dev/prod: hub management).
+    Hub (management) nên set rõ CIDR của các spoke (vd. 10.1.0.0/16, 10.2.0.0/16).
+  EOT
+}

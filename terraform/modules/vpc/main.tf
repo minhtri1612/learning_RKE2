@@ -2,6 +2,10 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+locals {
+  effective_clustermesh_peer_cidrs = length(var.clustermesh_peer_cidrs) > 0 ? var.clustermesh_peer_cidrs : var.peer_vpc_cidrs
+}
+
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -275,6 +279,16 @@ resource "aws_security_group" "k8s_master" {
     protocol        = "tcp"
     security_groups = [aws_security_group.web_nlb.id]
   }
+  dynamic "ingress" {
+    for_each = length(local.effective_clustermesh_peer_cidrs) > 0 ? [1] : []
+    content {
+      from_port   = 32379
+      to_port     = 32380
+      protocol    = "tcp"
+      cidr_blocks = local.effective_clustermesh_peer_cidrs
+      description = "ClusterMesh clustermesh-apiserver NodePorts from peer VPCs"
+    }
+  }
   egress {
     from_port   = 0
     to_port     = 0
@@ -311,6 +325,16 @@ resource "aws_security_group" "k8s_worker" {
     to_port     = 8472
     protocol    = "udp"
     cidr_blocks = [for s in aws_subnet.private : s.cidr_block]
+  }
+  dynamic "ingress" {
+    for_each = length(local.effective_clustermesh_peer_cidrs) > 0 ? [1] : []
+    content {
+      from_port   = 32379
+      to_port     = 32380
+      protocol    = "tcp"
+      cidr_blocks = local.effective_clustermesh_peer_cidrs
+      description = "ClusterMesh clustermesh-apiserver NodePorts from peer VPCs"
+    }
   }
   egress {
     from_port   = 0

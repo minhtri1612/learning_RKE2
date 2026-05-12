@@ -28,6 +28,8 @@ module "vpc" {
   name_prefix = var.name_prefix
   vpc_cidr    = var.vpc_cidr
   my_ip       = var.my_ip
+  # ClusterMesh hub: spoke nodes gọi vào NodePort clustermesh-apiserver trên management
+  clustermesh_peer_cidrs = ["10.1.0.0/16", "10.2.0.0/16"]
 }
 
 module "iam" {

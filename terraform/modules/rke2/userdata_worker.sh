@@ -20,6 +20,7 @@ mkdir -p /etc/rancher/rke2/
 cat <<EOT > /etc/rancher/rke2/config.yaml
 server: https://${master_ip}:9345
 token: ${rke2_token}
+disable-kube-proxy: true
 EOT
 
 systemctl enable rke2-agent

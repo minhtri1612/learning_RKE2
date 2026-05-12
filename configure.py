@@ -32,6 +32,9 @@ SSH_KEY_FILE_NAME = "k8s-key.pem"
 BACKEND_NAMESPACE = "meo-stationery"
 DATABASE_NAMESPACE = "database"
 
+# Khớp argocd/bootstrap/*-cilium-*.yaml — configure.py cài Cilium trước EBS/ArogCD khi RKE2 disable-kube-proxy.
+CILIUM_CHART_VERSION = "1.19.2"
+
 HOSTNAMES_FOR_NLB_BY_ENV = {
     "management": ("argocd.local",),
     "dev": ("meo-stationery-dev.local",),
@@ -182,6 +185,100 @@ def wait_for_k8s_api(kubeconfig_path, max_wait=120):
         waited += 10
     print(f"  ✗ API server not accessible after {max_wait}s")
     return False
+
+
+def _first_master_private_ip(tf_out):
+    """IP master đầu tiên (terraform output) — dùng cho Cilium k8sServiceHost khi không có kube-proxy."""
+    try:
+        val = tf_out.get("master_private_ip", {}).get("value")
+        if isinstance(val, list) and val:
+            return val[0]
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _patch_cilium_k8s_service_host(tf_out):
+    """Thay PLACEHOLDER_MASTER_PRIVATE_IP trong values Git để Helm/Argo đồng bộ (không chỉ --set một lần)."""
+    placeholder = "PLACEHOLDER_MASTER_PRIVATE_IP"
+    ip = _first_master_private_ip(tf_out)
+    if not ip:
+        print(f"  ⚠ Bỏ qua patch {placeholder} — không có master_private_ip trong terraform output.")
+        return
+    for fname in ("cilium-values.yaml", "cilium-values-management.yaml"):
+        path = os.path.join(_SCRIPT_DIR, "cilium", fname)
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r") as f:
+            content = f.read()
+        if placeholder not in content:
+            continue
+        with open(path, "w") as f:
+            f.write(content.replace(placeholder, ip))
+        print(f"  ✓ Patched {fname}: {placeholder} → {ip} (k8sServiceHost)")
+
+
+def install_cilium_via_helm():
+    """Cài Cilium (kube-proxy replacement) trước mọi workload cần ClusterIP/DNS — bắt buộc khi RKE2 disable-kube-proxy."""
+    print("--- Step 0: Installing Cilium (kube-proxy replacement via Helm) ---")
+    kubeconfig_path = _kubeconfig_for_deploy()
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig_path
+
+    cilium_dir = os.path.join(_SCRIPT_DIR, "cilium")
+    value_files = []
+    if TERRAFORM_ENV == "management":
+        for name in (
+            "cilium-values-management.yaml",
+            "cilium-values-management-bootstrap.yaml",
+        ):
+            p = os.path.join(cilium_dir, name)
+            if os.path.isfile(p):
+                value_files.append(p)
+    elif TERRAFORM_ENV == "dev":
+        for name in (
+            "cilium-values.yaml",
+            "cilium-cluster-dev.yaml",
+            "clustermesh-management-peer.yaml",
+        ):
+            p = os.path.join(cilium_dir, name)
+            if os.path.isfile(p):
+                value_files.append(p)
+    elif TERRAFORM_ENV == "prod":
+        for name in (
+            "cilium-values.yaml",
+            "cilium-cluster-prod.yaml",
+            "clustermesh-management-peer.yaml",
+        ):
+            p = os.path.join(cilium_dir, name)
+            if os.path.isfile(p):
+                value_files.append(p)
+
+    if not value_files:
+        print(f"  ✗ Không tìm thấy file values Cilium trong {cilium_dir}")
+        sys.exit(1)
+
+    vf_args = " ".join(f"-f {shlex.quote(p)}" for p in value_files)
+    run_command("helm repo add cilium https://helm.cilium.io/", env=env)
+    run_command("helm repo update cilium", env=env)
+    run_command(
+        "helm upgrade --install cilium cilium/cilium "
+        f"--version {CILIUM_CHART_VERSION} "
+        "--namespace kube-system "
+        f"{vf_args} "
+        "--wait --timeout 15m",
+        env=env,
+    )
+    # Đảm bảo dataplane sẵn sàng trước CSI/CoreDNS traffic qua Service VIP
+    subprocess.run(
+        "kubectl rollout status daemonset/cilium -n kube-system --timeout=300s 2>/dev/null || true",
+        shell=True,
+        env=env,
+        capture_output=True,
+    )
+    print("  ✓ Cilium installed (RKE2 không chạy kube-proxy; Service LB do Cilium).")
 
 
 def install_ebs_csi_driver():
@@ -742,10 +839,17 @@ def main():
 
     tf_out = get_terraform_output()
     wait_for_nlb_health_checks()
-    install_ebs_csi_driver()
 
     if TERRAFORM_ENV == "management":
         patch_clustermesh_management_config()
+    else:
+        _patch_clustermesh_peer_management_ip()
+
+    _patch_cilium_k8s_service_host(tf_out)
+    install_cilium_via_helm()
+    install_ebs_csi_driver()
+
+    if TERRAFORM_ENV == "management":
         install_argocd()
         wait_for_argocd_ready()
         apply_argocd_projects_and_rbac()
@@ -755,7 +859,6 @@ def main():
         print("     bash scripts/create-argocd-cluster-secrets.sh")
         print("     bash scripts/deploy-argocd-bootstrap.sh")
     else:
-        _patch_clustermesh_peer_management_ip()
         install_external_secrets_operator()
         ensure_aws_secrets_credentials()
         apply_external_secrets_manifests()

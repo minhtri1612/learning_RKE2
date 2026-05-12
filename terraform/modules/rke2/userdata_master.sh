@@ -19,6 +19,10 @@ mkdir -p /etc/rancher/rke2/
 cat <<EOT > /etc/rancher/rke2/config.yaml
 token: ${rke2_token}
 write-kubeconfig-mode: "0644"
+# Không cài Canal — Cilium là CNI duy nhất (helm trong configure.py).
+cni: none
+# Cilium (kubeProxyReplacement) thay kube-proxy — phải cài Cilium ngay trong configure.py trước workload phụ thuộc Service/DNS.
+disable-kube-proxy: true
 tls-san:
   - "${nlb_dns}"
   - "$INSTANCE_IP"
