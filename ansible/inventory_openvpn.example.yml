@@ -1,0 +1,16 @@
+# Sao chép → inventory_openvpn.yml, thay IP bằng output Terraform:
+#   terraform -chdir=../terraform/environments/management output -raw openvpn_public_ip
+#
+# Chạy:
+#   ansible-playbook -i inventory_openvpn.yml openvpn-server.yml \
+#     -e "openvpn_public_ip=<CÙNG_IP>"
+#
+# provision.py cũng có thể tạo inventory_openvpn.yml khi chạy Ansible OpenVPN.
+
+vpn_server:
+  hosts:
+    openvpn:
+      ansible_host: REPLACE_WITH_OPENVPN_PUBLIC_IP
+      ansible_user: ubuntu
+      # Đường dẫn tính từ thư mục ansible/ khi chạy playbook tại đây
+      ansible_ssh_private_key_file: ../terraform/environments/management/k8s-key.pem

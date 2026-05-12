@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Chạy 1 lần sau ./deploy.py (env=management) nếu /etc/hosts chưa được cập nhật: sudo bash /home/minhtri/Downloads/practice_RKE2/scripts/setup-hosts.sh
 set -e
-ENTRY="54.253.142.201	argocd.local"
-# Xóa dòng cũ có các host này
-sudo sed -i.bak -E '/argocd\.local/d' /etc/hosts
+ENTRY="13.237.3.9\tmeo-stationery-dev.local"
+sudo sed -i.bak -E '/meo-stationery-dev\.local/d' /etc/hosts
 echo "$ENTRY" | sudo tee -a /etc/hosts
-echo "Done. Hosts for management: argocd.local"
+echo "Done: meo-stationery-dev.local"

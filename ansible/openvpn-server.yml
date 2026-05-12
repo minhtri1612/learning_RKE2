@@ -101,6 +101,27 @@
           persist-tun
           verb {{ vpn_policy.verb | default('3') }}
 
+    - name: Create TCP client-connect script (fix tun0/tun1 routing conflict)
+      copy:
+        dest: /etc/openvpn/server/tcp-client-connect.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # When a client connects via TCP (tun1), add a /32 host route via tun1.
+          # Without this, kernel routes 10.8.0.0/24 via tun0 (UDP) by default, causing
+          # response packets to go to the wrong interface → client never receives them.
+          [ -n "$ifconfig_pool_remote_ip" ] && ip route replace "${ifconfig_pool_remote_ip}/32" dev tun1
+          exit 0
+
+    - name: Create TCP client-disconnect script (cleanup /32 host route)
+      copy:
+        dest: /etc/openvpn/server/tcp-client-disconnect.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          [ -n "$ifconfig_pool_remote_ip" ] && ip route del "${ifconfig_pool_remote_ip}/32" dev tun1 2>/dev/null || true
+          exit 0
+
     - name: Generate server-tcp.conf (TCP 443 fallback, dev tun1)
       copy:
         dest: /etc/openvpn/server/server-tcp.conf
@@ -114,8 +135,8 @@
           key server.key
           dh dh.pem
           tls-auth ta.key 0
-          server 10.8.1.0 255.255.255.0
-          push "route-gateway 10.8.1.1"
+          server {{ vpn_network }} {{ vpn_mask }}
+          push "route-gateway 10.8.0.1"
           {% for r in vpn_target %}
           push "route {{ r.cidr }} {{ r.mask }}"
           {% endfor %}
@@ -129,12 +150,28 @@
           persist-key
           persist-tun
           verb {{ vpn_policy.verb | default('3') }}
+          # Fix: add /32 host route via tun1 on connect to override default tun0 route for same subnet
+          script-security 2
+          client-connect /etc/openvpn/server/tcp-client-connect.sh
+          client-disconnect /etc/openvpn/server/tcp-client-disconnect.sh
 
     - name: Enable IPv4 Forwarding
       sysctl:
         name: net.ipv4.ip_forward
         value: '1'
         state: present
+
+    # VPN gateway: strict rp_filter hay làm drop reply path (NAT client → VPC → master).
+    # 2 = loose (khuyến nghị router/VPN trên Linux).
+    - name: Loosen reverse-path filter for VPN forwarding
+      sysctl:
+        name: "{{ item }}"
+        value: "2"
+        state: present
+        sysctl_set: true
+      loop:
+        - net.ipv4.conf.all.rp_filter
+        - net.ipv4.conf.default.rp_filter
 
     - name: Map static IPs (CCD)
       copy:
@@ -240,26 +277,32 @@
       ansible.builtin.shell: |
         iptables -C FORWARD -d {{ vpn_network }}/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -d {{ vpn_network }}/24 -j ACCEPT
 
-    - name: Setup IPTables - allow FORWARD for TCP VPN subnet 10.8.1.0/24
+    - name: TCPMSS clamp on forwarded VPN traffic (tránh SYN treo qua tunnel)
       ansible.builtin.shell: |
-        iptables -C FORWARD -s 10.8.1.0/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -s 10.8.1.0/24 -j ACCEPT
-        iptables -C FORWARD -d 10.8.1.0/24 -j ACCEPT 2>/dev/null || iptables -A FORWARD -d 10.8.1.0/24 -j ACCEPT
+        iptables -t mangle -C FORWARD -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || \
+        iptables -t mangle -A FORWARD -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
-    - name: Setup IPTables - MASQUERADE for TCP VPN clients (10.8.1.0/24)
-      ansible.builtin.shell: |
-        iptables -t nat -C POSTROUTING -s 10.8.1.0/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null || \
-        iptables -t nat -A POSTROUTING -s 10.8.1.0/24 -o {{ vpn_physical_interface }} -j MASQUERADE
-      when: vpn_nat | default(false) | bool
+    # TCP giờ dùng cùng pool 10.8.0.0/24 với UDP — FORWARD/NAT cho {{ vpn_network }}/24 đã đủ.
 
     - name: Remove MASQUERADE when vpn_nat is false (keep client source IP for SG 10.8.0.0/24)
       ansible.builtin.shell: |
-        iptables -t nat -D POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null || true
+        while iptables -t nat -D POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null; do :; done
+        for i in ens5 ens4 ens3 eth0 enp0s3 enp0s8; do
+          while iptables -t nat -D POSTROUTING -s {{ vpn_network }}/24 -o "$i" -j MASQUERADE 2>/dev/null; do :; done
+        done
+        iptables -t nat -D POSTROUTING -s {{ vpn_network }}/24 ! -d {{ vpn_network }}/24 -j MASQUERADE 2>/dev/null || true
       when: not (vpn_nat | default(false))
 
+    # MASQUERADE **không** dùng -o: trên AWS NIC hay là ens5; rule -o eth0 sai → không NAT → master thấy 10.8.0.51
+    # nhưng reply path dễ fail → curl 6443 timeout. Dùng ! -d VPN pool để SNAT mọi traffic ra VPC / Internet.
     - name: Setup IPTables - MASQUERADE for VPN clients
       ansible.builtin.shell: |
-        iptables -t nat -C POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null || \
-        iptables -t nat -A POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE
+        while iptables -t nat -D POSTROUTING -s {{ vpn_network }}/24 -o {{ vpn_physical_interface }} -j MASQUERADE 2>/dev/null; do :; done
+        for i in ens5 ens4 ens3 eth0 enp0s3 enp0s8; do
+          while iptables -t nat -D POSTROUTING -s {{ vpn_network }}/24 -o "$i" -j MASQUERADE 2>/dev/null; do :; done
+        done
+        iptables -t nat -C POSTROUTING -s {{ vpn_network }}/24 ! -d {{ vpn_network }}/24 -j MASQUERADE 2>/dev/null || \
+        iptables -t nat -A POSTROUTING -s {{ vpn_network }}/24 ! -d {{ vpn_network }}/24 -j MASQUERADE
       when: vpn_nat | default(false) | bool
 
     - name: Setup IPTables - Security Rules for Roles

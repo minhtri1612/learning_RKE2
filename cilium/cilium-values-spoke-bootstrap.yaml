@@ -1,0 +1,76 @@
+# Spoke (dev/prod): cài Cilium **trước** kube-prometheus-stack — chưa có CRD ServiceMonitor.
+# Dùng sau các file cilium-values.yaml + cilium-cluster-*.yaml + clustermesh-management-peer.yaml
+# (Helm -f sau override -f trước → file này phải là layer cuối trong configure.py / Argo CD).
+#
+# Sau khi monitoring-* sync xong, Argo có thể sync lại Cilium không cần file này (trustCRDsExist).
+
+# Bootstrap step 1 of 2 — safe minimal config while Cilium initializes.
+#
+# Root causes of API/SSH blackout on multi-node clusters during Cilium init:
+# 1) l7Proxy: true installs iptables rules that redirect L7 traffic via Envoy.
+#    While BPF maps are empty, Cilium may mark all traffic as L7, causing Envoy
+#    to receive (and drop) connections to port 6443 — kills API + SSH.
+# 2) kubeProxyReplacement: true attaches a tc ingress BPF hook to ens5 for
+#    NodePort interception; before maps are loaded the default action is DROP.
+# 3) gatewayAPI webhook (failurePolicy: Fail) can block API operations during init.
+#
+# Management cluster works because it uses l7Proxy: false and is single-node
+# (API queries use loopback, not ens5).
+#
+# configure.py uses this file for step 1 (CNI + connectivity), then upgrades
+# WITHOUT this file in step 2 to restore the full production config.
+
+kubeProxyReplacement: false
+l7Proxy: false
+
+# Disable iptables rules entirely during bootstrap: Cilium's CILIUM_INPUT/OUTPUT chains
+# can leave the INPUT chain in a blocked state if cleanup is interrupted (e.g. pods
+# killed while iptables rules are being modified). With installIptablesRules: false,
+# Cilium does not touch iptables at all — all filtering is BPF-only.
+# Step 2 restores the full config (installIptablesRules defaults to true).
+installIptablesRules: false
+
+# Prevent tc BPF from attaching to ens5 during bootstrap initialization.
+#
+# Root cause: when Cilium first starts, it attaches a tc ingress BPF program to
+# ens5 BEFORE its BPF maps are populated. The program intercepts ALL incoming
+# packets (ICMP, TCP/6443, TCP/22). In VXLAN tunnel mode the program redirects
+# VXLAN UDP/8472 packets to cilium_vxlan and calls policy/conntrack helpers for
+# everything else. With empty maps those helpers find no matching entry and the
+# default path for "untracked" traffic returns TC_ACT_SHOT (drop). This creates
+# a deadlock on multi-node clusters: workers can't reach the API → maps never
+# fully load → BPF programs never stop dropping.
+#
+# Fix: point Cilium at a non-existent device name so it finds nothing to attach
+# tc to. ens5 traffic flows through the normal kernel path (no BPF), keeping the
+# API accessible throughout initialization. Pod-to-pod VXLAN works via
+# cilium_vxlan (Cilium manages that interface separately, independent of
+# `devices`). Step 2 removes this override so Cilium auto-detects ens5; by then
+# BPF maps are fully loaded and the tc program allows all traffic correctly.
+devices: "bootstrap-placeholder"
+
+hostFirewall:
+  enabled: false
+
+gatewayAPI:
+  enabled: false
+
+socketLB:
+  hostNamespaceOnly: true
+
+bpf:
+  hostLegacyRouting: true
+
+hubble:
+  metrics:
+    serviceMonitor:
+      enabled: false
+
+prometheus:
+  serviceMonitor:
+    enabled: false
+
+operator:
+  prometheus:
+    serviceMonitor:
+      enabled: false

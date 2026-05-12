@@ -16,6 +16,7 @@ spec:
           - $values/cilium/cilium-values.yaml
           - $values/cilium/cilium-cluster-prod.yaml
           - $values/cilium/clustermesh-management-peer.yaml
+          - $values/cilium/cilium-values-spoke-bootstrap.yaml
     - repoURL: https://github.com/minhtri1612/learning_RKE2.git
       targetRevision: main
       ref: values

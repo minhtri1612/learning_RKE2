@@ -7,6 +7,7 @@ External Secrets Operator (dev/prod).
 
 Usage:
     ./configure.py [dev|prod|management]   (mặc định: management)
+    ./configure.py prod --skip-vpn-check   (hiếm: bỏ probe TCP/curl đầu — **không** thay thế VPN; kubectl vẫn cần tới apiserver)
 
 ⚠️  Đảm bảo VPN đang bật trước khi chạy:
     sudo openvpn --config minhtri.ovpn
@@ -14,7 +15,9 @@ Usage:
 import glob
 import json
 import os
+import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -34,6 +37,14 @@ DATABASE_NAMESPACE = "database"
 
 # Khớp argocd/bootstrap/*-cilium-*.yaml — configure.py cài Cilium trước EBS/ArogCD khi RKE2 disable-kube-proxy.
 CILIUM_CHART_VERSION = "1.19.2"
+# Nếu bật CILIUM_HELM_WAIT=1: Helm --wait chờ cả Hubble/ClusterMesh/… (có thể rất lâu). Timeout: CILIUM_HELM_TIMEOUT (mặc định 45m).
+_DEFAULT_CILIUM_HELM_TIMEOUT = "45m"
+# Helm --timeout khi không --wait (hooks / apply manifest lên API).
+_CILIUM_HELM_APPLY_TIMEOUT = "15m"
+# Chờ cilium agent: không im lặng hàng chục phút — in pod/DS định kỳ. Giây (vd: CILIUM_ROLLOUT_TIMEOUT=3600).
+_DEFAULT_CILIUM_ROLLOUT_SECONDS = 1200
+_CILIUM_ROLLOUT_SLICE_S = 45
+_CILIUM_ROLLOUT_LOG_INTERVAL_S = 40
 
 HOSTNAMES_FOR_NLB_BY_ENV = {
     "management": ("argocd.local",),
@@ -42,12 +53,41 @@ HOSTNAMES_FOR_NLB_BY_ENV = {
 }
 
 
+def _strip_configure_argv_flags() -> None:
+    """Loại --skip-vpn-check / -S khỏi argv (đặt SKIP_VPN_CHECK=1). Ví dụ: ./configure.py prod --skip-vpn-check"""
+    if len(sys.argv) < 2:
+        return
+    new_argv = [sys.argv[0]]
+    for arg in sys.argv[1:]:
+        if arg in ("--skip-vpn-check", "-S"):
+            os.environ["SKIP_VPN_CHECK"] = "1"
+            continue
+        new_argv.append(arg)
+    if len(new_argv) != len(sys.argv):
+        sys.argv[:] = new_argv
+
+
+_strip_configure_argv_flags()
+
+
+def _route_to_host_uses_tun0(host: str) -> bool:
+    """True nếu ip route get host cho thấy traffic đi qua tun0."""
+    r = subprocess.run(
+        f"ip route get {shlex.quote(host)} 2>/dev/null",
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    out = (r.stdout or "").strip()
+    return "dev tun0" in out
+
+
 def _get_env():
     if len(sys.argv) >= 2:
         env = sys.argv[1].lower()
         if env in _VALID_ENVS:
             return env
-        print(f"Usage: {sys.argv[0]} [dev|prod|management]", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]} [dev|prod|management] [--skip-vpn-check]", file=sys.stderr)
         sys.exit(1)
     return os.environ.get("TF_ENV", "management")
 
@@ -120,8 +160,75 @@ def _apply_argocd_rbac_manifests(env):
     return True
 
 
+def _apiserver_host_port_from_kubeconfig(kubeconfig_path):
+    """Lấy (host, port) từ server: https://host:6443 trong kubeconfig."""
+    try:
+        with open(kubeconfig_path, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        m = re.search(r"server:\s*https?://([^:/\s]+):(\d+)", text)
+        if m:
+            return m.group(1), int(m.group(2))
+    except OSError:
+        pass
+    return None, None
+
+
+def _tcp_probe(host, port, timeout_sec=8):
+    """True nếu TCP tới host:port thành công (chỉ kiểm tra lớp mạng, không TLS)."""
+    if not host or not port:
+        return False
+    try:
+        s = socket.create_connection((host, port), timeout=timeout_sec)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+
+def _curl_apiserver_readyz_noproxy(host, port, timeout_sec=12) -> bool:
+    """HTTPS /readyz, không đi qua HTTP proxy (IP 10.x bị proxy chặn rất hay gặp)."""
+    if not shutil.which("curl"):
+        return False
+    url = f"https://{host}:{port}/readyz"
+    ct = str(max(3, min(int(timeout_sec), 20)))
+    mt = str(max(8, int(timeout_sec) + 3))
+    r = subprocess.run(
+        ["curl", "-k", "-sf", "--noproxy", "*", "--connect-timeout", ct, "--max-time", mt, url],
+        capture_output=True,
+        timeout=int(timeout_sec) + 15,
+    )
+    return r.returncode == 0
+
+
+def _print_apiserver_connect_diagnostics(host: str) -> None:
+    """Gợi ý khi VPN “đang bật” nhưng probe tới apiserver fail (WSL vs host, proxy, route)."""
+    print("  --- chẩn đoán nhanh (cùng máy với terminal chạy configure) ---")
+    subprocess.run(f"ip route get {shlex.quote(host)} 2>/dev/null || true", shell=True)
+    subprocess.run("ip -br addr show tun0 2>/dev/null || echo '  (không có tun0 trên máy này — OpenVPN có đang chạy ở đây không?)'", shell=True)
+    px = []
+    for k in ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+        v = os.environ.get(k)
+        if v:
+            px.append(f"{k}={v[:80]}")
+    if px:
+        print("  ⚠ Đang có biến proxy trong môi trường (curl đã dùng --noproxy; vẫn nên kiểm tra):")
+        for line in px[:6]:
+            print(f"     {line}")
+    print(
+        "  → Hai terminal **cùng một máy** vẫn dùng **chung** tun0 và routing — mở OpenVPN ở terminal 1, "
+        "curl/configure ở terminal 2 là **bình thường**, không phải lỗi “hai máy”."
+    )
+    print(
+        "  → Nếu `ip route get` đã ra **dev tun0** mà HTTPS :6443 vẫn timeout: lỗi thường gặp là **Security Group** "
+        "node RKE2 (chưa cho 6443 từ 10.8.0.0/24 hoặc từ private IP EC2 OpenVPN), **forward/NAT** trên server OpenVPN, "
+        "hoặc tunnel lệch — thử **tắt rồi bật lại** client; trên EC2 OpenVPN: `curl -k https://<apiserver>:6443/readyz` và xem `iptables`/MASQUERADE."
+    )
+    print("  → WSL2: OpenVPN trên **Windows** không cho WSL route 10.x — chạy OpenVPN **trong** WSL hoặc chạy configure trên cùng OS với tun0.")
+    print("  → Nếu shell là **SSH sang máy khác** (không phải hai tab local): máy SSH không có tun0 của laptop — phải VPN trên đúng máy đang gõ lệnh.")
+
+
 def check_vpn_connectivity():
-    """Kiểm tra VPN có đang bật không bằng cách thử kết nối đến private IP."""
+    """Kiểm tra VPN + API: TCP tới apiserver, rồi kubectl get nodes (có retry sau provision)."""
     if os.environ.get("SKIP_VPN_CHECK") == "1":
         print("  ⏭ SKIP_VPN_CHECK=1 — bỏ qua kiểm tra VPN.")
         return True
@@ -132,27 +239,83 @@ def check_vpn_connectivity():
         print(f"     Chạy trước: ./provision.py {TERRAFORM_ENV}")
         sys.exit(1)
 
-    print("  Checking VPN connectivity (kubectl get nodes)...")
-    try:
-        res = subprocess.run(
-            f"kubectl --kubeconfig={kubeconfig_path} get nodes --request-timeout=15s",
-            shell=True, capture_output=True, timeout=35,
+    api_host, api_port = _apiserver_host_port_from_kubeconfig(kubeconfig_path)
+    if api_host and api_port:
+        print(
+            f"  Kiểm tra tới apiserver {api_host}:{api_port} "
+            f"(VPN + route; thêm curl --noproxy vì HTTP proxy hay chặn IP 10.x)..."
         )
-    except subprocess.TimeoutExpired:
-        print("  ✗ Timeout — không kết nối được API (VPN chưa bật / route sai / API chậm).")
-        print("\n  ⚠️  Bật VPN (vd. sudo openvpn --config sep_tong.ovpn) rồi chạy lại.")
-        print("     Hoặc bỏ qua kiểm tra: SKIP_VPN_CHECK=1 ./configure.py", TERRAFORM_ENV)
-        sys.exit(1)
-    if res.returncode == 0:
-        print("  ✓ VPN OK — Kubernetes API is reachable.")
-        return True
-    else:
-        err = (res.stderr or b"").decode(errors="ignore").strip()
-        print("  ✗ Không thể kết nối đến Kubernetes API.")
-        print(f"     Lỗi: {err[:200]}")
-        print("\n  ⚠️  Bật VPN (vd. sudo openvpn --config sep_tong.ovpn) rồi chạy lại.")
-        print("     Hoặc bỏ qua kiểm tra: SKIP_VPN_CHECK=1 ./configure.py", TERRAFORM_ENV)
-        sys.exit(1)
+        reach_ok = False
+        for attempt in range(1, 4):
+            if _tcp_probe(api_host, api_port, timeout_sec=10):
+                reach_ok = True
+                break
+            if _curl_apiserver_readyz_noproxy(api_host, api_port, timeout_sec=14):
+                reach_ok = True
+                print("  (TCP probe fail nhưng curl --noproxy */readyz OK — tiếp tục.)")
+                break
+            if attempt < 3:
+                print(f"  … Chưa tới được apiserver (lần {attempt}/3), thử lại sau 4s.")
+                time.sleep(4)
+        if not reach_ok:
+            print("  ✗ Không tới được apiserver sau 3 lần (TCP + curl --noproxy).")
+            _print_apiserver_connect_diagnostics(api_host)
+            if _route_to_host_uses_tun0(api_host):
+                script = os.path.basename(sys.argv[0])
+                print()
+                print("  ─────────────────────────────────────────────────────────────")
+                print(
+                    "  Route đã qua **tun0** mà :6443 vẫn timeout → đường tới apiserver đang **gãy** "
+                    "(SG, NAT/iptables trên EC2 OpenVPN, tunnel stale). **Cách đúng:** sửa mạng + reconnect VPN."
+                )
+                print(
+                    "  SKIP / --skip-vpn-check **không** thay OpenVPN: kubeconfig vẫn trỏ private IP; "
+                    "chỉ bỏ bước kiểm tra sớm — nếu API thật sự không tới được, `kubectl`/`helm` ngay sau đó vẫn lỗi."
+                )
+                print(
+                    "  Chỉ dùng khi bạn **chắc** đây là lỗi probe/CI đặc biệt (hiếm). Còn không thì đừng SKIP — fix OpenVPN/SG."
+                )
+                print(f"    SKIP_VPN_CHECK=1 ./{script} {TERRAFORM_ENV}   hoặc   ./{script} {TERRAFORM_ENV} --skip-vpn-check")
+                print("  ─────────────────────────────────────────────────────────────")
+            print("     → OpenVPN phải trên **cùng máy / cùng network namespace** với terminal chạy ./configure.py.")
+            print(
+                f"     → Thử tay: curl -k --noproxy '*' --connect-timeout 5 https://{api_host}:{api_port}/readyz"
+            )
+            sys.exit(1)
+        print("  ✓ Tới apiserver OK (TCP hoặc HTTPS /readyz).")
+
+    print("  Checking Kubernetes API (kubectl get nodes, có thể vài lần sau provision)...")
+    kubectl_cmd = (
+        f"kubectl --kubeconfig={shlex.quote(kubeconfig_path)} get nodes --request-timeout=20s"
+    )
+    last_err = ""
+    for attempt in range(1, 9):
+        try:
+            res = subprocess.run(
+                kubectl_cmd,
+                shell=True,
+                capture_output=True,
+                timeout=45,
+            )
+        except subprocess.TimeoutExpired:
+            last_err = "kubectl subprocess timeout (45s)"
+            res = None
+        else:
+            if res.returncode == 0:
+                print("  ✓ VPN/API OK — kubectl get nodes thành công.")
+                return True
+            last_err = (res.stderr or res.stdout or b"").decode(errors="replace").strip()[:400]
+
+        if attempt < 8:
+            print(f"  Thử lại {attempt}/8 sau 8s... ({last_err[:120] if last_err else 'timeout'})")
+            time.sleep(8)
+
+    print("  ✗ kubectl get nodes thất bại sau nhiều lần thử.")
+    if last_err:
+        print(f"     Lỗi: {last_err}")
+    print("\n  ⚠️  Nếu VPN đang bật: đợi RKE2 ổn định rồi chạy lại, hoặc kiểm tra kubeconfig / chứng thư.")
+    print(f"     Hoặc: SKIP_VPN_CHECK=1 ./configure.py {TERRAFORM_ENV}")
+    sys.exit(1)
 
 
 # ── Phase 2 Functions ─────────────────────────────────────────────────────────
@@ -201,84 +364,363 @@ def _first_master_private_ip(tf_out):
 
 
 def _patch_cilium_k8s_service_host(tf_out):
-    """Thay PLACEHOLDER_MASTER_PRIVATE_IP trong values Git để Helm/Argo đồng bộ (không chỉ --set một lần)."""
+    """Ghi k8sServiceHost = IP master cluster hiện tại (terraform). RKE2 tắt kube-proxy: Cilium cần IP thật, không ClusterIP kubernetes."""
     placeholder = "PLACEHOLDER_MASTER_PRIVATE_IP"
     ip = _first_master_private_ip(tf_out)
     if not ip:
-        print(f"  ⚠ Bỏ qua patch {placeholder} — không có master_private_ip trong terraform output.")
+        print(f"  ⚠ Bỏ qua patch k8sServiceHost — không có master_private_ip trong terraform output.")
         return
-    for fname in ("cilium-values.yaml", "cilium-values-management.yaml"):
+    # k8sServiceHost theo từng cluster (dev/prod overlay khác nhau) — không patch cilium-values.yaml chung.
+    if TERRAFORM_ENV == "management":
+        targets = ("cilium-values-management.yaml",)
+    elif TERRAFORM_ENV == "dev":
+        targets = ("cilium-cluster-dev.yaml",)
+    elif TERRAFORM_ENV == "prod":
+        targets = ("cilium-cluster-prod.yaml",)
+    else:
+        targets = ()
+    k8s_line_lit = re.compile(
+        r"^(\s*k8sServiceHost:\s*)[\"']?((?:\d{1,3}\.){3}\d{1,3})[\"']?\s*$",
+        re.MULTILINE,
+    )
+
+    for fname in targets:
         path = os.path.join(_SCRIPT_DIR, "cilium", fname)
         if not os.path.isfile(path):
             continue
         with open(path, "r") as f:
             content = f.read()
-        if placeholder not in content:
+        if placeholder in content:
+            new_content = content.replace(placeholder, ip)
+        else:
+            new_content, n_sub = k8s_line_lit.subn(rf'\1"{ip}"', content, count=1)
+            if n_sub == 0:
+                print(f"  ⚠ {fname}: không có {placeholder} hay k8sServiceHost IPv4 — bỏ qua.")
+                continue
+        if new_content == content:
             continue
         with open(path, "w") as f:
-            f.write(content.replace(placeholder, ip))
-        print(f"  ✓ Patched {fname}: {placeholder} → {ip} (k8sServiceHost)")
+            f.write(new_content)
+        print(f"  ✓ Patched {fname}: k8sServiceHost → {ip} (master_private_ip / {TERRAFORM_ENV})")
+
+
+def _kubectl_rollout_if_exists(kind_name: str, namespace: str, timeout: str, env) -> None:
+    """Chờ rollout chỉ khi object đã tồn tại (tránh lỗi khi chart không tạo resource)."""
+    probe = subprocess.run(
+        f"kubectl get {kind_name} -n {namespace} -o name",
+        shell=True,
+        env=env,
+        capture_output=True,
+    )
+    if probe.returncode != 0 or not (probe.stdout or b"").strip():
+        return
+    print(f"  Chờ rollout {kind_name} (tối đa {timeout})...")
+    run_command(
+        f"kubectl rollout status {kind_name} -n {namespace} --timeout={timeout}",
+        env=env,
+    )
+
+
+def _ds_cilium_ready_stats(env) -> tuple[int, int, int] | None:
+    """(numberReady, desiredNumberScheduled, updatedNumberScheduled) hoặc None."""
+    r = subprocess.run(
+        "kubectl get daemonset cilium -n kube-system "
+        '-o jsonpath="{.status.numberReady},{.status.desiredNumberScheduled},{.status.updatedNumberScheduled}"',
+        shell=True,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode != 0:
+        return None
+    raw = (r.stdout or "").strip().strip('"')
+    if not raw or raw == ",":
+        return None
+    parts = raw.split(",")
+    if len(parts) != 3:
+        return None
+    try:
+        return (int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return None
+
+
+def _cilium_agent_rollout_requires_all_nodes(env) -> bool:
+    """Management / CILIUM_STRICT_ROLLOUT: chờ full DS. Spoke dev/prod: mặc định chỉ cần ≥1 Ready."""
+    if os.environ.get("CILIUM_STRICT_ROLLOUT", "").lower() in ("1", "true", "yes"):
+        return True
+    return TERRAFORM_ENV not in ("dev", "prod")
+
+
+def _print_cilium_agent_pods(env) -> None:
+    subprocess.run(
+        "kubectl get pods -n kube-system -l k8s-app=cilium -o wide",
+        shell=True,
+        env=env,
+    )
+
+
+def _print_first_cilium_pod_tail_describe(env, lines: int = 60) -> None:
+    subprocess.run(
+        f"bash -c 'p=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath=\"{{.items[0].metadata.name}}\" 2>/dev/null); "
+        f"test -n \"$p\" && kubectl describe pod -n kube-system \"$p\" | tail -n {lines}'",
+        shell=True,
+        env=env,
+    )
+
+
+def _wait_cilium_agent(env) -> None:
+    max_sec = int(os.environ.get("CILIUM_ROLLOUT_TIMEOUT", str(_DEFAULT_CILIUM_ROLLOUT_SECONDS)))
+    require_full = _cilium_agent_rollout_requires_all_nodes(env)
+    slice_s = _CILIUM_ROLLOUT_SLICE_S
+    if require_full:
+        print(
+            f"  Chờ **toàn bộ** DaemonSet cilium (management hoặc CILIUM_STRICT_ROLLOUT=1). "
+            f"Tối đa {max_sec}s; log mỗi ~{_CILIUM_ROLLOUT_LOG_INTERVAL_S}s."
+        )
+    else:
+        print(
+            f"  Chờ cilium agent (spoke: **≥1 pod Ready** là đủ; bật CILIUM_STRICT_ROLLOUT=1 nếu cần cả 3 node). "
+            f"Tối đa {max_sec}s; log mỗi ~{_CILIUM_ROLLOUT_LOG_INTERVAL_S}s."
+        )
+
+    deadline = time.monotonic() + max_sec
+    next_log = 0.0
+    first = True
+    while time.monotonic() < deadline:
+        stats = _ds_cilium_ready_stats(env)
+        if stats and not require_full and stats[0] >= 1:
+            print(
+                f"  ✓ Cilium agent numberReady={stats[0]} (desired={stats[1]}) — tiếp tục configure."
+            )
+            return
+
+        now = time.monotonic()
+        if first or now >= next_log:
+            first = False
+            next_log = now + _CILIUM_ROLLOUT_LOG_INTERVAL_S
+            if stats:
+                print(f"  … DaemonSet cilium: ready={stats[0]} desired={stats[1]} updated={stats[2]}")
+            else:
+                print("  … (chưa đọc được trạng thái DaemonSet cilium — DS vừa tạo?)")
+            _print_cilium_agent_pods(env)
+
+        r_roll = subprocess.run(
+            f"kubectl rollout status daemonset/cilium -n kube-system --timeout={slice_s}s",
+            shell=True,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if r_roll.returncode == 0:
+            stats2 = _ds_cilium_ready_stats(env)
+            if require_full:
+                ok = bool(
+                    stats2 and stats2[1] > 0 and stats2[0] >= stats2[1]
+                )  # numberReady >= desired
+            else:
+                ok = bool(stats2 and stats2[0] >= 1)
+            if ok:
+                print("  ✓ DaemonSet cilium rollout hoàn tất (numberReady khớp điều kiện).")
+                return
+            print(
+                "  ⚠ kubectl rollout status đã exit 0 nhưng agent chưa Ready (DS có thể vừa đổi template) — tiếp tục chờ."
+            )
+        time.sleep(2)
+
+    print(f"  ✗ Hết thời gian {max_sec}s — cilium agent vẫn chưa đạt điều kiện.")
+    _print_cilium_agent_pods(env)
+    print("  --- describe pod cilium (đoạn cuối) ---")
+    _print_first_cilium_pod_tail_describe(env)
+    print(
+        "  Gợi ý: **k8sServiceHost** phải là IP private master **đúng cluster/VPC** (RKE2 tắt kube-proxy) — sai → Init:CrashLoop; "
+        "hoặc ImagePull/node NotReady; CILIUM_ROLLOUT_TIMEOUT=3600 nếu chỉ pull chậm."
+    )
+    sys.exit(1)
+
+
+def _wait_cilium_operator(env) -> None:
+    op_deadline = time.monotonic() + int(os.environ.get("CILIUM_OPERATOR_ROLLOUT_SECONDS", "600"))
+    next_log = 0.0
+    while time.monotonic() < op_deadline:
+        r = subprocess.run(
+            "kubectl rollout status deployment/cilium-operator -n kube-system --timeout=60s",
+            shell=True,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode == 0:
+            r2 = subprocess.run(
+                "kubectl get deploy cilium-operator -n kube-system -o jsonpath='{.status.readyReplicas}'",
+                shell=True,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            try:
+                ready = int((r2.stdout or "").strip() or "0")
+            except ValueError:
+                ready = 0
+            if ready >= 1:
+                print("  ✓ cilium-operator rollout hoàn tất (readyReplicas≥1).")
+                return
+            print(
+                "  ⚠ rollout status exit 0 nhưng readyReplicas chưa ≥1 — tiếp tục chờ."
+            )
+        if time.monotonic() >= next_log:
+            next_log = time.monotonic() + 50
+            print("  … cilium-operator:")
+            subprocess.run(
+                "kubectl get deploy cilium-operator -n kube-system -o wide; "
+                "kubectl get pods -n kube-system -l name=cilium-operator -o wide 2>/dev/null || true",
+                shell=True,
+                env=env,
+            )
+        time.sleep(2)
+    print("  ✗ Timeout chờ cilium-operator.")
+    subprocess.run(
+        "kubectl describe deploy cilium-operator -n kube-system | tail -40",
+        shell=True,
+        env=env,
+    )
+    sys.exit(1)
+
+
+def _build_cilium_value_files(
+    cilium_dir: str, include_bootstrap: bool, include_clustermesh: bool = True
+) -> list[str]:
+    """Return ordered list of Cilium Helm value files for the current environment.
+
+    include_bootstrap=True  → append spoke-bootstrap override file (step 1 only).
+    include_clustermesh=False → skip clustermesh-management-peer.yaml (step 1 only:
+        ClusterMesh tries to connect to the hub cluster during init; with empty BPF
+        policy maps that can trigger additional host-endpoint policy checks that drop
+        traffic before maps are fully loaded).
+    """
+    bootstrap_file = "cilium-values-spoke-bootstrap.yaml"
+    if TERRAFORM_ENV == "management":
+        names = ["cilium-values-management.yaml", "cilium-values-management-bootstrap.yaml"]
+    elif TERRAFORM_ENV == "dev":
+        names = ["cilium-values.yaml", "cilium-cluster-dev.yaml"]
+        if include_clustermesh:
+            names.append("clustermesh-management-peer.yaml")
+        if include_bootstrap:
+            names.append(bootstrap_file)
+    elif TERRAFORM_ENV == "prod":
+        names = ["cilium-values.yaml", "cilium-cluster-prod.yaml"]
+        if include_clustermesh:
+            names.append("clustermesh-management-peer.yaml")
+        if include_bootstrap:
+            names.append(bootstrap_file)
+    else:
+        names = []
+    return [p for name in names if os.path.isfile(p := os.path.join(cilium_dir, name))]
 
 
 def install_cilium_via_helm():
-    """Cài Cilium (kube-proxy replacement) trước mọi workload cần ClusterIP/DNS — bắt buộc khi RKE2 disable-kube-proxy."""
+    """Cài Cilium trước mọi workload cần ClusterIP/DNS.
+
+    Dev/prod dùng 2-step install để tránh deadlock trên multi-node cluster:
+    - Step 1: kubeProxyReplacement: false (override trong bootstrap file) → Cilium KHÔNG attach
+      tc BPF vào ens5 → API server vẫn accessible trong khi pods init.
+    - Step 2: upgrade với kubeProxyReplacement: true (giá trị trong cilium-values.yaml) → kube-proxy
+      replacement bật sau khi Cilium đã stable.
+    """
     print("--- Step 0: Installing Cilium (kube-proxy replacement via Helm) ---")
     kubeconfig_path = _kubeconfig_for_deploy()
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
     cilium_dir = os.path.join(_SCRIPT_DIR, "cilium")
-    value_files = []
-    if TERRAFORM_ENV == "management":
-        for name in (
-            "cilium-values-management.yaml",
-            "cilium-values-management-bootstrap.yaml",
-        ):
-            p = os.path.join(cilium_dir, name)
-            if os.path.isfile(p):
-                value_files.append(p)
-    elif TERRAFORM_ENV == "dev":
-        for name in (
-            "cilium-values.yaml",
-            "cilium-cluster-dev.yaml",
-            "clustermesh-management-peer.yaml",
-        ):
-            p = os.path.join(cilium_dir, name)
-            if os.path.isfile(p):
-                value_files.append(p)
-    elif TERRAFORM_ENV == "prod":
-        for name in (
-            "cilium-values.yaml",
-            "cilium-cluster-prod.yaml",
-            "clustermesh-management-peer.yaml",
-        ):
-            p = os.path.join(cilium_dir, name)
-            if os.path.isfile(p):
-                value_files.append(p)
 
+    # For spoke clusters (dev/prod), use two-step bootstrap to avoid API blackout during init.
+    # Management is single-node: API queries go via localhost, no tc-BPF deadlock.
+    two_step = TERRAFORM_ENV in ("dev", "prod")
+
+    # Step 1 bootstrap: no ClusterMesh (avoids hub-connection attempts during init).
+    value_files = _build_cilium_value_files(cilium_dir, include_bootstrap=True, include_clustermesh=False)
     if not value_files:
         print(f"  ✗ Không tìm thấy file values Cilium trong {cilium_dir}")
         sys.exit(1)
 
-    vf_args = " ".join(f"-f {shlex.quote(p)}" for p in value_files)
     run_command("helm repo add cilium https://helm.cilium.io/", env=env)
     run_command("helm repo update cilium", env=env)
-    run_command(
-        "helm upgrade --install cilium cilium/cilium "
-        f"--version {CILIUM_CHART_VERSION} "
-        "--namespace kube-system "
-        f"{vf_args} "
-        "--wait --timeout 15m",
-        env=env,
-    )
-    # Đảm bảo dataplane sẵn sàng trước CSI/CoreDNS traffic qua Service VIP
-    subprocess.run(
-        "kubectl rollout status daemonset/cilium -n kube-system --timeout=300s 2>/dev/null || true",
-        shell=True,
-        env=env,
-        capture_output=True,
-    )
-    print("  ✓ Cilium installed (RKE2 không chạy kube-proxy; Service LB do Cilium).")
+
+    if two_step:
+        # Delete stale CiliumNode CRD objects before install.
+        #
+        # Root cause of API blackout on spoke clusters: when Cilium was previously installed
+        # with the default IPAM pool (10.0.0.0/8), the operator allocated pod CIDRs like
+        # 10.0.1.0/24 for one of the worker nodes. `helm uninstall` does NOT delete CRDs or
+        # their objects, so these CiliumNode objects persist in etcd across installs and
+        # reboots. On restart, the Cilium agent reads the stale CiliumNode spec and
+        # immediately installs the route `10.0.1.0/24 via <worker> dev cilium_vxlan`. This
+        # shadows the VPC peering route `10.0.0.0/16 via ens5`, so reply packets to the
+        # OpenVPN server (10.0.1.152) go into the VXLAN tunnel and are dropped — API timeout.
+        #
+        # Fix: delete all CiliumNode objects so the operator allocates fresh /24 CIDRs from
+        # the new pool (172.16.0.0/12, configured in cilium-values.yaml), which has no
+        # overlap with any VPC or VPN subnet.
+        print("  Pre-install: xóa CiliumNode objects cũ (stale pod CIDRs → VXLAN route conflict)...")
+        subprocess.run(
+            "kubectl delete ciliumnode --all --ignore-not-found",
+            shell=True, env=env, check=False,
+        )
+        subprocess.run(
+            "kubectl delete ciliumippool --all --ignore-not-found",
+            shell=True, env=env, check=False,
+        )
+        print("  ✓ CiliumNode objects cleared — operator sẽ tự cấp phát CIDR mới từ 172.16.0.0/12")
+
+    helm_wait_all = os.environ.get("CILIUM_HELM_WAIT", "").lower() in ("1", "true", "yes")
+    helm_timeout = os.environ.get("CILIUM_HELM_TIMEOUT", _DEFAULT_CILIUM_HELM_TIMEOUT)
+
+    def _helm_apply(vfiles: list[str], label: str) -> None:
+        vf_args = " ".join(f"-f {shlex.quote(p)}" for p in vfiles)
+        base = (
+            "helm upgrade --install cilium cilium/cilium "
+            f"--version {CILIUM_CHART_VERSION} "
+            "--namespace kube-system "
+            f"{vf_args} "
+        )
+        if helm_wait_all:
+            print(
+                f"  [{label}] Helm --wait (timeout {helm_timeout}) — "
+                "bỏ CILIUM_HELM_WAIT để chỉ chờ dataplane."
+            )
+            run_command(f"{base}--wait --timeout {helm_timeout}", env=env)
+        else:
+            print(
+                f"  [{label}] Helm apply không --wait — chờ dataplane sau. "
+                "Muốn hành vi cũ: CILIUM_HELM_WAIT=1."
+            )
+            run_command(f"{base}--timeout {_CILIUM_HELM_APPLY_TIMEOUT}", env=env)
+
+    if two_step:
+        print(
+            "  Spoke cluster (multi-node): dùng 2-step bootstrap.\n"
+            "  Step 1: kubeProxyReplacement=false → Cilium khởi động mà không block port 6443.\n"
+            "  Step 2: upgrade lên kubeProxyReplacement=true sau khi pods Ready."
+        )
+        _helm_apply(value_files, "Step 1/2 – CNI only, kubeProxyReplacement=false")
+        print("  Chờ dataplane step 1 (CNI only)...")
+        _wait_cilium_agent(env)
+        _wait_cilium_operator(env)
+        print("  ✓ Step 1 xong — nâng lên kubeProxyReplacement=true...")
+
+        value_files_final = _build_cilium_value_files(cilium_dir, include_bootstrap=False)
+        _helm_apply(value_files_final, "Step 2/2 – kubeProxyReplacement=true")
+    else:
+        _helm_apply(value_files, "install")
+
+    # Datapath + operator: đủ cho Service VIP / CSI; Hubble UI & clustermesh-apiserver có thể vẫn Starting.
+    print("  Chờ dataplane (DaemonSet cilium + Deployment cilium-operator)...")
+    _wait_cilium_agent(env)
+    _wait_cilium_operator(env)
+    _kubectl_rollout_if_exists("daemonset/cilium-envoy", "kube-system", "20m", env)
+
+    print("  ✓ Cilium dataplane sẵn sàng (RKE2 không kube-proxy). Kiểm tra thêm: kubectl get pods -n kube-system -l app.kubernetes.io/part-of=cilium")
 
 
 def install_ebs_csi_driver():
@@ -288,7 +730,12 @@ def install_ebs_csi_driver():
     env = os.environ.copy()
     env["KUBECONFIG"] = kubeconfig_path
 
-    run_command(f"kubectl create serviceaccount ebs-csi-controller-sa -n kube-system --dry-run=client -o yaml | kubectl apply -f -", env=env)
+    # --validate=false: tránh kubectl tải /openapi/v2 (payload lớn) — hay timeout qua VPN dù get nodes vẫn OK.
+    run_command(
+        "kubectl create serviceaccount ebs-csi-controller-sa -n kube-system --dry-run=client -o yaml | "
+        "kubectl apply --validate=false --request-timeout=120s -f -",
+        env=env,
+    )
     run_command("helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver", env=env)
     run_command("helm repo update aws-ebs-csi-driver", env=env)
     run_command(
@@ -425,9 +872,10 @@ def ensure_aws_secrets_credentials():
 
     # Ensure namespace exists (idempotent)
     run_command(
-        "kubectl create namespace external-secrets --dry-run=client -o yaml | kubectl apply -f -",
+        "kubectl create namespace external-secrets --dry-run=client -o yaml | "
+        "kubectl apply --validate=false --request-timeout=120s -f -",
         env=env,
-        timeout=20,
+        timeout=30,
     )
 
     res = subprocess.run(
@@ -476,8 +924,8 @@ def ensure_aws_secrets_credentials():
             sys.exit(1)
 
         apply_out = subprocess.run(
-            ["kubectl", "apply", "-f", "-"],
-            input=yaml_out.stdout, env=env, capture_output=True, text=True, timeout=15,
+            ["kubectl", "apply", "--validate=false", "--request-timeout=120s", "-f", "-"],
+            input=yaml_out.stdout, env=env, capture_output=True, text=True, timeout=30,
         )
         if apply_out.returncode != 0:
             err = (apply_out.stderr or apply_out.stdout or "").strip()
@@ -524,8 +972,9 @@ def apply_external_secrets_manifests():
     # Create namespaces first (ExternalSecret targets live here)
     for ns in ("meo-stationery", "database", "external-secrets"):
         subprocess.run(
-            f"kubectl create namespace {ns} --dry-run=client -o yaml | kubectl apply -f -",
-            shell=True, env=env, timeout=10, capture_output=True,
+            f"kubectl create namespace {ns} --dry-run=client -o yaml | "
+            f"kubectl apply --validate=false --request-timeout=60s -f -",
+            shell=True, env=env, timeout=30, capture_output=True,
         )
 
     chart_dir = os.path.join(_SCRIPT_DIR, "external-secrets", "applications")
@@ -542,7 +991,8 @@ def apply_external_secrets_manifests():
 
     cmd = (
         f"helm template external-secrets {chart_dir} "
-        f"-f {values_chart} -f {values_config_base} -f {values_config_env} | kubectl apply -f -"
+        f"-f {values_chart} -f {values_config_base} -f {values_config_env} | "
+        "kubectl apply --validate=false --request-timeout=120s -f -"
     )
 
     # Apply with retry: webhook may be Ready but endpoints not yet routable
@@ -778,52 +1228,63 @@ def patch_clustermesh_management_config():
     patch cilium-values-management.yaml để management ClusterMesh
     trỏ đúng vào AWS EC2 IP (thay PLACEHOLDER).
     Cuối cùng patch clustermesh-management-peer.yaml (spoke trỏ về hub).
+
+    Nếu chưa provision dev/prod: dùng tạm 192.0.2.1 / 192.0.2.2 (RFC 5737 TEST-NET-1) —
+    Kubernetes từ chối hostAliases nếu để nguyên chuỗi PLACEHOLDER_*.
+    Sau khi có cluster dev/prod: git checkout -- cilium/cilium-values-management.yaml rồi chạy lại configure,
+    hoặc sửa tay IP trong clustermesh.config.clusters.
     """
     values_file = os.path.join(_SCRIPT_DIR, "cilium", "cilium-values-management.yaml")
     if not os.path.isfile(values_file):
         return
 
     print("--- Step 1.5: Patching ClusterMesh management config ---")
+    with open(values_file, "r") as f:
+        content = f.read()
+
+    # TEST-NET-1 (RFC 5737): định dạng IP hợp lệ, không dùng cho spoke thật — chỉ để Helm/Cilium khởi tạo khi chưa có terraform dev/prod.
+    mesh_fallback = {"dev": "192.0.2.1", "prod": "192.0.2.2"}
+
     for env_name, placeholder, node_port in [
         ("dev", "PLACEHOLDER_DEV_NODE_IP", "32379"),
         ("prod", "PLACEHOLDER_PROD_NODE_IP", "32380"),
     ]:
-        try:
-            # Kiểm tra xem folder terraform của env có tồn tại không
-            tf_env_dir = os.path.join(TERRAFORM_DIR, "environments", env_name)
-            if not os.path.isdir(tf_env_dir):
-                continue
-
-            out = subprocess.check_output(
-                f"terraform -chdir=environments/{env_name} output -json",
-                shell=True, cwd=TERRAFORM_DIR, timeout=15,
-            )
-            data = json.loads(out)
-            # Lấy private IP của worker[0] hoặc master[0]
-            # Lưu ý: output master_private_ip trả về một list
-            worker_ips = data.get("worker_private_ips", {}).get("value", [])
-            master_ips = data.get("master_private_ip", {}).get("value", [])
-            node_ip = (worker_ips or master_ips or [None])[0]
-            
-            if not node_ip:
-                print(f"  ⚠ Không lấy được IP của {env_name} cluster, bỏ qua patch.")
-                continue
-                
-            with open(values_file, "r") as f:
-                content = f.read()
-            
-            if placeholder in content:
-                content = content.replace(placeholder, node_ip)
-                with open(values_file, "w") as f:
-                    f.write(content)
-                print(f"  ✓ Patched ClusterMesh {env_name}: {placeholder} → {node_ip}:{node_port}")
-            else:
-                # Nếu placeholder không có (có thể đã patch rồi), thử regex để cập nhật IP mới nếu cần
-                # Nhưng tạm thời placeholder là đủ cho lab.
+        node_ip = None
+        tf_env_dir = os.path.join(TERRAFORM_DIR, "environments", env_name)
+        if os.path.isdir(tf_env_dir):
+            try:
+                out = subprocess.check_output(
+                    f"terraform -chdir=environments/{env_name} output -json",
+                    shell=True,
+                    cwd=TERRAFORM_DIR,
+                    timeout=15,
+                )
+                data = json.loads(out)
+                worker_ips = data.get("worker_private_ips", {}).get("value", [])
+                master_ips = data.get("master_private_ip", {}).get("value", [])
+                node_ip = (worker_ips or master_ips or [None])[0]
+            except Exception:
                 pass
-        except Exception as e:
-            # Thường fail nếu terraform env đó chưa init/apply
-            pass
+
+        if not node_ip:
+            node_ip = mesh_fallback[env_name]
+            print(
+                f"  ⚠ {env_name}: chưa có IP từ terraform — dùng tạm {node_ip} (TEST-NET) cho hub ClusterMesh. "
+                f"Sau khi provision {env_name}, git checkout -- cilium/cilium-values-management.yaml rồi chạy lại configure để IP thật."
+            )
+
+        if placeholder in content:
+            content = content.replace(placeholder, node_ip)
+            print(f"  ✓ Patched ClusterMesh {env_name}: {placeholder} → {node_ip}:{node_port}")
+        elif node_ip not in mesh_fallback.values():
+            # Đã patch trước đó (vd. TEST-NET) — thay bằng IP terraform mới
+            old_fb = mesh_fallback[env_name]
+            if old_fb in content and node_ip != old_fb:
+                content = content.replace(old_fb, node_ip, 1)
+                print(f"  ✓ Cập nhật ClusterMesh {env_name}: {old_fb} → {node_ip}:{node_port}")
+
+    with open(values_file, "w") as f:
+        f.write(content)
 
     _patch_clustermesh_peer_management_ip()
 

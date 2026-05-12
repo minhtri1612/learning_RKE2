@@ -7,6 +7,7 @@ cluster:
   id: 1
 
 kubeProxyReplacement: true
+# RKE2 disable-kube-proxy — IP master **cluster management** (configure.py patch từ terraform).
 k8sServiceHost: "PLACEHOLDER_MASTER_PRIVATE_IP"
 k8sServicePort: 6443
 
@@ -43,11 +44,11 @@ clustermesh:
     clusters:
       - name: dev
         ips:
-          - PLACEHOLDER_DEV_NODE_IP
+          - 192.0.2.1
         port: 32379
       - name: prod
         ips:
-          - PLACEHOLDER_PROD_NODE_IP
+          - 192.0.2.2
         port: 32380
 
 bpf:

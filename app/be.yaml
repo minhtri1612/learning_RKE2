@@ -240,7 +240,7 @@ rollout:
             failureCondition: result[0] < 0.82
             provider:
               prometheus:
-                # Management Prometheus NodePort (monitoring-mgmt.yaml). IP: terraform management private — ./configure.py thay PLACEHOLDER_MGMT_PRIVATE_IP.
-                address: http://PLACEHOLDER_MGMT_PRIVATE_IP:32090
+                # Management Prometheus NodePort — ./configure.py patch 10.0.101.185.
+                address: http://10.0.101.185:32090
                 query: |
                   avg(meo_backend_up{namespace="meo-stationery",pod=~"{{args.service-name}}-.*"}) or vector(0)
