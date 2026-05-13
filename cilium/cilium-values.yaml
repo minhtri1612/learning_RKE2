@@ -89,6 +89,12 @@ hubble:
     dashboards:
       enabled: false
 
+# Separate cilium-envoy DaemonSet (l7Proxy: true) owns hostPort 9964.
+# Disabling envoy.prometheus on the cilium agent avoids hostPort conflict during rolling updates.
+envoy:
+  prometheus:
+    enabled: false
+
 prometheus:
   enabled: true
   serviceMonitor:
